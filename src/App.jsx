@@ -1210,9 +1210,18 @@ const generateCustomSaaSInvoice = async () => {
     let currentY = 20;
 
     try {
-      // Usamos dimensiones proporcionales (ancho 35, alto automático o proporcional) para que no se estire
-      doc.addImage(logoDark, 'PNG', 14, currentY, 35, 12);
-      currentY += 18; // Reducimos espacio vertical ya que el logo es más compacto
+      // Obtenemos las dimensiones reales del archivo PNG importado
+      const imgWidth = logoDark.width || 1590; // Ancho original de tu imagen
+      const imgHeight = logoDark.height || 461; // Alto original de tu imagen
+      
+      // Definimos un ancho fijo deseado para el PDF (por ejemplo, 35 mm)
+      const pdfImageWidth = 35;
+      
+      // Calculamos la altura proporcional exacta para evitar deformaciones
+      const pdfImageHeight = (imgHeight * pdfImageWidth) / imgWidth;
+
+      doc.addImage(logoDark, 'PNG', 14, currentY, pdfImageWidth, pdfImageHeight);
+      currentY += pdfImageHeight + 6; // Espacio dinámico basado en el alto real
     } catch (e) {
       console.warn("No se pudo renderizar el logo en el PDF.", e);
       currentY += 10;
