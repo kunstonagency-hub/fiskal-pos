@@ -183,41 +183,80 @@
 .catalog-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 12px;
+  gap: 16px;
   margin-top: 16px;
 }
 
+/* --- TARJETA DE PRODUCTO OPTIMIZADA (EDGE-TO-EDGE) --- */
 .product-card {
-  background: #f8f9fa;
+  background: #ffffff;
   border: 1px solid #e9ecef;
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 0;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  overflow: hidden;
 }
 
 .product-card:hover {
   border-color: #adb5bd;
-  background: #ffffff;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+  transform: translateY(-3px);
 }
 
 .product-card.out-of-stock {
-  opacity: 0.5;
-  background-color: #f1f3f5;
+  opacity: 0.6;
+  background-color: #f8f9fa;
   border-style: dashed;
 }
 
-.product-card h4 {
+.product-card .img-container {
+  width: 100%;
+  height: 150px;
+  background-color: #f1f3f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.product-card .img-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-card-content {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+}
+
+.product-card-content h4 {
   font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 8px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: #212529;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
 }
 
 .product-price {
-  font-size: 16px;
-  font-weight: 700;
-  color: #212529;
+  font-size: 18px;
+  font-weight: 800;
+  color: #1c7ed6;
 }
+/* -------------------------------------- */
 
 .products-layout {
   display: grid;
@@ -894,6 +933,28 @@
   padding: 20px;
 }
 
+/* Grilla para Impresión Masiva de Códigos QR en Páginas Carta / A4 */
+.catalog-print-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+  padding: 15px;
+}
+
+.print-label-item {
+  background: #ffffff;
+  border: 1px dashed #adb5bd;
+  padding: 15px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 240px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
 /* DISEÑO RESPONSIVO NATIVO MÓVIL (VERTICAL) */
 @media (max-width: 768px) {
   .fiskal-login-container {
@@ -957,6 +1018,8 @@
     border-radius: 0;
     flex: 1;
     white-space: nowrap;
+    border-top: none !important;
+    margin-top: 0 !important;
   }
 
   .nav-btn span {
@@ -1023,6 +1086,10 @@
     gap: 16px;
   }
 
+  .product-form-card, .product-list-card {
+    padding: 16px;
+  }
+
   .payment-inputs-grid {
     grid-template-columns: 1fr;
   }
@@ -1034,43 +1101,119 @@
     max-height: 85vh;
   }
 
-  /* Transformar tablas principales en bloques verticales, excluyendo la tabla del recibo de factura */
-  .fiskal-table:not(.receipt-table), .fiskal-table:not(.receipt-table) thead, .fiskal-table:not(.receipt-table) tbody, .fiskal-table:not(.receipt-table) tr, .fiskal-table:not(.receipt-table) th, .fiskal-table:not(.receipt-table) td {
-    display: block;
-    width: 100%;
+  /* --- FORMATO TICKET / RECIBO COMPACTO PARA TABLAS EN MÓVIL --- */
+  .fiskal-table:not(.receipt-table) {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
 
   .fiskal-table:not(.receipt-table) thead {
     display: none;
   }
 
+  .fiskal-table:not(.receipt-table) tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
   .fiskal-table:not(.receipt-table) tr {
+    display: flex;
+    flex-direction: column;
     background: #ffffff;
     border: 1px solid #e9ecef;
     border-radius: 8px;
-    margin-bottom: 12px;
-    padding: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    padding: 10px 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.02);
   }
 
   .fiskal-table:not(.receipt-table) td {
     border: none;
-    padding: 4px 0;
+    padding: 3px 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
     font-size: 13px;
+    width: 100%;
   }
 
   .fiskal-table:not(.receipt-table) td.action-cell {
     border-top: 1px solid #f1f3f5;
-    margin-top: 8px;
-    padding-top: 8px;
+    margin-top: 6px;
+    padding-top: 6px;
     justify-content: center;
+    display: flex;
   }
+
+  /* 1. Historial de Ventas (7 columnas) */
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(3) {
+    order: 1;
+    font-size: 16px;
+    font-weight: 800;
+    color: #212529;
+    border-bottom: 1px dashed #dee2e6;
+    padding-bottom: 4px;
+    margin-bottom: 2px;
+    justify-content: flex-start;
+  }
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(1) { order: 2; }
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(1)::before { content: "Factura:"; color: #6c757d; font-weight: 600; }
+
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(2) { order: 3; }
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(2)::before { content: "Fecha:"; color: #6c757d; font-weight: 600; }
+
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(4) { order: 4; }
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(4)::before { content: "Total USD:"; color: #6c757d; font-weight: 600; }
+
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(5) { order: 5; }
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(5)::before { content: "Saldo Pendiente:"; color: #6c757d; font-weight: 600; }
+
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(6) { order: 6; }
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(6)::before { content: "Estatus:"; color: #6c757d; font-weight: 600; }
+
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(7) { order: 7; }
+
+  /* 2. Clientes (5 columnas): Espaciado ultra compacto sin saltos de línea grandes */
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(1) {
+    order: 1;
+    font-size: 16px;
+    font-weight: 800;
+    color: #212529;
+    border-bottom: 1px dashed #dee2e6;
+    padding-bottom: 4px;
+    margin-bottom: 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0px;
+    line-height: 1.15;
+  }
+
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(1) strong {
+    margin-bottom: 1px;
+  }
+
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(1) span {
+    font-size: 12px !important;
+    font-weight: 600;
+    color: #6c757d !important;
+    margin-top: 0 !important;
+  }
+
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(2) { order: 2; }
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(2)::before { content: "Total Facturado:"; color: #6c757d; font-weight: 600; }
+
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(3) { order: 3; }
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(3)::before { content: "Saldo Pendiente:"; color: #6c757d; font-weight: 600; }
+
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(4) { order: 4; }
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(4)::before { content: "N° Compras:"; color: #6c757d; font-weight: 600; }
+
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(5) { order: 5; }
 }
 
-/* DISEÑO RESPONSIVO MÓVIL EN HORIZONTAL (RESPETO DE ESPACIO Y TOGGLE POR CLIC) */
+/* DISEÑO RESPONSIVO MÓVIL EN HORIZONTAL */
 @media (max-width: 1024px) and (orientation: landscape) {
   .fiskal-container {
     position: relative;
@@ -1126,17 +1269,17 @@
   }
 
   .nav-btn span {
-    display: none; /* Oculto por defecto en horizontal slim */
+    display: none;
   }
 
   .fiskal-sidebar.expanded .nav-btn span {
-    display: inline; /* Se despliega solo al tocar el menú */
+    display: inline;
   }
 
   .fiskal-main {
     flex: 1;
     width: calc(100% - 64px);
-    margin-left: 64px; /* Respeta estrictamente el ancho de los iconos para que el contenido no quede debajo */
+    margin-left: 64px;
     height: 100vh;
     height: 100dvh;
     margin-bottom: 0;
@@ -1144,7 +1287,7 @@
   }
 }
 
-/* Optimización para Impresoras Térmicas y Recibos (80mm / 58mm) */
+/* Optimización para Impresión Carta (Paginación de Múltiples Páginas para QRs) y Térmicas */
 @media print {
   body * {
     visibility: hidden !important;
@@ -1161,13 +1304,33 @@
     background: transparent !important;
     backdrop-filter: none !important;
   }
-  .modal-content {
+  .modal-content.thermal-print {
     box-shadow: none !important;
     border: none !important;
     width: 80mm !important;
     max-width: 80mm !important;
     margin: 0 auto !important;
     padding: 0 !important;
+  }
+  .modal-content.letter-print {
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .catalog-print-grid {
+    gap: 10px;
+    padding: 0;
+  }
+  .print-label-item {
+    border: 1px solid #000;
+    height: auto;
+    min-height: 220px;
+    padding: 10px;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .btn-close-modal, .modal-footer {
     display: none !important;

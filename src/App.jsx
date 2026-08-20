@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, Settings, Package, Users, PlusCircle, Trash2, Minus, Plus, RefreshCw, History, UserCheck, CreditCard, X, FileText, Eye, Clock, AlertCircle, CheckCircle, Play, DollarSign, AlertTriangle, Edit2, QrCode, Lock, Unlock, ShieldAlert, Barcode, Image as ImageIcon, Wifi, WifiOff, UploadCloud, Search, Store, MapPin, Phone, Mail, LogOut, Key, User, MessageCircle, Award, HardDrive, UserPlus, Camera } from 'lucide-react';
+import { ShoppingCart, Settings, Package, Users, PlusCircle, Trash2, Minus, Plus, RefreshCw, History, UserCheck, CreditCard, X, FileText, Eye, Clock, AlertCircle, CheckCircle, Play, DollarSign, AlertTriangle, Edit2, QrCode, Lock, Unlock, ShieldAlert, Barcode, Image as ImageIcon, Wifi, WifiOff, UploadCloud, Search, Store, MapPin, Phone, Mail, LogOut, Key, User, MessageCircle, Award, HardDrive, UserPlus, Camera, DollarSign as DollarIcon, Percent, TrendingUp, Activity, PieChart, Check, FileCheck } from 'lucide-react';
 import { supabase } from './supabase';
 import { initDB, queueOfflineAction, getOfflineActions, clearOfflineAction, getOfflineSales, clearOfflineSale } from './db';
 import { Html5Qrcode } from 'html5-qrcode';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import './App.css';
+import logoDark from './assets/logo_2.svg'; 
+import logoLight from './assets/logo.svg'; 
 
-// Diccionario de ciudades de Venezuela para auto-detectar el estado
 const venezuelaCitiesMap = {
   "caracas": "Distrito Capital",
   "los teques": "Miranda",
@@ -46,8 +49,61 @@ const venezuelaCitiesMap = {
   "cumana": "Sucre"
 };
 
+const formatWhatsAppNumber = (phoneStr) => {
+  if (!phoneStr) return '584120000000';
+  let clean = phoneStr.replace(/\D/g, '');
+  if (clean.startsWith('0')) {
+    clean = '58' + clean.substring(1);
+  } else if (!clean.startsWith('58')) {
+    clean = '58' + clean;
+  }
+  return clean;
+};
+
+const compressImage = (file, maxWidth = 800, quality = 0.7) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('Error al comprimir la imagen'));
+            return;
+          }
+          const compressedFile = new File([blob], file.name, {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+          });
+          resolve(compressedFile);
+        }, 'image/jpeg', quality);
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 function App() {
-  // Estado de Autenticación Supabase
   const [session, setSession] = useState(null);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -67,22 +123,51 @@ function App() {
   const [cart, setCart] = useState([]);
   const [processing, setProcessing] = useState(false);
 
-  // Estado para expandir/contraer el menú lateral en móvil horizontal por toque
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
 
-  // Estados de Usuario, Roles y Tenant (Store ID)
   const [currentUserRole, setCurrentUserRole] = useState('cajero');
   const [currentStoreId, setCurrentStoreId] = useState(null);
+  const [currentStoreName, setCurrentStoreName] = useState('Fiskal Store');
   const [adminStores, setAdminStores] = useState([]);
   const [employees, setEmployees] = useState([]);
 
-  // Campos para nuevo empleado
+  // Variables SaaS / Settings
+  const [baseMonthlyPrice, setBaseMonthlyPrice] = useState(30);
+  const [globalPromoDiscount, setGlobalPromoDiscount] = useState(0);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  // Configuraciones de Factura SaaS
+  const [saasInvoiceHeader, setSaasInvoiceHeader] = useState('');
+  const [saasInvoiceFooter, setSaasInvoiceFooter] = useState('');
+
+  // Estados del Modal de Pre-Facturación SaaS
+  const [showPreInvoiceModal, setShowPreInvoiceModal] = useState(false);
+  const [preInvoiceStore, setPreInvoiceStore] = useState(null);
+  const [preInvoiceExtraDesc, setPreInvoiceExtraDesc] = useState('');
+  const [preInvoiceExtraAmount, setPreInvoiceExtraAmount] = useState('');
+  const [preInvoiceDiscount, setPreInvoiceDiscount] = useState('');
+
+  const [systemVendors, setSystemVendors] = useState([]);
+  const [saasTransactions, setSaasTransactions] = useState([]);
+  const [newVendorName, setNewVendorName] = useState('');
+  const [newVendorEmail, setNewVendorEmail] = useState('');
+  const [newVendorPhone, setNewVendorPhone] = useState('');
+  const [creatingVendor, setCreatingVendor] = useState(false);
+  const [showVendorStoreModal, setShowVendorStoreModal] = useState(false);
+  const [vendorStoreName, setVendorStoreName] = useState('');
+  const [vendorStoreRif, setVendorStoreRif] = useState('');
+  const [vendorOwnerName, setVendorOwnerName] = useState('');
+  const [vendorOwnerPhone, setVendorOwnerPhone] = useState('');
+  const [vendorOwnerEmail, setVendorOwnerEmail] = useState('');
+  const [vendorPaidAdvance, setVendorPaidAdvance] = useState(false);
+  const [showDailyTrialAlert, setShowDailyTrialAlert] = useState(false);
+  const [trialAlertData, setTrialAlertData] = useState({ isTrial: true, daysLeft: 10, expired: false });
+
   const [newEmpName, setNewEmpName] = useState('');
   const [newEmpEmail, setNewEmpEmail] = useState('');
   const [newEmpPass, setNewEmpPass] = useState('');
   const [creatingEmployee, setCreatingEmployee] = useState(false);
   
-  // Campos extendidos para Registro y Edición de Comercio SaaS
   const [editingStore, setEditingStore] = useState(null);
   const [storeName, setStoreName] = useState('');
   const [storeRif, setStoreRif] = useState('');
@@ -93,8 +178,9 @@ function App() {
   const [storeAddress, setStoreAddress] = useState('');
   const [storeCity, setStoreCity] = useState('');
   const [storeState, setStoreState] = useState('');
+  const [storePaidAdvance, setStorePaidAdvance] = useState(false);
+  const [storeCustomDiscount, setStoreCustomDiscount] = useState(0); 
 
-  // Estados para creación rápida de acceso de dueño desde Panel Maestro
   const [showOwnerModal, setShowOwnerModal] = useState(false);
   const [targetStoreForOwner, setTargetStoreForOwner] = useState(null);
   const [ownerModalEmail, setOwnerModalEmail] = useState('');
@@ -102,11 +188,9 @@ function App() {
   const [ownerModalName, setOwnerModalName] = useState('');
   const [creatingOwnerLoading, setCreatingOwnerLoading] = useState(false);
 
-  // Campos para gestión de Cajas Físicas
   const [newRegisterName, setNewRegisterName] = useState('');
   const [isMainRegister, setIsMainRegister] = useState(false);
 
-  // Estados del Modo Offline
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSalesCount, setPendingSalesCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -118,22 +202,38 @@ function App() {
   const [showQuickClientModal, setShowQuickClientModal] = useState(false);
   const [quickDocInput, setQuickDocInput] = useState('');
 
+  const [clientFilterTab, setClientFilterTab] = useState('all');
+  const [selectedClientDetail, setSelectedClientDetail] = useState(null);
+  const [clientNotes, setClientNotes] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('fiskal_client_notes') || '{}');
+    } catch (e) {
+      return {};
+    }
+  });
+  const [tempClientNote, setTempClientNote] = useState('');
+
+  const [historyFilterType, setHistoryFilterType] = useState('all');
+  const [historyCustomDate, setHistoryCustomDate] = useState('');
+
+  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [showPrintCatalog, setShowPrintCatalog] = useState(false);
+
   const [barcodeInput, setBarcodeInput] = useState('');
   const barcodeInputRef = useRef(null);
 
-  // Estados para el Escáner de Cámara de Códigos de Barras
   const [showCameraScannerModal, setShowCameraScannerModal] = useState(false);
-  const videoScannerRef = useRef(null);
   const [cameraScanError, setCameraScanError] = useState('');
-  const mediaStreamRef = useRef(null);
   const html5QrCodeRef = useRef(null);
 
   const [currentShift, setCurrentShift] = useState(null);
   const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
   const [openingFloat, setOpeningFloat] = useState('');
+  const [openingFloatVes, setOpeningFloatVes] = useState('');
   const [selectedRegisterIdForOpen, setSelectedRegisterIdForOpen] = useState('');
   const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
-  const [actualCashCounted, setActualCashCounted] = useState('');
+  const [actualCashUSD, setActualCashUSD] = useState('');
+  const [actualCashBs, setActualCashBs] = useState('');
   const [shiftNotes, setShiftNotes] = useState('');
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -174,10 +274,9 @@ function App() {
   const [clientEmail, setClientEmail] = useState('');
   const [loadingClient, setLoadingClient] = useState(false);
 
-  // Estados de Plantillas y Alertas WhatsApp Avanzadas (Configuración)
   const [plantillas, setPlantillas] = useState({
-    reposicionStock: '¡Hola {cliente}! Te contamos que el producto {producto} que tanto te gusta ya está disponible nuevamente en stock. ¿Te guardamos el tuyo?',
-    promocionGeneral: '¡Hola {cliente}! Tenemos ofertas especiales hoy en Fiskal con el producto {producto}. ¡Visítanos o escríbenos para más detalles!',
+    reposicionStock: '¡Hola {cliente}! Te saludamos de {comercio}. Te contamos que el producto {producto} ya está disponible nuevamente en stock. ¿Te guardamos el tuyo?',
+    promocionGeneral: '¡Hola {cliente}! Tenemos ofertas especiales hoy en {comercio} con el producto {producto}. ¡Visítanos o escríbenos para más detalles!',
   });
   const [mensajePersonalizadoTemp, setMensajePersonalizadoTemp] = useState('');
   const [modalWhatsAppOpen, setModalWhatsAppOpen] = useState(false);
@@ -197,6 +296,7 @@ function App() {
         fetchUserProfileAndStore(session.user);
       } else {
         setCurrentStoreId(null);
+        setCurrentStoreName('Fiskal Store');
         setCurrentUserRole('cajero');
         setProducts([]);
         setSales([]);
@@ -206,13 +306,14 @@ function App() {
       }
     });
 
-    const handleOnline = () => { setIsOnline(true); syncOfflineData(); };
+    const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
     checkPendingSales();
+    loadGlobalSaasSettings();
 
     const savedTemplates = localStorage.getItem('fiskal_whatsapp_templates');
     if (savedTemplates) {
@@ -230,40 +331,152 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (isOnline) {
+      syncOfflineData();
+    }
+  }, [isOnline]);
+
+  const loadGlobalSaasSettings = async () => {
+    if(!navigator.onLine) return;
+    try {
+      const { data: priceData } = await supabase.from('settings').select('value').eq('key', 'base_monthly_price').maybeSingle();
+      if(priceData) setBaseMonthlyPrice(parseFloat(priceData.value));
+      
+      const { data: promoData } = await supabase.from('settings').select('value').eq('key', 'global_discount').maybeSingle();
+      if(promoData) setGlobalPromoDiscount(parseFloat(promoData.value));
+
+      const { data: headerData } = await supabase.from('settings').select('value').eq('key', 'saas_invoice_header').maybeSingle();
+      if(headerData) setSaasInvoiceHeader(headerData.value);
+
+      const { data: footerData } = await supabase.from('settings').select('value').eq('key', 'saas_invoice_footer').maybeSingle();
+      if(footerData) setSaasInvoiceFooter(footerData.value);
+
+    } catch(e) {
+      console.warn("Error loading SaaS settings", e);
+    }
+  };
+
+  const handleSaveSaasSettings = async (e) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    try {
+      await supabase.from('settings').upsert({ key: 'base_monthly_price', value: baseMonthlyPrice, store_id: currentStoreId }, { onConflict: 'key' });
+      await supabase.from('settings').upsert({ key: 'global_discount', value: globalPromoDiscount, store_id: currentStoreId }, { onConflict: 'key' });
+      await supabase.from('settings').upsert({ key: 'saas_invoice_header', value: saasInvoiceHeader, store_id: currentStoreId }, { onConflict: 'key' });
+      await supabase.from('settings').upsert({ key: 'saas_invoice_footer', value: saasInvoiceFooter, store_id: currentStoreId }, { onConflict: 'key' });
+
+      alert("¡Configuraciones de la plataforma actualizadas con éxito!");
+    } catch(e) {
+      alert("Error al guardar: " + e.message);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const getCalculatedMonthlyPrice = (customDiscount, agreedPrice = null) => {
+    if (agreedPrice !== null && agreedPrice !== undefined) {
+       const disc = customDiscount || 0;
+       return agreedPrice * (1 - (disc / 100));
+    }
+    const finalDiscountPercent = Math.max(globalPromoDiscount || 0, customDiscount || 0);
+    return baseMonthlyPrice * (1 - (finalDiscountPercent / 100));
+  };
+  const checkStoreTrialAndExpiration = async (storeId) => {
+    if (!storeId) return;
+    const sessionKey = `fiskal_trial_shown_${storeId}`;
+    if (sessionStorage.getItem(sessionKey)) return;
+
+    try {
+      const { data: storeInfo, error } = await supabase.from('stores').select('*').eq('id', storeId).single();
+      if (error || !storeInfo) return;
+
+      const now = new Date().getTime();
+      if (storeInfo.is_trial) {
+        const trialEnd = new Date(storeInfo.trial_end_date || storeInfo.created_at).getTime();
+        const timeLeft = trialEnd - now;
+        const daysLeft = Math.ceil(timeLeft / (1000 * 60 * 60 * 24));
+        setTrialAlertData({ isTrial: true, daysLeft: daysLeft > 0 ? daysLeft : 0, expired: daysLeft <= 0 });
+        setShowDailyTrialAlert(true);
+        sessionStorage.setItem(sessionKey, 'true');
+      } else if (storeInfo.subscription_expires_at) {
+        const subEnd = new Date(storeInfo.subscription_expires_at).getTime();
+        const timeLeft = subEnd - now;
+        const daysLeft = Math.ceil(timeLeft / (1000 * 60 * 60 * 24));
+        if (daysLeft <= 5) {
+          setTrialAlertData({ isTrial: false, daysLeft: daysLeft > 0 ? daysLeft : 0, expired: daysLeft <= 0 });
+          setShowDailyTrialAlert(true);
+          sessionStorage.setItem(sessionKey, 'true');
+        }
+      }
+    } catch (e) {
+      console.warn("Error chequeando prueba o suscripción:", e);
+    }
+  };
+
   const fetchUserProfileAndStore = async (user) => {
     try {
-      let { data: profile, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      
+      let profile;
+      if (navigator.onLine) {
+        let { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        if (!data) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          const retry = await supabase.from('profiles').select('*').eq('id', user.id).single();
+          data = retry.data;
+        }
+        profile = data;
+        if (profile) localStorage.setItem(`fiskal_cache_profile_${user.id}`, JSON.stringify(profile));
+      } else {
+        const cachedProfile = localStorage.getItem(`fiskal_cache_profile_${user.id}`);
+        if (cachedProfile) profile = JSON.parse(cachedProfile);
+      }
+
       if (!profile) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        const retry = await supabase.from('profiles').select('*').eq('id', user.id).single();
-        profile = retry.data;
-
-        if (!profile) {
-          console.warn("No se encontró perfil para este usuario.");
-          return;
-        }
+        console.warn("No se encontró perfil para este usuario.");
+        return;
       }
 
-      // Validar estrictamente si el comercio está suspendido (excepto si es super_admin)
-      if (profile.role !== 'super_admin' && profile.store_id) {
-        const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('is_active').eq('id', profile.store_id).single();
-        
-        if (storeErr || !storeInfo || storeInfo.is_active === false) {
-          alert("⚠️ Este comercio se encuentra suspendido por la administración. Acceso denegado.");
-          await supabase.auth.signOut();
-          return;
-        }
-      }
-
-      setCurrentStoreId(profile.store_id);
-      setCurrentUserRole(profile.role || 'cajero');
+      let activeStoreId = profile.store_id;
 
       if (profile.role === 'super_admin') {
-        fetchAdminStores();
+        if (navigator.onLine) {
+          fetchAdminStores();
+          fetchSystemVendors();
+          fetchSaasTransactions();
+          const { data: defaultStore } = await supabase.from('stores').select('id, name').eq('name', 'Mi Comercio Nuevo').maybeSingle();
+          if (defaultStore) {
+            activeStoreId = defaultStore.id;
+            setCurrentStoreName(defaultStore.name);
+            localStorage.setItem(`fiskal_cache_store_name_${activeStoreId}`, defaultStore.name);
+          }
+        } else {
+          const cachedName = localStorage.getItem(`fiskal_cache_store_name_${activeStoreId}`);
+          if (cachedName) setCurrentStoreName(cachedName);
+        }
+      } else if (profile.store_id) {
+        if (navigator.onLine) {
+          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active').eq('id', profile.store_id).single();
+          
+          if (storeErr || !storeInfo || storeInfo.is_active === false) {
+            alert("⚠️ Este comercio se encuentra suspendido por la administración. Acceso denegado.");
+            await supabase.auth.signOut();
+            return;
+          }
+          if (storeInfo && storeInfo.name) {
+            setCurrentStoreName(storeInfo.name);
+            localStorage.setItem(`fiskal_cache_store_name_${profile.store_id}`, storeInfo.name);
+          }
+          checkStoreTrialAndExpiration(profile.store_id);
+        } else {
+          const cachedName = localStorage.getItem(`fiskal_cache_store_name_${profile.store_id}`);
+          if (cachedName) setCurrentStoreName(cachedName);
+        }
       }
 
-      loadStoreData(profile.store_id, profile.role);
+      setCurrentStoreId(activeStoreId);
+      setCurrentUserRole(profile.role || 'cajero');
+
+      loadStoreData(activeStoreId, profile.role);
 
     } catch (error) {
       console.warn('Error en la configuración del perfil:', error.message);
@@ -271,17 +484,191 @@ function App() {
   };
 
   const loadStoreData = async (storeId, role) => {
+    if (!storeId) return;
     await fetchRegisters(storeId);
     await fetchProducts(storeId);
     await fetchSales(storeId);
     await fetchClients(storeId);
     
-    if (role === 'owner' || role === 'super_admin') {
+    if (role === 'owner' || role === 'super_admin' || role === 'system_vendor') {
       await fetchEmployees(storeId);
     }
     
     await syncBcvRate(storeId);
     await checkActiveShift();
+  };
+
+  const fetchSaasTransactions = async () => {
+    try {
+      const { data, error } = await supabase.from('saas_transactions').select('*').order('created_at', { ascending: false });
+      if (!error) setSaasTransactions(data || []);
+    } catch (e) {
+      console.warn("Error cargando transacciones SaaS", e);
+    }
+  };
+
+  const fetchSystemVendors = async () => {
+    try {
+      const { data, error } = await supabase.from('system_vendors').select('*').order('created_at', { ascending: false });
+      if (!error) setSystemVendors(data || []);
+    } catch (e) {
+      console.warn("Error cargando vendedores de sistema", e);
+    }
+  };
+
+  const handleCreateSystemVendor = async (e) => {
+    e.preventDefault();
+    if (!newVendorName.trim() || !newVendorEmail.trim()) return;
+
+    setCreatingVendor(true);
+    try {
+      const { data: authData, error: signUpErr } = await supabase.auth.signUp({
+        email: newVendorEmail.trim(),
+        password: 'Password123*',
+        options: {
+          emailRedirectTo: window.location.origin
+        }
+      });
+
+      if (signUpErr) throw signUpErr;
+
+      if (authData.user) {
+        const { error: vendorErr } = await supabase.from('system_vendors').insert([{
+          user_id: authData.user.id,
+          name: newVendorName.trim(),
+          email: newVendorEmail.trim(),
+          phone: newVendorPhone.trim(),
+          pending_balance: 0,
+          total_earned: 0
+        }]);
+
+        if (vendorErr) throw vendorErr;
+
+        const { error: profErr } = await supabase.from('profiles').upsert([{
+          id: authData.user.id,
+          role: 'system_vendor',
+          full_name: newVendorName.trim()
+        }]);
+
+        if (profErr) throw profErr;
+      }
+
+      alert("¡Vendedor de Sistema registrado con éxito!\n\nCredenciales de acceso:\nCorreo: " + newVendorEmail + "\nContraseña Temporal: Password123*");
+      setNewVendorName('');
+      setNewVendorEmail('');
+      setNewVendorPhone('');
+      fetchSystemVendors();
+      fetchAdminStores();
+    } catch (err) {
+      alert("Error al registrar vendedor: " + err.message);
+    } finally {
+      setCreatingVendor(false);
+    }
+  };
+
+  const handlePayVendor = async (vendor) => {
+    if(vendor.pending_balance <= 0) {
+      alert("Este vendedor no tiene saldo pendiente por cobrar.");
+      return;
+    }
+    if(!window.confirm(`¿Confirmar que ya le pagaste o le vas a liquidar $${vendor.pending_balance.toFixed(2)} al vendedor ${vendor.name}?`)) return;
+
+    try {
+      await supabase.from('saas_transactions').insert([{
+        type: 'expense',
+        amount: vendor.pending_balance,
+        description: 'Liquidación de comisiones acumuladas',
+        vendor_id: vendor.id
+      }]);
+
+      await supabase.from('system_vendors').update({
+        pending_balance: 0
+      }).eq('id', vendor.id);
+
+      alert(`¡Pago de $${vendor.pending_balance.toFixed(2)} registrado exitosamente a ${vendor.name}!`);
+      fetchSystemVendors();
+      fetchSaasTransactions();
+    } catch(e) {
+      alert("Error al liquidar pago al vendedor: " + e.message);
+    }
+  };
+
+  const handleVendorRegisterStoreSubmit = async (e) => {
+    e.preventDefault();
+    if (!vendorStoreName.trim()) return;
+
+    try {
+      const { data: vendorRec } = await supabase.from('system_vendors').select('*').eq('user_id', session.user.id).single();
+      const vendorId = vendorRec ? vendorRec.id : null;
+
+      const trialEnd = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
+      let isTrial = !vendorPaidAdvance;
+      let subEnd = null;
+
+      if (vendorPaidAdvance) {
+        subEnd = new Date(Date.now() + 40 * 24 * 60 * 60 * 1000).toISOString();
+      }
+      
+      const priceToLock = getCalculatedMonthlyPrice(0, baseMonthlyPrice);
+
+      const { data: newStore, error: storeErr } = await supabase.from('stores').insert([{
+        name: vendorStoreName.trim(),
+        rif: vendorStoreRif.trim(),
+        document: vendorStoreRif.trim(),
+        owner_name: vendorOwnerName.trim(),
+        phone: vendorOwnerPhone.trim(),
+        email: vendorOwnerEmail.trim(),
+        is_active: true,
+        is_trial: isTrial,
+        trial_start_date: new Date().toISOString(),
+        trial_end_date: trialEnd,
+        subscription_expires_at: subEnd,
+        system_vendor_id: vendorId,
+        registration_paid: vendorPaidAdvance,
+        monthly_price_agreed: priceToLock,
+        custom_discount: globalPromoDiscount
+      }]).select().single();
+
+      if (storeErr) throw storeErr;
+
+      if (vendorPaidAdvance && newStore) {
+        await supabase.from('saas_transactions').insert([{
+          type: 'income',
+          amount: priceToLock,
+          description: 'Registro Inicial (Adelanto 1er Mes): ' + newStore.name,
+          store_id: newStore.id,
+          vendor_id: vendorId
+        }]);
+
+        if (vendorId && vendorRec) {
+          const commissionAmount = priceToLock * 0.50;
+          await supabase.from('system_vendors').update({
+            pending_balance: parseFloat((vendorRec.pending_balance || 0)) + commissionAmount,
+            total_earned: parseFloat((vendorRec.total_earned || 0)) + commissionAmount
+          }).eq('id', vendorId);
+        }
+
+        alert("¡Comercio registrado exitosamente con 40 DÍAS ACTIVOS!\n\nSe ha generado el 50% de comisión por tu venta inicial.");
+      } else {
+        alert("¡Comercio registrado exitosamente con 10 días de prueba gratuita y asignado a tu cuenta!");
+      }
+      
+      setVendorStoreName('');
+      setVendorStoreRif('');
+      setVendorOwnerName('');
+      setVendorOwnerPhone('');
+      setVendorOwnerEmail('');
+      setVendorPaidAdvance(false);
+      setShowVendorStoreModal(false);
+      
+      if(currentUserRole === 'super_admin') {
+         fetchAdminStores();
+         fetchSystemVendors();
+         fetchSaasTransactions();
+      }
+    } catch (err) {
+      alert("Error al registrar comercio: " + err.message);
+    }
   };
 
   const handleGuardarPlantillas = () => {
@@ -297,7 +684,8 @@ function App() {
 
     let finalMsg = tpl
       .replace(/{cliente}/g, clientDisplay)
-      .replace(/{producto}/g, prodName);
+      .replace(/{producto}/g, prodName)
+      .replace(/{comercio}/g, currentStoreName);
     
     setMensajePersonalizadoTemp(finalMsg);
   };
@@ -312,30 +700,12 @@ function App() {
     setModalWhatsAppOpen(true);
   };
 
-  const handleTemplateChange = (e) => {
-    const newKey = e.target.value;
-    setSelectedTemplateKey(newKey);
-    actualizarTextoMensaje(newKey, modalProductId, modalClientName);
-  };
-
-  const handleModalProductChange = (e) => {
-    const newProdId = e.target.value;
-    setModalProductId(newProdId);
-    actualizarTextoMensaje(selectedTemplateKey, newProdId, modalClientName);
-  };
-
-  const handleModalClientChange = (e) => {
-    const newClient = e.target.value;
-    setModalClientName(newClient);
-    actualizarTextoMensaje(selectedTemplateKey, modalProductId, newClient);
-  };
-
   const enviarMensajeWhatsAppFinal = () => {
     let phone = '584120000000';
     if (modalClientName !== 'Cliente General') {
       const clientData = clients.find(c => c.name === modalClientName);
       if (clientData && clientData.phone) {
-        phone = clientData.phone.replace(/\D/g, '');
+        phone = formatWhatsAppNumber(clientData.phone);
       }
     }
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensajePersonalizadoTemp)}`;
@@ -345,26 +715,38 @@ function App() {
 
   const sendWhatsAppReminder = (sale) => {
     const clientData = clients.find(c => c.name === sale.client_name);
-    const phone = clientData?.phone?.replace(/\D/g, ''); 
+    const phone = clientData?.phone ? formatWhatsAppNumber(clientData.phone) : ''; 
 
     if (!phone) {
       alert("No se encontró un número de teléfono para este cliente.");
       return;
     }
 
-    const message = `Hola ${sale.client_name}, te saludamos de Fiskal. Te recordamos que tienes un saldo pendiente por la factura #${sale.id.toString().startsWith('local') ? 'Pendiente' : sale.id} de $${(sale.balance_due_usd || 0).toFixed(2)}. ¡Esperamos tu pago pronto!`;
+    const message = `Hola ${sale.client_name}, te saludamos de ${currentStoreName}. Te recordamos que tienes un saldo pendiente por la factura #${sale.id.toString().startsWith('local') ? 'Pendiente' : sale.id} de $${(sale.balance_due_usd || 0).toFixed(2)}. ¡Esperamos tu pago pronto!`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
 
   const sendClientGeneralWhatsApp = (client, totalDebt) => {
-    const phone = client.phone?.replace(/\D/g, '');
+    const phone = formatWhatsAppNumber(client.phone);
     if (!phone) {
       alert("Este cliente no tiene un número de teléfono registrado.");
       return;
     }
 
-    const message = `Hola ${client.name}, te saludamos de Fiskal. Te escribimos para recordarte que tienes un saldo pendiente acumulado de $${totalDebt.toFixed(2)} en tus cuentas. ¡Agradecemos tu pronto pago!`;
+    const message = `Hola ${client.name}, te saludamos de ${currentStoreName}. Te escribimos para recordarte que tienes un saldo pendiente acumulado de $${totalDebt.toFixed(2)} en tus cuentas. ¡Agradecemos tu pronto pago!`;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
+  const sendStoreRenewalWhatsApp = (store) => {
+    const phone = formatWhatsAppNumber(store.phone);
+    if (!phone) {
+      alert("Este comercio no tiene teléfono registrado.");
+      return;
+    }
+    const finalPrice = getCalculatedMonthlyPrice(store.custom_discount, store.monthly_price_agreed).toFixed(2);
+    const message = `¡Hola ${store.owner_name || store.name}! Te escribimos de la plataforma Fiskal para recordarte que tu periodo de prueba o suscripción está próximo a vencer. Contáctanos para formalizar tu renovación ($${finalPrice}) y seguir disfrutando del sistema sin interrupciones.`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
@@ -379,12 +761,23 @@ function App() {
         const { data, error } = await supabase.auth.signUp({
           email: authEmail,
           password: authPassword,
+          options: {
+            emailRedirectTo: window.location.origin
+          }
         });
         if (error) throw error;
         
         if (data.user) {
+          const trialEnd = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
           const { data: newStore, error: storeErr } = await supabase.from('stores')
-            .insert([{ name: 'Mi Comercio Nuevo', is_active: true }])
+            .insert([{ 
+              name: 'Mi Comercio Nuevo', 
+              is_active: true, 
+              is_trial: true, 
+              trial_end_date: trialEnd,
+              monthly_price_agreed: baseMonthlyPrice,
+              custom_discount: globalPromoDiscount 
+            }])
             .select().single();
             
           if (!storeErr && newStore) {
@@ -397,7 +790,7 @@ function App() {
           }
         }
 
-        alert("¡Registro exitoso! Ya puedes iniciar sesión y configurar tu comercio.");
+        alert("¡Registro exitoso! Ya puedes iniciar sesión y configurar tu comercio con 10 días de cortesía.");
         setIsRegistering(false);
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -414,6 +807,7 @@ function App() {
   };
 
   const handleLogout = async () => {
+    sessionStorage.clear();
     await supabase.auth.signOut();
   };
 
@@ -426,6 +820,9 @@ function App() {
       const { data, error } = await supabase.auth.signUp({
         email: newEmpEmail,
         password: newEmpPass,
+        options: {
+          emailRedirectTo: window.location.origin
+        }
       });
 
       if (error) throw error;
@@ -455,15 +852,10 @@ function App() {
   };
 
   const fetchEmployees = async (storeId) => {
+    if (!storeId) return;
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, role')
-        .eq('store_id', storeId);
-      
-      if (!error && data) {
-        setEmployees(data);
-      }
+      const { data, error } = await supabase.from('profiles').select('id, full_name, role').eq('store_id', storeId);
+      if (!error && data) setEmployees(data);
     } catch (error) {
       console.warn("Error cargando empleados");
     }
@@ -471,7 +863,7 @@ function App() {
 
   const fetchAdminStores = async () => {
     try {
-      const { data, error } = await supabase.from('stores').select('*').order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('stores').select('*, system_vendors(name)').order('created_at', { ascending: false });
       if (error) throw error;
       setAdminStores(data || []);
     } catch (error) {
@@ -498,6 +890,9 @@ function App() {
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: ownerModalEmail.trim(),
         password: ownerModalPass,
+        options: {
+          emailRedirectTo: window.location.origin
+        }
       });
 
       if (signUpError) throw signUpError;
@@ -532,25 +927,38 @@ function App() {
   };
 
   const fetchRegisters = async (storeId) => {
+    if (!storeId) return;
     try {
-      const { data, error } = await supabase.from('cash_registers').select('*').eq('store_id', storeId).order('id', { ascending: true });
-      if (error || !data || data.length === 0) {
-        const { data: checkExist } = await supabase.from('cash_registers').select('*').eq('store_id', storeId);
-        if (!checkExist || checkExist.length === 0) {
-          const { data: newReg, error: insErr } = await supabase.from('cash_registers').insert([{ name: 'Caja Principal', is_main: true, store_id: storeId }]).select().single();
-          if (!insErr && newReg) {
-            setRegisters([newReg]);
-            setSelectedRegisterIdForOpen(newReg.id.toString());
+      let cloudRegs = [];
+      if (navigator.onLine) {
+        const { data, error } = await supabase.from('cash_registers').select('*').eq('store_id', storeId).order('id', { ascending: true });
+        if (error || !data || data.length === 0) {
+          const { data: checkExist } = await supabase.from('cash_registers').select('*').eq('store_id', storeId);
+          if (!checkExist || checkExist.length === 0) {
+            const { data: newReg, error: insErr } = await supabase.from('cash_registers').insert([{ name: 'Caja Principal', is_main: true, store_id: storeId }]).select().single();
+            if (!insErr && newReg) {
+              cloudRegs = [newReg];
+              localStorage.setItem(`fiskal_cache_registers_${storeId}`, JSON.stringify(cloudRegs));
+            }
+          } else {
+            cloudRegs = checkExist;
+            localStorage.setItem(`fiskal_cache_registers_${storeId}`, JSON.stringify(cloudRegs));
           }
         } else {
-          setRegisters(checkExist);
-          const mainReg = checkExist.find(r => r.is_main) || checkExist[0];
-          if (mainReg) setSelectedRegisterIdForOpen(mainReg.id.toString());
+          cloudRegs = data;
+          localStorage.setItem(`fiskal_cache_registers_${storeId}`, JSON.stringify(cloudRegs));
         }
       } else {
-        setRegisters(data);
-        const mainReg = data.find(r => r.is_main) || data[0];
+        const cached = localStorage.getItem(`fiskal_cache_registers_${storeId}`);
+        if (cached) cloudRegs = JSON.parse(cached);
+      }
+
+      if (cloudRegs.length > 0) {
+        setRegisters(cloudRegs);
+        const mainReg = cloudRegs.find(r => r.is_main) || cloudRegs[0];
         if (mainReg) setSelectedRegisterIdForOpen(mainReg.id.toString());
+      } else {
+        setRegisters([]);
       }
     } catch (err) {
       console.warn('Error cargando cajas físicas:', err.message);
@@ -579,7 +987,6 @@ function App() {
       alert("Error al registrar caja: " + error.message);
     }
   };
-
   const handleDeleteRegister = async (regId) => {
     if (registers.length <= 1) {
       alert("Debes tener al menos una caja registrada en tu comercio.");
@@ -607,11 +1014,7 @@ function App() {
 
   const handleToggleStoreStatus = async (storeId, currentStatus) => {
     try {
-      const { error } = await supabase
-        .from('stores')
-        .update({ is_active: !currentStatus })
-        .eq('id', storeId);
-
+      const { error } = await supabase.from('stores').update({ is_active: !currentStatus }).eq('id', storeId);
       if (error) throw error;
       fetchAdminStores();
     } catch (error) {
@@ -630,6 +1033,8 @@ function App() {
     setStoreAddress(store.address || '');
     setStoreCity(store.city || '');
     setStoreState(store.state || '');
+    setStorePaidAdvance(false);
+    setStoreCustomDiscount(store.custom_discount !== undefined && store.custom_discount !== null ? store.custom_discount : globalPromoDiscount);
   };
 
   const resetStoreForm = () => {
@@ -643,6 +1048,8 @@ function App() {
     setStoreAddress('');
     setStoreCity('');
     setStoreState('');
+    setStorePaidAdvance(false);
+    setStoreCustomDiscount(0);
   };
 
   const handleSaveStore = async (e) => {
@@ -659,31 +1066,261 @@ function App() {
       email: storeEmail.trim(),
       address: storeAddress.trim(),
       city: storeCity.trim(),
-      state: storeState.trim()
+      state: storeState.trim(),
+      custom_discount: parseFloat(storeCustomDiscount) || 0
     };
 
     try {
       if (editingStore) {
-        const { error } = await supabase
-          .from('stores')
-          .update(payload)
-          .eq('id', editingStore.id);
-
+        const { error } = await supabase.from('stores').update(payload).eq('id', editingStore.id);
         if (error) throw error;
         alert("¡Comercio actualizado exitosamente!");
+        if (editingStore.id === currentStoreId) {
+          setCurrentStoreName(storeName.trim());
+        }
       } else {
-        const { error } = await supabase
-          .from('stores')
-          .insert([{ ...payload, is_active: true }]);
+        const trialEnd = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
+        let isTrial = !storePaidAdvance;
+        let subEnd = null;
 
+        if (storePaidAdvance) {
+          subEnd = new Date(Date.now() + 40 * 24 * 60 * 60 * 1000).toISOString();
+        }
+        
+        const priceToLock = getCalculatedMonthlyPrice(0, baseMonthlyPrice);
+
+        const { data: newStore, error } = await supabase.from('stores').insert([{ 
+          ...payload, 
+          is_active: true, 
+          is_trial: isTrial, 
+          trial_end_date: trialEnd,
+          subscription_expires_at: subEnd,
+          monthly_price_agreed: priceToLock
+        }]).select().single();
+        
         if (error) throw error;
-        alert("¡Comercio registrado exitosamente!");
+        
+        if (storePaidAdvance && newStore) {
+          await supabase.from('saas_transactions').insert([{
+            type: 'income',
+            amount: priceToLock,
+            description: 'Registro inicial Standalone (Suscripción): ' + newStore.name,
+            store_id: newStore.id
+          }]);
+          alert("¡Comercio registrado exitosamente con 40 DÍAS ACTIVOS (30 del mes + 10 de cortesía)!");
+        } else {
+          alert("¡Comercio registrado exitosamente con 10 días de prueba!");
+        }
       }
 
       resetStoreForm();
       fetchAdminStores();
+      fetchSaasTransactions();
     } catch (error) {
       alert("Error al guardar comercio: " + error.message);
+    }
+  };
+
+  const handleRenewSubscription = async (store) => {
+    const finalPrice = getCalculatedMonthlyPrice(store.custom_discount, store.monthly_price_agreed).toFixed(2);
+    if (!window.confirm(`¿Confirmar cobro de renovación de $${finalPrice} por 1 mes (30 días) para: ${store.name}?\n\nSi le quedaban días de prueba o de su mes anterior, se le sumarán automáticamente a su nueva fecha de corte.`)) return;
+
+    const now = new Date().getTime();
+    let newExpirationDate = new Date();
+
+    if (store.is_trial) {
+      let trialDaysLeft = 0;
+      if (store.trial_end_date) {
+        const trialEnd = new Date(store.trial_end_date).getTime();
+        if (trialEnd > now) {
+          trialDaysLeft = Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24));
+        }
+      }
+      newExpirationDate.setDate(newExpirationDate.getDate() + 30 + trialDaysLeft);
+    } else {
+      let subDaysLeft = 0;
+      if (store.subscription_expires_at) {
+        const subEnd = new Date(store.subscription_expires_at).getTime();
+        if (subEnd > now) {
+          subDaysLeft = Math.ceil((subEnd - now) / (1000 * 60 * 60 * 24));
+        }
+      }
+      newExpirationDate.setDate(newExpirationDate.getDate() + 30 + subDaysLeft);
+    }
+
+    try {
+      const { error } = await supabase.from('stores').update({
+        is_trial: false,
+        subscription_expires_at: newExpirationDate.toISOString()
+      }).eq('id', store.id);
+
+      if (error) throw error;
+
+      await supabase.from('saas_transactions').insert([{
+        type: 'income',
+        amount: parseFloat(finalPrice),
+        description: 'Renovación Mensual: ' + store.name,
+        store_id: store.id,
+        vendor_id: store.system_vendor_id
+      }]);
+
+      if (store.system_vendor_id) {
+        const commissionAmount = parseFloat(finalPrice) * 0.20;
+        const { data: vData } = await supabase.from('system_vendors').select('pending_balance, total_earned').eq('id', store.system_vendor_id).single();
+        if (vData) {
+           await supabase.from('system_vendors').update({
+             pending_balance: parseFloat((vData.pending_balance || 0)) + commissionAmount,
+             total_earned: parseFloat((vData.total_earned || 0)) + commissionAmount
+           }).eq('id', store.system_vendor_id);
+        }
+      }
+
+      alert(`¡Suscripción renovada exitosamente!\n\nNueva fecha de vencimiento: ${newExpirationDate.toLocaleDateString()}\nSe han ajustado los balances financieros.`);
+      fetchAdminStores();
+      fetchSystemVendors();
+      fetchSaasTransactions();
+    } catch (error) {
+      alert("Error al renovar suscripción: " + error.message);
+    }
+  };
+
+  const handleOpenPreInvoice = (store) => {
+    setPreInvoiceStore(store);
+    setPreInvoiceExtraDesc('');
+    setPreInvoiceExtraAmount('');
+    setPreInvoiceDiscount('');
+    setShowPreInvoiceModal(true);
+  };
+
+  const generateCustomSaaSInvoice = async () => {
+    if (!preInvoiceStore) return;
+    
+    const doc = new jsPDF();
+    const store = preInvoiceStore;
+    
+    const basePrice = store.monthly_price_agreed !== null && store.monthly_price_agreed !== undefined ? store.monthly_price_agreed : baseMonthlyPrice;
+    const sysDiscount = store.custom_discount || 0;
+    const finalSubPrice = getCalculatedMonthlyPrice(store.custom_discount, store.monthly_price_agreed);
+    
+    const extraAmount = parseFloat(preInvoiceExtraAmount) || 0;
+    const specificDiscount = parseFloat(preInvoiceDiscount) || 0;
+    
+    const totalToPay = finalSubPrice + extraAmount - specificDiscount;
+
+    let currentY = 20;
+
+    try {
+      // Intentamos agregar el logo nativo de la app directamente desde el asset local.
+      // NOTA TÉCNICA: jsPDF NO soporta nativamente formato .SVG.
+      // Si el entorno te arroja un error en la consola o el logo no aparece, 
+      // debes convertir tu archivo logo_2.svg a logo_2.png en la carpeta assets 
+      // y actualizar la importación arriba.
+      doc.addImage(logoDark, 'PNG', 14, currentY - 5, 30, 30);
+      currentY += 35;
+    } catch (e) {
+      console.warn("No se pudo renderizar el logo en el PDF. Posible formato no soportado (SVG). Se recomienda usar PNG.", e);
+      currentY += 10;
+    }
+
+    // Encabezado Personalizado
+    doc.setFontSize(22);
+    doc.setTextColor(43, 138, 62); // Verde Fiskal
+    doc.text("FISKAL", 14, currentY);
+    currentY += 8;
+
+    if (saasInvoiceHeader) {
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      const splitHeader = doc.splitTextToSize(saasInvoiceHeader, 180);
+      doc.text(splitHeader, 14, currentY);
+      currentY += (splitHeader.length * 5) + 5;
+    } else {
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text("Recibo de Servicios SaaS", 14, currentY);
+      currentY += 10;
+    }
+    
+    // Datos del Cliente
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text(`Comercio: ${store.name}`, 14, currentY);
+    doc.text(`Propietario: ${store.owner_name || 'N/A'}`, 14, currentY + 6);
+    doc.text(`RIF/Documento: ${store.rif || 'N/A'}`, 14, currentY + 12);
+    doc.text(`Fecha de Emisión: ${new Date().toLocaleDateString()}`, 14, currentY + 18);
+    currentY += 28;
+    
+    // Configurar Tabla
+    const tableColumn = ["Descripción", "Precio Base", "Descuentos", "Subtotal"];
+    const tableRows = [];
+    
+    const discountText = sysDiscount > 0 ? `${sysDiscount}%` : "0%";
+    tableRows.push([
+      "Suscripción Mensual Sistema Fiskal",
+      `$${basePrice.toFixed(2)}`,
+      discountText,
+      `$${finalSubPrice.toFixed(2)}`
+    ]);
+
+    if (extraAmount > 0) {
+      tableRows.push([
+        preInvoiceExtraDesc || "Cargo Adicional",
+        `$${extraAmount.toFixed(2)}`,
+        "0%",
+        `$${extraAmount.toFixed(2)}`
+      ]);
+    }
+
+    if (specificDiscount > 0) {
+      tableRows.push([
+        "Descuento Especial Aplicado",
+        `-$${specificDiscount.toFixed(2)}`,
+        "N/A",
+        `-$${specificDiscount.toFixed(2)}`
+      ]);
+    }
+    
+    autoTable(doc, {
+      startY: currentY,
+      head: [tableColumn],
+      body: tableRows,
+      theme: 'striped',
+      headStyles: { fillColor: [43, 138, 62] } 
+    });
+    
+    const finalY = doc.lastAutoTable.finalY || currentY;
+    
+    // Totales
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text(`Total Facturado: $${totalToPay.toFixed(2)}`, 14, finalY + 15);
+    
+    // Pie de página
+    if (saasInvoiceFooter) {
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      const splitFooter = doc.splitTextToSize(saasInvoiceFooter, 180);
+      doc.text(splitFooter, 14, finalY + 30);
+    } else {
+      doc.setFontSize(10);
+      doc.setTextColor(150);
+      doc.text("¡Gracias por confiar en Fiskal para la gestión de su negocio!", 14, finalY + 30);
+    }
+    
+    // Guardar Documento
+    const fileName = `Recibo_Fiskal_${store.name.replace(/\s+/g, '_')}.pdf`;
+    doc.save(fileName);
+    setShowPreInvoiceModal(false);
+    
+    // Preguntar por envío vía WhatsApp
+    if(window.confirm(`El archivo ${fileName} se ha descargado.\n\nPor políticas de seguridad de WhatsApp, los PDFs deben adjuntarse manualmente.\n\n¿Deseas abrir WhatsApp Web ahora para enviar un mensaje de texto al cliente y adjuntarle su recibo?`)) {
+       const phone = formatWhatsAppNumber(store.phone);
+       if (!phone) {
+         alert("El comercio no tiene un teléfono registrado para abrir WhatsApp.");
+         return;
+       }
+       const msg = `¡Hola ${store.owner_name || store.name}! Te escribimos del equipo de Fiskal. Hemos generado el recibo en PDF de tu factura por un total de $${totalToPay.toFixed(2)}. Te lo envío adjunto a este mensaje. ¡Gracias por confiar en nosotros!`;
+       window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
     }
   };
 
@@ -697,14 +1334,29 @@ function App() {
     const oldOfflineSales = await getOfflineSales();
     if (oldOfflineSales && oldOfflineSales.length > 0) {
       for (const record of oldOfflineSales) {
-        const { data: newSale, error } = await supabase.from('sales').insert([record.saleData]).select().single();
-        if (!error && newSale) {
-          if (record.historyData) {
-            await supabase.from('payment_history').insert([{
+        try {
+          const { data: newSale, error } = await supabase.from('sales').insert([record.saleData]).select().single();
+          if (error) throw error;
+          if (newSale && record.historyData) {
+            const { error: histErr } = await supabase.from('payment_history').insert([{
               sale_id: newSale.id, amount_usd: record.historyData.amount_usd, payment_details: record.historyData.payment_details, store_id: currentStoreId
             }]);
+            if (histErr) throw histErr;
           }
+
+          if (record.saleData.status !== 'pending' && record.saleData.items && record.saleData.items.length > 0) {
+            for (const item of record.saleData.items) {
+              const { data: prodDb } = await supabase.from('products').select('stock').eq('id', item.id).eq('store_id', currentStoreId).single();
+              if (prodDb) {
+                const newStock = Math.max(0, (prodDb.stock || 0) - item.quantity);
+                await supabase.from('products').update({ stock: newStock }).eq('id', item.id).eq('store_id', currentStoreId);
+              }
+            }
+          }
+
           await clearOfflineSale(record.id);
+        } catch (e) {
+          console.error("Error legacy sale:", e);
         }
       }
     }
@@ -713,158 +1365,313 @@ function App() {
     if (actions.length === 0 && oldOfflineSales.length === 0) return;
 
     setIsSyncing(true);
+    let generalErrorOccurred = false;
+    const idMap = {}; 
+
     try {
       actions.sort((a, b) => a.timestamp - b.timestamp);
 
       for (const action of actions) {
-        if (action.type === 'INSERT_SALE') {
-          const { data: newSale, error } = await supabase.from('sales').insert([{...action.saleData, store_id: currentStoreId}]).select().single();
-          if (!error && newSale && action.historyData) {
-            await supabase.from('payment_history').insert([{
-              sale_id: newSale.id,
-              amount_usd: action.historyData.amount_usd,
-              payment_details: action.historyData.payment_details,
-              store_id: currentStoreId
-            }]);
-          }
-        } 
-        else if (action.type === 'UPDATE_SALE') {
-          if (typeof action.saleId === 'number' || !action.saleId.toString().startsWith('local_')) {
-            await supabase.from('sales').update({
-              status: action.updatedStatus, balance_due_usd: action.newBalanceDue, payment_details: action.paymentDetails
-            }).eq('id', action.saleId).eq('store_id', currentStoreId);
+        let syncFailed = false;
+        let errorMessage = '';
 
-            await supabase.from('payment_history').insert([{
-              sale_id: action.saleId, amount_usd: action.historyData.amount_usd, payment_details: action.historyData.payment_details, store_id: currentStoreId
-            }]);
+        try {
+          if (action.type === 'INSERT_PRODUCT') {
+            const { data: newProd, error } = await supabase.from('products').insert([{...action.productData, store_id: currentStoreId}]).select().single();
+            if (error) throw error;
+            if (newProd && action.tempId) {
+              idMap[action.tempId] = newProd.id;
+            }
           }
-        } 
-        else if (action.type === 'DELETE_SALE') {
-          if (typeof action.saleId === 'number' || !action.saleId.toString().startsWith('local_')) {
-            await supabase.from('sales').delete().eq('id', action.saleId).eq('store_id', currentStoreId);
+          else if (action.type === 'INSERT_SALE') {
+            if (action.saleData.items) {
+               action.saleData.items = action.saleData.items.map(item => ({
+                  ...item,
+                  id: idMap[item.id] || item.id
+               }));
+            }
+
+            const { data: newSale, error } = await supabase.from('sales').insert([{...action.saleData, store_id: currentStoreId}]).select().single();
+            if (error) throw error;
+
+            if (newSale && action.tempId) {
+               idMap[action.tempId] = newSale.id;
+            }
+
+            if (newSale && action.historyData) {
+              const { error: histErr } = await supabase.from('payment_history').insert([{
+                sale_id: newSale.id, amount_usd: action.historyData.amount_usd, payment_details: action.historyData.payment_details, store_id: currentStoreId
+              }]);
+              if (histErr) throw histErr;
+            }
+
+            if (action.saleData.status !== 'pending' && action.saleData.items && action.saleData.items.length > 0) {
+              for (const item of action.saleData.items) {
+                const { data: prodDb } = await supabase.from('products').select('stock').eq('id', item.id).eq('store_id', currentStoreId).single();
+                if (prodDb) {
+                  const newStock = Math.max(0, (prodDb.stock || 0) - item.quantity);
+                  await supabase.from('products').update({ stock: newStock }).eq('id', item.id).eq('store_id', currentStoreId);
+                }
+              }
+            }
           }
-        }
-        else if (action.type === 'INSERT_CLIENT') {
-          let conflictResolved = false;
-          if (action.clientData.document) {
-            const { data: existing } = await supabase.from('clients').select('*').eq('document', action.clientData.document).eq('store_id', currentStoreId).single();
-            if (existing) {
-              const choice = await new Promise(resolve => {
-                setConflictState({
-                  title: 'Conflicto de Cliente Detectado',
-                  message: `La Cédula/RIF ${action.clientData.document} ya está registrada en la nube. ¿Qué datos deseas conservar?`,
-                  local: action.clientData,
-                  cloud: existing,
-                  resolvePromise: resolve
+          else if (action.type === 'UPDATE_SALE') {
+            const actualSaleId = idMap[action.saleId] || action.saleId;
+            if (actualSaleId && String(actualSaleId) !== 'null' && !String(actualSaleId).startsWith('local_')) {
+              const { error } = await supabase.from('sales').update({
+                status: action.updatedStatus, balance_due_usd: action.newBalanceDue, payment_details: action.paymentDetails
+              }).eq('id', actualSaleId).eq('store_id', currentStoreId);
+              if (error) throw error;
+
+              const { error: histErr2 } = await supabase.from('payment_history').insert([{
+                sale_id: actualSaleId, amount_usd: action.historyData.amount_usd, payment_details: action.historyData.payment_details, store_id: currentStoreId
+              }]);
+              if (histErr2) throw histErr2;
+            }
+          }
+          else if (action.type === 'DELETE_SALE') {
+            const actualSaleId = idMap[action.saleId] || action.saleId;
+            if (actualSaleId && String(actualSaleId) !== 'null' && !String(actualSaleId).startsWith('local_')) {
+              const { error } = await supabase.from('sales').delete().eq('id', actualSaleId).eq('store_id', currentStoreId);
+              if (error) throw error;
+            }
+          }
+          else if (action.type === 'UPDATE_PRODUCT') {
+            const actualProdId = idMap[action.productId] || action.productId;
+            if (actualProdId && String(actualProdId) !== 'null' && !String(actualProdId).startsWith('local_')) {
+              const { error } = await supabase.from('products').update(action.productData).eq('id', actualProdId).eq('store_id', currentStoreId);
+              if (error) throw error;
+            }
+          }
+          else if (action.type === 'DELETE_PRODUCT') {
+            const actualProdId = idMap[action.productId] || action.productId;
+            if (actualProdId && String(actualProdId) !== 'null' && !String(actualProdId).startsWith('local_')) {
+              const { error } = await supabase.from('products').delete().eq('id', actualProdId).eq('store_id', currentStoreId);
+              if (error) throw error;
+            }
+          }
+          else if (action.type === 'INSERT_CLIENT') {
+            let conflictResolved = false;
+            if (action.clientData && action.clientData.document) {
+              const { data: existing } = await supabase.from('clients').select('*').eq('document', action.clientData.document).eq('store_id', currentStoreId).single();
+              if (existing) {
+                const choice = await new Promise(resolve => {
+                  setConflictState({
+                    title: 'Conflicto de Cliente Detectado',
+                    message: `La Cédula/RIF ${action.clientData.document} ya está registrada en la nube. ¿Qué datos deseas conservar?`,
+                    local: action.clientData,
+                    cloud: existing,
+                    resolvePromise: resolve
+                  });
                 });
-              });
-              
-              setConflictState(null);
+                
+                setConflictState(null);
 
-              if (choice === 'local') {
-                await supabase.from('clients').update({
-                  name: action.clientData.name,
-                  phone: action.clientData.phone,
-                  email: action.clientData.email
-                }).eq('id', existing.id).eq('store_id', currentStoreId);
+                if (choice === 'local') {
+                  const { error: updErr } = await supabase.from('clients').update({
+                    name: action.clientData.name,
+                    phone: action.clientData.phone,
+                    email: action.clientData.email
+                  }).eq('id', existing.id).eq('store_id', currentStoreId);
+                  if (updErr) throw updErr;
+                }
+                conflictResolved = true;
+                if (action.tempId) idMap[action.tempId] = existing.id;
               }
-              conflictResolved = true;
+            }
+            if (!conflictResolved) {
+              const { data: newClient, error: insErr } = await supabase.from('clients').insert([{...action.clientData, store_id: currentStoreId}]).select().single();
+              if (insErr) throw insErr;
+              if (newClient && action.tempId) {
+                idMap[action.tempId] = newClient.id;
+              }
             }
           }
-          if (!conflictResolved) {
-            if (action.clientData.document) {
-              const { data: checkDup } = await supabase.from('clients').select('*').eq('document', action.clientData.document).eq('store_id', currentStoreId).single();
-              if (!checkDup) {
-                await supabase.from('clients').insert([{...action.clientData, store_id: currentStoreId}]);
-              }
-            } else {
-              await supabase.from('clients').insert([{...action.clientData, store_id: currentStoreId}]);
+          else if (action.type === 'DELETE_CLIENT') {
+            const actualClientId = idMap[action.clientId] || action.clientId;
+            if (actualClientId && String(actualClientId) !== 'null' && !String(actualClientId).startsWith('local_')) {
+              const { error } = await supabase.from('clients').delete().eq('id', actualClientId).eq('store_id', currentStoreId);
+              if (error) throw error;
             }
           }
-        }
-        else if (action.type === 'DELETE_CLIENT') {
-          if (typeof action.clientId === 'number' || !action.clientId.toString().startsWith('local_')) {
-            await supabase.from('clients').delete().eq('id', action.clientId).eq('store_id', currentStoreId);
+
+        } catch (err) {
+          syncFailed = true;
+          errorMessage = err.message;
+          console.error("Error sincronizando accion individual:", action, err);
+
+          if (
+            errorMessage.includes('invalid input syntax') ||
+            errorMessage.includes('uuid: "null"') ||
+            errorMessage.includes('uuid: null') ||
+            errorMessage.includes('not a valid UUID')
+          ) {
+            syncFailed = false; 
+            console.warn("⚠️ Acción corrupta detectada y descartada automáticamente para liberar la cola.");
           }
         }
-        else if (action.type === 'INSERT_PRODUCT') {
-          await supabase.from('products').insert([{...action.productData, store_id: currentStoreId}]);
+
+        if (!syncFailed) {
+          await clearOfflineAction(action.local_id);
+        } else {
+          generalErrorOccurred = true;
+          alert(`Fallo al sincronizar hacia la nube (Tipo: ${action.type}). Motivo principal: ${errorMessage}. El registro se mantendrá localmente para evitar pérdidas.`);
         }
-        else if (action.type === 'UPDATE_PRODUCT') {
-          if (typeof action.productId === 'number' || !action.productId.toString().startsWith('local_')) {
-            await supabase.from('products').update(action.productData).eq('id', action.productId).eq('store_id', currentStoreId);
-          }
-        }
-        else if (action.type === 'DELETE_PRODUCT') {
-          if (typeof action.productId === 'number' || !action.productId.toString().startsWith('local_')) {
-            await supabase.from('products').delete().eq('id', action.productId).eq('store_id', currentStoreId);
-          }
-        }
-        
-        await clearOfflineAction(action.local_id);
       }
       
       await fetchClients(currentStoreId);
       await fetchSales(currentStoreId);
       await fetchProducts(currentStoreId); 
       checkPendingSales();
-      alert("¡Sincronización de transacciones offline completada exitosamente!");
+      if (!generalErrorOccurred) {
+        alert("¡Sincronización completada y cola limpia!");
+      }
     } catch (error) {
-      console.error("Error sincronizando ventas offline:", error);
+      console.error("Error crítico procesando la cola de sincronización:", error);
     } finally {
       setIsSyncing(false);
     }
   };
 
   const fetchProducts = async (storeId) => {
+    if (!storeId) return;
     try {
-      const { data, error } = await supabase.from('products').select('*').eq('store_id', storeId).order('id', { ascending: false });
-      if (error) throw error;
-      setProducts(data || []);
+      let cloudProducts = [];
+      if (navigator.onLine) {
+        const { data, error } = await supabase.from('products').select('*').eq('store_id', storeId).order('id', { ascending: false });
+        if (!error) {
+          cloudProducts = data || [];
+          localStorage.setItem(`fiskal_cache_products_${storeId}`, JSON.stringify(cloudProducts));
+        }
+      } else {
+        const cached = localStorage.getItem(`fiskal_cache_products_${storeId}`);
+        if (cached) cloudProducts = JSON.parse(cached);
+      }
+      
+      const actions = await getOfflineActions();
+      const localProducts = [];
+      actions.forEach(action => {
+        if (action.type === 'INSERT_PRODUCT' && action.productData) {
+          localProducts.push({ ...action.productData, id: action.tempId });
+        }
+      });
+
+      const deletedIds = actions.filter(a => a.type === 'DELETE_PRODUCT').map(a => a.productId);
+      let finalCloudProducts = cloudProducts.filter(p => !deletedIds.includes(p.id));
+
+      const updateActions = actions.filter(a => a.type === 'UPDATE_SALE');
+      // Fix bug: Should filter UPDATE_PRODUCT not UPDATE_SALE
+      const productUpdateActions = actions.filter(a => a.type === 'UPDATE_PRODUCT');
+      finalCloudProducts = finalCloudProducts.map(p => {
+        const update = productUpdateActions.find(a => a.productId === p.id);
+        return update ? { ...p, ...update.productData } : p;
+      });
+
+      setProducts([...localProducts, ...finalCloudProducts]);
     } catch (error) {
       console.error('Error cargando productos:', error.message);
     }
   };
 
   const fetchSales = async (storeId) => {
+    if (!storeId) return;
     try {
-      const { data, error } = await supabase.from('sales').select('*').eq('store_id', storeId).order('created_at', { ascending: false });
-      if (error) throw error;
-      setSales(data || []);
+      let cloudSales = [];
+      if (navigator.onLine) {
+        const { data, error } = await supabase.from('sales').select('*').eq('store_id', storeId).order('created_at', { ascending: false });
+        if (!error) {
+          cloudSales = data || [];
+          localStorage.setItem(`fiskal_cache_sales_${storeId}`, JSON.stringify(cloudSales));
+        }
+      } else {
+        const cached = localStorage.getItem(`fiskal_cache_sales_${storeId}`);
+        if (cached) cloudSales = JSON.parse(cached);
+      }
+
+      const actions = await getOfflineActions();
+      const localSales = [];
+      actions.forEach(action => {
+        if (action.type === 'INSERT_SALE' && action.saleData) {
+          localSales.push({ ...action.saleData, id: action.tempId, created_at: new Date().toISOString() });
+        }
+      });
+
+      const deletedIds = actions.filter(a => a.type === 'DELETE_SALE').map(a => a.saleId);
+      let finalCloudSales = cloudSales.filter(s => !deletedIds.includes(s.id));
+
+      const updateActions = actions.filter(a => a.type === 'UPDATE_SALE');
+      finalCloudSales = finalCloudSales.map(s => {
+        const update = updateActions.find(a => a.saleId === s.id);
+        return update ? { ...s, status: update.updatedStatus, balance_due_usd: update.newBalanceDue, payment_details: update.paymentDetails } : s;
+      });
+
+      setSales([...localSales, ...finalCloudSales]);
     } catch (error) {
       console.error('Error cargando historial de ventas:', error.message);
     }
   };
 
   const fetchClients = async (storeId) => {
+    if (!storeId) return;
     try {
-      const { data, error } = await supabase.from('clients').select('*').eq('store_id', storeId).order('id', { ascending: false });
-      if (error) throw error;
-      setClients(data || []);
+      let cloudClients = [];
+      if (navigator.onLine) {
+        const { data, error } = await supabase.from('clients').select('*').eq('store_id', storeId).order('id', { ascending: false });
+        if (!error) {
+          cloudClients = data || [];
+          localStorage.setItem(`fiskal_cache_clients_${storeId}`, JSON.stringify(cloudClients));
+        }
+      } else {
+        const cached = localStorage.getItem(`fiskal_cache_clients_${storeId}`);
+        if (cached) cloudClients = JSON.parse(cached);
+      }
+
+      const actions = await getOfflineActions();
+      const localClients = [];
+      actions.forEach(action => {
+        if (action.type === 'INSERT_CLIENT' && action.clientData) {
+          localClients.push({ ...action.clientData, id: action.tempId });
+        }
+      });
+      
+      const deletedIds = actions.filter(a => a.type === 'DELETE_CLIENT').map(a => a.clientId);
+      const finalCloudClients = cloudClients.filter(c => !deletedIds.includes(c.id));
+
+      setClients([...localClients, ...finalCloudClients]);
     } catch (error) {
       console.error('Error cargando clientes:', error.message);
     }
   };
-
   const checkActiveShift = async () => {
     try {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       const userId = currentSession?.user?.id;
       if (!userId) return;
 
-      const { data, error } = await supabase
-        .from('shifts')
-        .select('*')
-        .eq('status', 'open')
-        .eq('user_id', userId)
-        .order('id', { ascending: false })
-        .limit(1);
+      if (navigator.onLine) {
+        const { data, error } = await supabase
+          .from('shifts')
+          .select('*')
+          .eq('status', 'open')
+          .eq('user_id', userId)
+          .order('id', { ascending: false })
+          .limit(1);
 
-      if (error) throw error;
-      if (data && data.length > 0) {
-        setCurrentShift(data[0]);
+        if (error) throw error;
+        if (data && data.length > 0) {
+          setCurrentShift(data[0]);
+          localStorage.setItem(`fiskal_cache_shift_${userId}`, JSON.stringify(data[0]));
+        } else {
+          setCurrentShift(null);
+          localStorage.removeItem(`fiskal_cache_shift_${userId}`);
+        }
       } else {
-        setCurrentShift(null);
+        const cached = localStorage.getItem(`fiskal_cache_shift_${userId}`);
+        if (cached) {
+          setCurrentShift(JSON.parse(cached));
+        } else {
+          setCurrentShift(null);
+        }
       }
     } catch (error) {
       console.error('Error verificando turno activo:', error.message);
@@ -877,7 +1684,9 @@ function App() {
       alert("Debes tener conexión a internet para Aperturar la Caja por seguridad de la base de datos.");
       return;
     }
-    const floatVal = parseFloat(openingFloat) || 0;
+    const floatValUSD = parseFloat(openingFloat) || 0;
+    const floatValVES = parseFloat(openingFloatVes) || 0;
+    const totalFloatUSD = floatValUSD + (floatValVES / (bcvRate || 1));
     
     let regId = parseInt(selectedRegisterIdForOpen);
     if (isNaN(regId)) {
@@ -899,36 +1708,28 @@ function App() {
           return;
       }
 
-      const { data: checkReg } = await supabase
-        .from('shifts')
-        .select('id')
-        .eq('status', 'open')
-        .eq('register_id', regId)
-        .maybeSingle();
+      const { data: checkReg } = await supabase.from('shifts').select('id').eq('status', 'open').eq('register_id', regId).maybeSingle();
 
       if (checkReg) {
           alert("¡Atención! Esta caja física ya se encuentra abierta y siendo operada por otro usuario.");
           return;
       }
 
-      const { data, error } = await supabase
-        .from('shifts')
-        .insert([{
+      const { data, error } = await supabase.from('shifts').insert([{
           status: 'open',
           register_id: regId,
-          opening_float_usd: floatVal,
+          opening_float_usd: totalFloatUSD,
           total_sales_usd: 0,
-          expected_cash_usd: floatVal,
+          expected_cash_usd: totalFloatUSD,
           user_id: userId,
           store_id: currentStoreId
-        }])
-        .select()
-        .single();
+        }]).select().single();
 
       if (error) throw error;
       setCurrentShift(data);
       setShowOpenShiftModal(false);
       setOpeningFloat('');
+      setOpeningFloatVes('');
       alert("¡Turno de caja abierto exitosamente!");
     } catch (error) {
       alert("Error al abrir caja: " + error.message);
@@ -942,30 +1743,34 @@ function App() {
       return;
     }
 
-    const actualCash = parseFloat(actualCashCounted) || 0;
+    const cashUSDCounted = parseFloat(actualCashUSD) || 0;
+    const cashBsCounted = parseFloat(actualCashBs) || 0;
+    const totalActualCashUSD = cashUSDCounted + (cashBsCounted / (bcvRate || 1));
+
     const shiftSales = sales.filter(s => s.shift_id === currentShift.id && s.status === 'completed');
     const cashCollectedUSD = shiftSales.reduce((sum, s) => sum + (s.payment_details?.cash_usd || 0), 0);
-    const expectedCash = currentShift.opening_float_usd + cashCollectedUSD;
-    const difference = parseFloat((actualCash - expectedCash).toFixed(2));
+    const cashCollectedBs = shiftSales.reduce((sum, s) => sum + (s.payment_details?.cash_bs || 0), 0);
+    const cashCollectedBsInUSD = cashCollectedBs / (bcvRate || 1);
+
+    const expectedCash = currentShift.opening_float_usd + cashCollectedUSD + cashCollectedBsInUSD;
+    const difference = parseFloat((totalActualCashUSD - expectedCash).toFixed(2));
 
     try {
-      const { error } = await supabase
-        .from('shifts')
-        .update({
+      const { error } = await supabase.from('shifts').update({
           status: 'closed',
           closed_at: new Date().toISOString(),
           expected_cash_usd: expectedCash,
-          actual_cash_usd: actualCash,
+          actual_cash_usd: totalActualCashUSD,
           difference_usd: difference,
-          notes: shiftNotes
-        })
-        .eq('id', currentShift.id);
+          notes: shiftNotes ? `${shiftNotes} | Contado: $${cashUSDCounted.toFixed(2)} + Bs. ${cashBsCounted.toFixed(2)}` : `Contado: $${cashUSDCounted.toFixed(2)} + Bs. ${cashBsCounted.toFixed(2)}`
+        }).eq('id', currentShift.id);
 
       if (error) throw error;
 
       alert(`Corte de caja realizado.\nDiferencia: $${difference >= 0 ? '+' : ''}${difference}`);
       setShowCloseShiftModal(false);
-      setActualCashCounted('');
+      setActualCashUSD('');
+      setActualCashBs('');
       setShiftNotes('');
       setCurrentShift(null);
       setActiveTab('history');
@@ -977,33 +1782,54 @@ function App() {
   const syncBcvRate = async (storeId) => {
     setLoadingRate(true);
     try {
-      const response = await fetch('https://ve.dolarapi.com/v1/dolares/oficial');
-      if (!response.ok) throw new Error('Error al conectar con el servicio de tasa BCV');
-      
-      const data = await response.json();
-      const liveRate = parseFloat(data.promedio || data.price);
+      if (navigator.onLine) {
+        const response = await fetch('https://ve.dolarapi.com/v1/dolares/oficial');
+        if (!response.ok) throw new Error('Error al conectar con el servicio de tasa BCV');
+        
+        const data = await response.json();
+        const liveRate = parseFloat(data.promedio || data.price);
 
-      if (liveRate && !isNaN(liveRate)) {
-        setBcvRate(liveRate);
-        setLastSync(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        if (liveRate && !isNaN(liveRate)) {
+          setBcvRate(liveRate);
+          setLastSync(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+          localStorage.setItem('fiskal_cache_bcv_rate', liveRate.toString());
 
-        if (isOnline && storeId) {
-          await supabase.from('settings').upsert({ key: 'bcv_rate', value: liveRate, store_id: storeId }, { onConflict: 'key' });
+          if (storeId) {
+            await supabase.from('settings').upsert({ key: 'bcv_rate', value: liveRate, store_id: storeId }, { onConflict: 'key' });
+          }
+          setLoadingRate(false);
+          return;
         }
-        setLoadingRate(false);
-        return;
+      } else {
+        const cachedRate = localStorage.getItem('fiskal_cache_bcv_rate');
+        if (cachedRate) {
+           setBcvRate(parseFloat(cachedRate));
+           setLastSync('Caché Local');
+        }
       }
     } catch (error) {
       console.warn('Error obteniendo tasa en vivo:', error.message);
+      const cachedRate = localStorage.getItem('fiskal_cache_bcv_rate');
+      if (cachedRate) {
+         setBcvRate(parseFloat(cachedRate));
+         setLastSync('Caché Local');
+      }
     }
     setLoadingRate(false);
   };
 
-  const handleImageSelect = (e) => {
+  const handleImageSelect = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
+      try {
+        const compressedFile = await compressImage(file, 800, 0.7);
+        setImageFile(compressedFile);
+        setImagePreview(URL.createObjectURL(compressedFile));
+      } catch (error) {
+        console.error("Error comprimiendo imagen, usando original:", error);
+        setImageFile(file);
+        setImagePreview(URL.createObjectURL(file));
+      }
     }
   };
 
@@ -1038,10 +1864,9 @@ function App() {
         price: parseFloat(price), 
         cost: parseFloat(cost) || 0, 
         stock: parseInt(stock) || 0, 
-        category, 
-        barcode,
+        category: category || 'General',
+        barcode: barcode.trim() || null,
         image_url: imageUrl,
-        type: 'retail',
         store_id: currentStoreId
       };
 
@@ -1089,8 +1914,8 @@ function App() {
         price: parseFloat(price), 
         cost: parseFloat(cost) || 0, 
         stock: parseInt(stock) || 0, 
-        category,
-        barcode,
+        category: category || 'General',
+        barcode: barcode.trim() || null,
         image_url: imageUrl
       };
 
@@ -1191,16 +2016,13 @@ function App() {
     }
   };
 
-  // Referencia inmutable para que el callback del escáner en vivo siempre tenga el estado fresco
   const handleScannedCodeResultRef = useRef(handleScannedCodeResult);
   useEffect(() => {
     handleScannedCodeResultRef.current = handleScannedCodeResult;
   });
 
-  // Lógica del nuevo Motor de Escaneo en Vivo (html5-qrcode)
   useEffect(() => {
     if (showCameraScannerModal) {
-      // Pequeño retardo para asegurar que el DOM pinto el DIV
       const timer = setTimeout(() => {
         const html5QrCode = new Html5Qrcode("fiskal-qr-reader");
         html5QrCodeRef.current = html5QrCode;
@@ -1209,7 +2031,6 @@ function App() {
           { facingMode: "environment" },
           { fps: 15, qrbox: { width: 250, height: 250 } },
           (decodedText) => {
-            // Se leyó exitosamente. Detenemos la cámara inmediatamente.
             if (html5QrCodeRef.current) {
               html5QrCodeRef.current.stop().then(() => {
                 html5QrCodeRef.current.clear();
@@ -1221,9 +2042,7 @@ function App() {
               });
             }
           },
-          (errorMessage) => {
-            // Ignoramos errores de lectura de fotogramas, son normales hasta que enfoca bien
-          }
+          (errorMessage) => {}
         ).catch((err) => {
           setCameraScanError("Error al iniciar cámara: " + err.message);
         });
@@ -1231,7 +2050,6 @@ function App() {
 
       return () => clearTimeout(timer);
     } else {
-      // Limpieza si se cierra el modal
       if (html5QrCodeRef.current) {
         try {
           if (html5QrCodeRef.current.isScanning) {
@@ -1254,7 +2072,6 @@ function App() {
     setShowCameraScannerModal(false);
   };
 
-  // Mantenida intacta para no eliminar funciones antiguas, pero no será necesaria por el nuevo motor
   const handleCapturePhotoScan = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1294,7 +2111,13 @@ function App() {
     }
 
     setLoadingClient(true);
-    const newClientData = { name: clientName, document: clientDoc, phone: clientPhone, email: clientEmail, store_id: currentStoreId };
+    const newClientData = { 
+      name: clientName, 
+      document: clientDoc.trim() || null, 
+      phone: clientPhone.trim() || null, 
+      email: clientEmail.trim() || null, 
+      store_id: currentStoreId 
+    };
 
     if (!isOnline) {
       const tempId = `local_client_${Date.now()}`;
@@ -1348,7 +2171,7 @@ function App() {
 
   const handleDeleteClient = async (id) => {
     if (!isOnline) {
-      if (id.toString().startsWith('local_')) {
+      if (id && String(id).startsWith('local_')) {
         const actions = await getOfflineActions();
         const action = actions.find(a => a.type === 'INSERT_CLIENT' && a.tempId === id);
         if (action) await clearOfflineAction(action.local_id);
@@ -1535,7 +2358,7 @@ function App() {
       setSales(sales.filter(s => s.id !== sale.id));
       checkPendingSales();
     } else {
-      if (!sale.id.toString().startsWith('local_')) {
+      if (!String(sale.id).startsWith('local_')) {
         await supabase.from('sales').delete().eq('id', sale.id).eq('store_id', currentStoreId);
       }
       fetchSales(currentStoreId);
@@ -1673,7 +2496,7 @@ function App() {
       const updatedStatus = isFullyPaid ? 'completed' : 'credit';
 
       if (!isOnline) {
-        if (settlingSale.id.toString().startsWith('local_')) {
+        if (String(settlingSale.id).startsWith('local_')) {
           const actions = await getOfflineActions();
           const insertAction = actions.find(a => a.type === 'INSERT_SALE' && (a.tempId === settlingSale.id || (a.saleData && a.saleData.id === settlingSale.id)));
           if (insertAction) {
@@ -1813,12 +2636,7 @@ function App() {
       return;
     }
     
-    const { data, error } = await supabase
-      .from('payment_history')
-      .select('*')
-      .eq('sale_id', sale.id)
-      .eq('store_id', currentStoreId)
-      .order('created_at', { ascending: true });
+    const { data, error } = await supabase.from('payment_history').select('*').eq('sale_id', sale.id).eq('store_id', currentStoreId).order('created_at', { ascending: true });
     
     if (!error) {
       setInvoiceHistory(data || []);
@@ -1858,6 +2676,11 @@ function App() {
     }
   };
 
+  const filteredProductsForCatalog = products.filter(p =>
+    p.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+    (p.barcode && p.barcode.toLowerCase().includes(productSearchQuery.toLowerCase()))
+  );
+
   const currentShiftSales = currentShift ? sales.filter(s => s.shift_id === currentShift.id && s.status === 'completed') : [];
   const shiftTotalUSD = currentShiftSales.reduce((sum, s) => sum + s.total_usd, 0);
   const shiftCashUSD = currentShiftSales.reduce((sum, s) => sum + (s.payment_details?.cash_usd || 0), 0);
@@ -1880,6 +2703,45 @@ function App() {
     return { ...cli, totalBilled, totalPending, totalPaid, salesCount: clientSales.length };
   }).sort((a, b) => b.totalBilled - a.totalBilled);
 
+  const getFilteredClientsByTab = () => {
+    if (clientFilterTab === 'best') {
+      return [...clientsWithMetrics].sort((a, b) => b.totalBilled - a.totalBilled);
+    } else if (clientFilterTab === 'debtors') {
+      return clientsWithMetrics.filter(c => c.totalPending > 0);
+    } else if (clientFilterTab === 'frequent') {
+      return [...clientsWithMetrics].sort((a, b) => b.salesCount - a.salesCount);
+    }
+    return clientsWithMetrics;
+  };
+
+  const handleOpenClientDetail = (cli) => {
+    setSelectedClientDetail(cli);
+    setTempClientNote(clientNotes[cli.id] || '');
+  };
+
+  const handleSaveClientNote = (cliId) => {
+    const updatedNotes = { ...clientNotes, [cliId]: tempClientNote };
+    setClientNotes(updatedNotes);
+    localStorage.setItem('fiskal_client_notes', JSON.stringify(updatedNotes));
+    alert('¡Nota personalizada guardada con éxito!');
+  };
+
+  const getClientHistoryAndTopProducts = (clientName) => {
+    const cliSales = sales.filter(s => s.client_name === clientName && s.status !== 'pending');
+    const prodCounts = {};
+    cliSales.forEach(sale => {
+      sale.items?.forEach(item => {
+        if (!prodCounts[item.name]) {
+          prodCounts[item.name] = { name: item.name, qty: 0, total: 0 };
+        }
+        prodCounts[item.name].qty += item.quantity;
+        prodCounts[item.name].total += item.price * item.quantity;
+      });
+    });
+    const topProducts = Object.values(prodCounts).sort((a, b) => b.qty - a.qty);
+    return { cliSales, topProducts };
+  };
+
   const obtenerProductosMasVendidos = () => {
     const conteo = {};
     sales.forEach(venta => {
@@ -1899,12 +2761,43 @@ function App() {
 
   const productosTop = obtenerProductosMasVendidos();
 
+  const filteredSales = sales.filter(sale => {
+    if (!sale.created_at) return true;
+    const saleDate = new Date(sale.created_at);
+    const saleDateStr = saleDate.toISOString().split('T')[0];
+
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(today.getDate() - 7);
+
+    if (historyFilterType === 'yesterday') {
+      return saleDateStr === yesterdayStr;
+    } else if (historyFilterType === 'last_week') {
+      return saleDate >= sevenDaysAgo && saleDate <= today;
+    } else if (historyFilterType === 'custom' && historyCustomDate) {
+      return saleDateStr === historyCustomDate;
+    }
+    return true;
+  });
+
+  const getSystemFinancials = () => {
+    const totalIncome = saasTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const totalExpenses = saasTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const netProfit = totalIncome - totalExpenses;
+    const totalPendingComm = systemVendors.reduce((sum, v) => sum + (parseFloat(v.pending_balance) || 0), 0);
+    return { totalIncome, totalExpenses, netProfit, totalPendingComm };
+  };
+
   if (!session) {
     return (
       <div className="fiskal-login-container">
         <div className="product-form-card" style={{ width: '400px', maxWidth: '100%', padding: '32px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <h2 style={{ fontSize: '28px', color: '#1c7ed6', marginBottom: '4px' }}>Fiskal</h2>
+            <img src={logoDark} alt="Fiskal Logo" style={{ height: '38px', objectFit: 'contain', marginBottom: '4px' }} />
             <p style={{ fontSize: '13px', color: '#6c757d' }}>Sistema de Gestión Comercial y POS</p>
           </div>
 
@@ -1965,7 +2858,6 @@ function App() {
 
   return (
     <div className="fiskal-container">
-      {/* Fondo transparente para cerrar el menú flotante en horizontal al tocar afuera */}
       {isSidebarExpanded && (
         <div 
           onClick={() => setIsSidebarExpanded(false)} 
@@ -1978,7 +2870,7 @@ function App() {
         onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
       >
         <div className="brand-logo">
-          <h2>Fiskal</h2>
+          <img src={logoDark} alt="Fiskal" style={{ height: '32px', objectFit: 'contain', marginBottom: '2px', display: 'block' }} />
           <span>Sistema de Gestión</span>
         </div>
         <nav className="nav-menu">
@@ -1998,7 +2890,13 @@ function App() {
             <Users size={20} /> <span>Clientes</span>
           </button>
           
-          {(currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
+          {currentUserRole === 'system_vendor' && (
+            <button className={activeTab === 'vendor_portal' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('vendor_portal'); setIsSidebarExpanded(false); }} style={{ color: '#2b8a3e', fontWeight: 'bold' }}>
+              <UserPlus size={20} /> <span>Registrar Comercios</span>
+            </button>
+          )}
+
+          {(currentUserRole === 'owner' || currentUserRole === 'super_admin' || currentUserRole === 'system_vendor') && (
             <button className={activeTab === 'settings' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('settings'); setIsSidebarExpanded(false); }}>
               <Settings size={20} /> <span>Configuración</span>
             </button>
@@ -2024,6 +2922,7 @@ function App() {
              activeTab === 'products' ? 'Gestión de Productos e Inventario' : 
              activeTab === 'history' ? 'Historial de Ventas' : 
              activeTab === 'clients' ? 'Gestión de Clientes y Rendimiento' : 
+             activeTab === 'vendor_portal' ? 'Portal de Vendedor de Sistema (Alta de Comercios)' :
              activeTab === 'admin' ? 'Panel Maestro SaaS (Administración)' :
              activeTab === 'settings' ? 'Configuración del Sistema y Empleados' :
              activeTab.toUpperCase()}
@@ -2092,6 +2991,17 @@ function App() {
                   </form>
                 </div>
 
+                <div style={{ marginBottom: '16px', position: 'relative' }}>
+                  <Search size={16} style={{ position: 'absolute', left: '10px', top: '10px', color: '#6c757d', zIndex: 2 }} />
+                  <input
+                    type="text"
+                    value={productSearchQuery}
+                    onChange={(e) => setProductSearchQuery(e.target.value)}
+                    placeholder="Buscar producto por nombre o SKU manualmente..."
+                    style={{ width: '100%', padding: '8px 8px 8px 34px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', outline: 'none', background: '#fff' }}
+                  />
+                </div>
+
                 {!currentShift && (
                   <div className="alert-banner-warning">
                     <ShieldAlert size={20} />
@@ -2099,26 +3009,30 @@ function App() {
                   </div>
                 )}
                 <div className="catalog-grid">
-                  {products.length === 0 ? (
-                    <p className="empty-text">No hay productos registrados. Ve a Productos para agregarlos.</p>
+                  {filteredProductsForCatalog.length === 0 ? (
+                    <p className="empty-text">No se encontraron productos en el catálogo.</p>
                   ) : (
-                    products.map((prod) => (
+                    filteredProductsForCatalog.map((prod) => (
                       <div 
                         key={prod.id} 
                         className={`product-card ${prod.stock <= 0 ? 'out-of-stock' : ''}`} 
                         onClick={() => addToCart(prod)}
                       >
-                        {prod.image_url ? (
-                          <img src={prod.image_url} alt={prod.name} style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '4px', marginBottom: '6px' }} />
-                        ) : (
-                          <div style={{ width: '100%', height: '80px', background: '#f1f3f5', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', marginBottom: '6px', color: '#adb5bd' }}>
-                            <ImageIcon size={28} />
+                        <div className="img-container">
+                          {prod.image_url ? (
+                            <img src={prod.image_url} alt={prod.name} />
+                          ) : (
+                            <Package size={36} strokeWidth={1.5} color="#adb5bd" />
+                          )}
+                        </div>
+                        <div className="product-card-content">
+                          <h4>{prod.name}</h4>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 'auto' }}>
+                            <span className="product-price">${prod.price.toFixed(2)}</span>
+                            <span style={{ fontSize: '11px', background: prod.stock <= 2 ? '#ffe3e3' : '#f8f9fa', color: prod.stock <= 2 ? '#fa5252' : '#495057', padding: '4px 8px', borderRadius: '12px', fontWeight: 'bold', border: '1px solid #e9ecef' }}>
+                              {prod.stock !== undefined ? prod.stock : 0} ud.
+                            </span>
                           </div>
-                        )}
-                        <h4>{prod.name}</h4>
-                        <span className="product-price">${prod.price.toFixed(2)}</span>
-                        <div style={{ marginTop: '6px', fontSize: '11px', color: prod.stock <= 2 ? '#fa5252' : '#6c757d', fontWeight: '600' }}>
-                          Stock: {prod.stock !== undefined ? prod.stock : 0}
                         </div>
                       </div>
                     ))
@@ -2230,110 +3144,295 @@ function App() {
             </div>
           )}
 
+          {activeTab === 'vendor_portal' && currentUserRole === 'system_vendor' && (
+            <div className="product-form-card" style={{ maxWidth: '700px', margin: '0 auto' }}>
+              <h3>Registrar Nuevo Comercio en Vivo (Demostración)</h3>
+              <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '20px' }}>
+                Como vendedor de sistema, al registrar un comercio aquí, el negocio quedará vinculado a tu ID para el cálculo automático de tus comisiones (50% registro y 20% mensualidad).
+              </p>
+              
+              {globalPromoDiscount > 0 && (
+                <div style={{ background: '#fff3bf', padding: '10px', borderRadius: '6px', marginBottom: '16px', fontSize: '13px', color: '#e67700', border: '1px solid #ffe066' }}>
+                  <strong>¡Promo Activa!</strong> Tienes un <strong>{globalPromoDiscount}% de descuento</strong> disponible para ofrecer a nuevos registros hoy.
+                </div>
+              )}
+
+              <form onSubmit={handleVendorRegisterStoreSubmit} className="fiskal-form">
+                <div className="form-group">
+                  <label>Nombre del Comercio / Negocio</label>
+                  <input type="text" value={vendorStoreName} onChange={e => setVendorStoreName(e.target.value)} placeholder="Ej. Minimarket El Triunfo" required />
+                </div>
+                <div className="form-group">
+                  <label>RIF / Cédula del Comercio</label>
+                  <input type="text" value={vendorStoreRif} onChange={e => setVendorStoreRif(e.target.value)} placeholder="Ej. J-12345678-9" />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group">
+                    <label>Nombre del Dueño</label>
+                    <input type="text" value={vendorOwnerName} onChange={e => setVendorOwnerName(e.target.value)} placeholder="Ej. Pedro Gómez" />
+                  </div>
+                  <div className="form-group">
+                    <label>Teléfono (WhatsApp)</label>
+                    <input type="text" value={vendorOwnerPhone} onChange={e => setVendorOwnerPhone(e.target.value)} placeholder="Ej. 04141234567" />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Correo Electrónico</label>
+                  <input type="email" value={vendorOwnerEmail} onChange={e => setVendorOwnerEmail(e.target.value)} placeholder="dueño@comercio.com" />
+                </div>
+                <div className="form-group" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input type="checkbox" id="vendorPaidAdvance" checked={vendorPaidAdvance} onChange={(e) => setVendorPaidAdvance(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                  <label htmlFor="vendorPaidAdvance" style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', margin: 0, color: '#2b8a3e' }}>
+                    ¿El comercio pagó el mes por adelantado? (Activa 40 días: 30 de mes + 10 cortesía)
+                  </label>
+                </div>
+                <button type="submit" className="btn-primary" style={{ background: '#2b8a3e', marginTop: '10px' }}>
+                  <Store size={18} /> Registrar Comercio (${getCalculatedMonthlyPrice(0, baseMonthlyPrice).toFixed(2)}/mes)
+                </button>
+              </form>
+            </div>
+          )}
+
           {activeTab === 'admin' && currentUserRole === 'super_admin' && (
-            <div className="products-layout">
-              <div className="product-form-card">
-                <h3>{editingStore ? `Editando: ${editingStore.name}` : 'Registrar Nuevo Comercio SaaS'}</h3>
-                <form onSubmit={handleSaveStore} className="fiskal-form">
-                  <div className="form-group">
-                    <label>Nombre del Negocio / Comercio</label>
-                    <input 
-                      type="text" 
-                      value={storeName} 
-                      onChange={(e) => setStoreName(e.target.value)} 
-                      placeholder="Ej. Inversiones La Esquina C.A." 
-                      required 
-                    />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              
+              {/* TARJETAS FINANCIERAS RESUMEN */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                <div className="product-form-card" style={{ padding: '20px', borderLeft: '4px solid #1c7ed6' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', color: '#6c757d', fontWeight: 'bold' }}>Ingresos Totales (Suscripciones)</span>
+                    <Activity size={18} color="#1c7ed6" />
                   </div>
-                  <div className="form-group">
-                    <label>RIF del Negocio</label>
-                    <input 
-                      type="text" 
-                      value={storeRif} 
-                      onChange={(e) => setStoreRif(e.target.value)} 
-                      placeholder="Ej. J-12345678-9" 
-                    />
+                  <h2 style={{ fontSize: '28px', marginTop: '12px', color: '#212529' }}>${getSystemFinancials().totalIncome.toFixed(2)}</h2>
+                </div>
+                <div className="product-form-card" style={{ padding: '20px', borderLeft: '4px solid #fa5252' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', color: '#6c757d', fontWeight: 'bold' }}>Comisiones Pagadas a Vendedores</span>
+                    <PieChart size={18} color="#fa5252" />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <h2 style={{ fontSize: '28px', marginTop: '12px', color: '#212529' }}>${getSystemFinancials().totalExpenses.toFixed(2)}</h2>
+                </div>
+                <div className="product-form-card" style={{ padding: '20px', borderLeft: '4px solid #f59f00' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', color: '#6c757d', fontWeight: 'bold' }}>Comisiones por Liquidar (Pendiente)</span>
+                    <Clock size={18} color="#f59f00" />
+                  </div>
+                  <h2 style={{ fontSize: '28px', marginTop: '12px', color: '#212529' }}>${getSystemFinancials().totalPendingComm.toFixed(2)}</h2>
+                </div>
+                <div className="product-form-card" style={{ padding: '20px', borderLeft: '4px solid #2b8a3e', background: '#f8fff9' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', color: '#2b8a3e', fontWeight: 'bold' }}>Beneficio Neto del Sistema</span>
+                    <TrendingUp size={18} color="#2b8a3e" />
+                  </div>
+                  <h2 style={{ fontSize: '28px', marginTop: '12px', color: '#2b8a3e' }}>${getSystemFinancials().netProfit.toFixed(2)}</h2>
+                </div>
+              </div>
+
+              {/* TARJETAS DE FINANZAS Y COMISIONES */}
+              <div className="products-layout" style={{ gridTemplateColumns: '1fr 2fr' }}>
+                <div className="product-form-card" style={{ background: '#f8f9fa' }}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#1c7ed6' }}>
+                    <DollarIcon size={18} /> Precios y Promociones
+                  </h3>
+                  <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '16px' }}>
+                    Ajusta la tarifa base del sistema. Quienes se registren hoy quedarán atados permanentemente a esta tarifa, incluso si la subes en el futuro.
+                  </p>
+                  <form onSubmit={handleSaveSaasSettings} className="fiskal-form">
                     <div className="form-group">
-                      <label>Nombre del Propietario</label>
+                      <label>Precio Base Mensual ($ USD)</label>
                       <input 
-                        type="text" 
-                        value={ownerName} 
-                        onChange={(e) => setOwnerName(e.target.value)} 
-                        placeholder="Ej. Carlos Pérez" 
+                        type="number" 
+                        step="0.01" 
+                        value={baseMonthlyPrice} 
+                        onChange={e => setBaseMonthlyPrice(e.target.value)} 
+                        required 
                       />
                     </div>
                     <div className="form-group">
-                      <label>Cédula del Propietario</label>
-                      <input 
-                        type="text" 
-                        value={ownerDoc} 
-                        onChange={(e) => setOwnerDoc(e.target.value)} 
-                        placeholder="Ej. V-12345678" 
-                      />
+                      <label>Promoción Global Actual (%)</label>
+                      <div style={{ position: 'relative' }}>
+                        <Percent size={14} style={{ position: 'absolute', left: '10px', top: '12px', color: '#6c757d' }} />
+                        <input 
+                          type="number" 
+                          step="1" 
+                          max="100" 
+                          min="0"
+                          value={globalPromoDiscount} 
+                          onChange={e => setGlobalPromoDiscount(e.target.value)} 
+                          style={{ paddingLeft: '32px' }}
+                        />
+                      </div>
+                      <span style={{ fontSize: '11px', color: '#fa5252' }}>
+                        {globalPromoDiscount > 0 ? `Un nuevo registro hoy pagará $${getCalculatedMonthlyPrice(0, baseMonthlyPrice).toFixed(2)} /mes de por vida.` : 'Sin promoción activa.'}
+                      </span>
                     </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    <div className="form-group">
-                      <label>Teléfono de Contacto</label>
-                      <input 
-                        type="text" 
-                        value={storePhone} 
-                        onChange={(e) => setStorePhone(e.target.value)} 
-                        placeholder="Ej. 0414-1234567" 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Correo Electrónico</label>
-                      <input 
-                        type="email" 
-                        value={storeEmail} 
-                        onChange={(e) => setStoreEmail(e.target.value)} 
-                        placeholder="correo@negocio.com" 
-                      />
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label>Dirección Física</label>
-                    <input 
-                      type="text" 
-                      value={storeAddress} 
-                      onChange={(e) => setStoreAddress(e.target.value)} 
-                      placeholder="Ej. Av. Principal, Local 4" 
-                    />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    <div className="form-group">
-                      <label>Ciudad</label>
-                      <input 
-                        type="text" 
-                        value={storeCity} 
-                        onChange={handleCityChange} 
-                        placeholder="Ej. Los Teques" 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Estado (Auto-detectado)</label>
-                      <input 
-                        type="text" 
-                        value={storeState} 
-                        onChange={(e) => setStoreState(e.target.value)} 
-                        placeholder="Ej. Miranda" 
-                      />
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                    {editingStore && (
-                      <button type="button" className="btn-secondary" onClick={resetStoreForm} style={{ flex: 1 }}>
-                        Cancelar
-                      </button>
-                    )}
-                    <button type="submit" className="btn-primary" style={{ flex: 2 }}>
-                      <Store size={18} /> {editingStore ? 'Actualizar Comercio' : 'Registrar Comercio'}
+                    <button type="submit" className="btn-primary" disabled={savingSettings} style={{ width: '100%', marginTop: '8px' }}>
+                      {savingSettings ? 'Guardando...' : 'Aplicar Precios a Nuevos Registros'}
                     </button>
+                  </form>
+                </div>
+
+                <div className="product-list-card">
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#d9480f' }}>
+                    <Award size={18} /> Rendimiento de Vendedores y Pago de Comisiones
+                  </h3>
+                  <div className="table-responsive">
+                    <table className="fiskal-table" style={{ fontSize: '13px' }}>
+                      <thead>
+                        <tr>
+                          <th>Vendedor</th>
+                          <th style={{ textAlign: 'center' }}>Comercios Activos</th>
+                          <th>Ganancia Histórica</th>
+                          <th style={{ color: '#d9480f' }}>Saldo Pendiente</th>
+                          <th style={{ textAlign: 'center' }}>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {systemVendors.length === 0 ? (
+                          <tr><td colSpan="5" className="empty-text">No hay vendedores registrados.</td></tr>
+                        ) : (
+                          systemVendors.map(v => {
+                            const vendorStores = adminStores.filter(s => s.system_vendor_id === v.id);
+                            const activeCount = vendorStores.filter(s => s.is_active).length;
+                            return (
+                              <tr key={v.id}>
+                                <td><strong>{v.name}</strong><br/><span style={{ fontSize: '11px', color: '#6c757d' }}>{v.email}</span></td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <span className="badge-completed">{activeCount} / {vendorStores.length}</span>
+                                </td>
+                                <td><strong>${(parseFloat(v.total_earned) || 0).toFixed(2)}</strong></td>
+                                <td><strong style={{ color: (parseFloat(v.pending_balance) || 0) > 0 ? '#d9480f' : '#2b8a3e', fontSize: '14px' }}>${(parseFloat(v.pending_balance) || 0).toFixed(2)}</strong></td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <button 
+                                    className="btn-primary" 
+                                    onClick={() => handlePayVendor(v)} 
+                                    disabled={(parseFloat(v.pending_balance) || 0) <= 0}
+                                    style={{ fontSize: '11px', padding: '6px 12px', background: (parseFloat(v.pending_balance) || 0) > 0 ? '#1c7ed6' : '#ced4da', cursor: (parseFloat(v.pending_balance) || 0) > 0 ? 'pointer' : 'not-allowed' }}
+                                  >
+                                    <Check size={14} style={{ marginRight: '4px' }} /> Liquidar
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
                   </div>
-                </form>
+                  <p style={{ fontSize: '11px', color: '#6c757d', marginTop: '12px' }}>* El saldo pendiente suma automáticamente el 50% de la cuota de nuevos registros y el 20% recurrente de sus renovaciones mensuales.</p>
+                </div>
+              </div>
+
+              <div className="products-layout">
+                <div className="product-form-card">
+                  <h3>{editingStore ? `Editando: ${editingStore.name}` : 'Registrar Nuevo Comercio SaaS'}</h3>
+                  <form onSubmit={handleSaveStore} className="fiskal-form">
+                    <div className="form-group">
+                      <label>Nombre del Negocio / Comercio</label>
+                      <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="Ej. Inversiones La Esquina C.A." required />
+                    </div>
+                    <div className="form-group">
+                      <label>RIF del Negocio</label>
+                      <input type="text" value={storeRif} onChange={(e) => setStoreRif(e.target.value)} placeholder="Ej. J-12345678-9" />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div className="form-group">
+                        <label>Nombre del Propietario</label>
+                        <input type="text" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="Ej. Carlos Pérez" />
+                      </div>
+                      <div className="form-group">
+                        <label>Cédula del Propietario</label>
+                        <input type="text" value={ownerDoc} onChange={(e) => setOwnerDoc(e.target.value)} placeholder="Ej. V-12345678" />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div className="form-group">
+                        <label>Teléfono de Contacto</label>
+                        <input type="text" value={storePhone} onChange={(e) => setStorePhone(e.target.value)} placeholder="Ej. 0414-1234567" />
+                      </div>
+                      <div className="form-group">
+                        <label>Correo Electrónico</label>
+                        <input type="email" value={storeEmail} onChange={(e) => setStoreEmail(e.target.value)} placeholder="correo@negocio.com" />
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label>Dirección Física</label>
+                      <input type="text" value={storeAddress} onChange={(e) => setStoreAddress(e.target.value)} placeholder="Ej. Av. Principal, Local 4" />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div className="form-group">
+                        <label>Ciudad</label>
+                        <input type="text" value={storeCity} onChange={handleCityChange} placeholder="Ej. Los Teques" />
+                      </div>
+                      <div className="form-group">
+                        <label>Estado (Auto-detectado)</label>
+                        <input type="text" value={storeState} onChange={(e) => setStoreState(e.target.value)} placeholder="Ej. Miranda" />
+                      </div>
+                    </div>
+
+                    {editingStore && (
+                      <div className="form-group" style={{ background: '#e7f5ff', padding: '12px', borderRadius: '6px', border: '1px solid #74c0fc' }}>
+                        <label style={{ color: '#1971c2', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Award size={14}/> Descuento Especial a este Comercio (%)
+                        </label>
+                        <input type="number" step="1" max="100" min="0" value={storeCustomDiscount} onChange={(e) => setStoreCustomDiscount(e.target.value)} />
+                        <span style={{ fontSize: '11px', color: '#495057', display: 'block', marginTop: '4px' }}>
+                          Este comercio tiene un precio base congelado de <strong>${editingStore.monthly_price_agreed || baseMonthlyPrice}</strong>. Con el {storeCustomDiscount}% de descuento pasará a pagar <strong>${getCalculatedMonthlyPrice(storeCustomDiscount, editingStore.monthly_price_agreed).toFixed(2)}</strong> mensuales.
+                        </span>
+                      </div>
+                    )}
+                    
+                    {!editingStore && (
+                      <div className="form-group" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input type="checkbox" id="storePaidAdvance" checked={storePaidAdvance} onChange={(e) => setStorePaidAdvance(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                        <label htmlFor="storePaidAdvance" style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', margin: 0, color: '#2b8a3e' }}>
+                          ¿El comercio pagó el mes por adelantado? (Activa 40 días: 30 de mes + 10 de cortesía)
+                        </label>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                      {editingStore && (
+                        <button type="button" className="btn-secondary" onClick={resetStoreForm} style={{ flex: 1 }}>Cancelar</button>
+                      )}
+                      <button type="submit" className="btn-primary" style={{ flex: 2 }}>
+                        <Store size={18} /> {editingStore ? 'Actualizar Comercio' : 'Registrar Comercio'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="product-form-card">
+                  <h3>Registrar Vendedor de Sistema</h3>
+                  <form onSubmit={handleCreateSystemVendor} className="fiskal-form">
+                    <div className="form-group">
+                      <label>Nombre del Vendedor</label>
+                      <input type="text" value={newVendorName} onChange={e => setNewVendorName(e.target.value)} placeholder="Ej. Marcos Silva" required />
+                    </div>
+                    <div className="form-group">
+                      <label>Correo (Acceso al Portal)</label>
+                      <input type="email" value={newVendorEmail} onChange={e => setNewVendorEmail(e.target.value)} placeholder="vendedor@fiskal.com" required />
+                    </div>
+                    <div className="form-group">
+                      <label>Teléfono</label>
+                      <input type="text" value={newVendorPhone} onChange={e => setNewVendorPhone(e.target.value)} placeholder="Ej. 04121234567" />
+                    </div>
+                    <button type="submit" className="btn-primary" disabled={creatingVendor} style={{ background: '#d9480f' }}>
+                      <UserPlus size={18} /> {creatingVendor ? 'Creando...' : 'Crear Vendedor de Sistema'}
+                    </button>
+                  </form>
+
+                  <div style={{ marginTop: '20px' }}>
+                    <h4 style={{ fontSize: '13px', color: '#6c757d', marginBottom: '8px' }}>Vendedores Activos ({systemVendors.length})</h4>
+                    <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
+                      {systemVendors.map(v => (
+                        <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 8px', background: '#f8f9fa', borderRadius: '4px', marginBottom: '4px', fontSize: '12px' }}>
+                          <span><strong>{v.name}</strong> ({v.email})</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="product-list-card">
@@ -2342,68 +3441,80 @@ function App() {
                   <table className="fiskal-table">
                     <thead>
                       <tr>
-                        <th>Negocio & RIF</th>
-                        <th>Propietario & Cédula</th>
-                        <th>Ubicación</th>
+                        <th>Negocio & Vendedor</th>
+                        <th>Tarifa Mensual ($)</th>
+                        <th>Prueba / Vencimiento</th>
                         <th>Estatus</th>
-                        <th style={{ textAlign: 'center' }}>Acciones</th>
+                        <th style={{ textAlign: 'center' }}>Acciones & WhatsApp</th>
                       </tr>
                     </thead>
                     <tbody>
                       {adminStores.length === 0 ? (
-                        <tr>
-                          <td colSpan="5" className="empty-text">No hay comercios registrados.</td>
-                        </tr>
+                        <tr><td colSpan="5" className="empty-text">No hay comercios registrados.</td></tr>
                       ) : (
-                        adminStores.map((store) => (
-                          <tr key={store.id}>
-                            <td>
-                              <strong>{store.name}</strong><br/>
-                              <span style={{ fontSize: '11px', color: '#6c757d' }}>{store.rif || store.document || 'Sin RIF'}</span>
-                            </td>
-                            <td>
-                              <span>{store.owner_name || 'No especificado'}</span><br/>
-                              <span style={{ fontSize: '11px', color: '#6c757d' }}>{store.owner_document || 'Sin Cédula'} | {store.phone || 'Sin Telf'}</span>
-                            </td>
-                            <td>
-                              <span style={{ fontSize: '12px' }}>{store.city || '---'}, {store.state || '---'}</span><br/>
-                              <span style={{ fontSize: '11px', color: '#6c757d' }}>{store.address || 'Sin dirección'}</span>
-                            </td>
-                            <td>
-                              {store.is_active ? (
-                                <span className="badge-completed"><CheckCircle size={12}/> Activo</span>
-                              ) : (
-                                <span className="badge-credit" style={{ background: '#ffe3e3', color: '#c92a2a' }}><AlertCircle size={12}/> Suspendido</span>
-                              )}
-                            </td>
-                            <td className="action-cell">
-                              <div className="action-buttons" style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                                <button 
-                                  className="btn-icon-success" 
-                                  onClick={() => handleOpenOwnerModal(store)}
-                                  title="Crear o Asignar Acceso de Administrador para este negocio"
-                                  style={{ background: '#2b8a3e', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                >
-                                  <Key size={13} /> Acceso
-                                </button>
-                                <button 
-                                  className="btn-icon-edit" 
-                                  onClick={() => handleStartEditStore(store)}
-                                  title="Editar Datos"
-                                >
-                                  <Edit2 size={16} />
-                                </button>
-                                <button 
-                                  className="btn-secondary" 
-                                  onClick={() => handleToggleStoreStatus(store.id, store.is_active)}
-                                  style={{ borderColor: store.is_active ? '#fa5252' : '#2b8a3e', color: store.is_active ? '#fa5252' : '#2b8a3e', fontSize: '11px', padding: '4px 8px' }}
-                                >
-                                  {store.is_active ? 'Suspender' : 'Activar'}
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
+                        adminStores.map((store) => {
+                          const now = new Date().getTime();
+                          let daysText = '---';
+                          let isExpiringSoon = false;
+                          if (store.is_trial && store.trial_end_date) {
+                            const diff = new Date(store.trial_end_date).getTime() - now;
+                            const d = Math.ceil(diff / (1000 * 60 * 60 * 24));
+                            daysText = d > 0 ? `${d} días de prueba` : 'Prueba expirada';
+                            isExpiringSoon = d <= 3;
+                          } else if (store.subscription_expires_at) {
+                            const diff = new Date(store.subscription_expires_at).getTime() - now;
+                            const d = Math.ceil(diff / (1000 * 60 * 60 * 24));
+                            daysText = d > 0 ? `${d} días de mes activo` : 'Suscripción vencida';
+                            isExpiringSoon = d <= 5;
+                          }
+                          
+                          const basePriceDisplay = store.monthly_price_agreed !== null && store.monthly_price_agreed !== undefined ? store.monthly_price_agreed : baseMonthlyPrice;
+                          const hasCustomDisc = store.custom_discount > 0;
+                          const finalDisplayPrice = getCalculatedMonthlyPrice(store.custom_discount, store.monthly_price_agreed);
+
+                          return (
+                            <tr key={store.id}>
+                              <td>
+                                <strong>{store.name}</strong><br/>
+                                <span style={{ fontSize: '11px', color: '#d9480f' }}>Vendedor: <strong>{store.system_vendors?.name || 'Admin Central'}</strong></span>
+                              </td>
+                              <td>
+                                <strong>${finalDisplayPrice.toFixed(2)}</strong><br/>
+                                {hasCustomDisc && <span style={{ fontSize: '10px', background: '#ffe3e3', color: '#c92a2a', padding: '2px 4px', borderRadius: '4px' }}>-{store.custom_discount}% aplicado</span>}
+                              </td>
+                              <td>
+                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: isExpiringSoon ? '#fa5252' : '#2b8a3e' }}>{daysText}</span>
+                              </td>
+                              <td>
+                                {store.is_active ? (
+                                  <span className="badge-completed"><CheckCircle size={12}/> Activo</span>
+                                ) : (
+                                  <span className="badge-credit" style={{ background: '#ffe3e3', color: '#c92a2a' }}><AlertCircle size={12}/> Suspendido</span>
+                                )}
+                              </td>
+                              <td className="action-cell">
+                                <div className="action-buttons" style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                  <button className="btn-icon-whatsapp" onClick={() => sendStoreRenewalWhatsApp(store)} title="Enviar WhatsApp de Renovación / Cobro">
+                                    <MessageCircle size={16} />
+                                  </button>
+                                  <button className="btn-icon-success" onClick={() => handleRenewSubscription(store)} title="Renovar Suscripción (Suma 30 días al tiempo restante)" style={{ background: '#1c7ed6', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Award size={13} /> Renovar
+                                  </button>
+                                  <button className="btn-icon-primary" onClick={() => handleOpenPreInvoice(store)} title="Generar Recibo / Factura SaaS" style={{ background: '#4c6ef5', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <FileText size={13} /> Recibo
+                                  </button>
+                                  <button className="btn-icon-success" onClick={() => handleOpenOwnerModal(store)} title="Acceso" style={{ background: '#2b8a3e', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Key size={13} /> Acceso
+                                  </button>
+                                  <button className="btn-icon-edit" onClick={() => handleStartEditStore(store)} title="Editar Datos y Promociones"><Edit2 size={16} /></button>
+                                  <button className="btn-secondary" onClick={() => handleToggleStoreStatus(store.id, store.is_active)} style={{ borderColor: store.is_active ? '#fa5252' : '#2b8a3e', color: store.is_active ? '#fa5252' : '#2b8a3e', fontSize: '11px', padding: '4px 8px' }}>
+                                    {store.is_active ? 'Suspender' : 'Activar'}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -2422,9 +3533,7 @@ function App() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                       <div>
                         <span className="badge-completed">CAJA ABIERTA: {getCurrentRegisterName()}</span>
-                        <p style={{ fontSize: '13px', color: '#6c757d', marginTop: '4px' }}>
-                          Iniciado el: {new Date(currentShift.opened_at).toLocaleString()}
-                        </p>
+                        <p style={{ fontSize: '13px', color: '#6c757d', marginTop: '4px' }}>Iniciado el: {new Date(currentShift.opened_at).toLocaleString()}</p>
                       </div>
                       <button className="btn-primary" onClick={() => setShowCloseShiftModal(true)} style={{ background: '#fa5252' }}>
                         Cerrar Turno (Reporte Z)
@@ -2432,27 +3541,18 @@ function App() {
                     </div>
 
                     <div className="payment-summary-box" style={{ marginTop: '16px' }}>
-                      <div>
-                        <span>Fondo Inicial:</span>
-                        <h2>${currentShift.opening_float_usd.toFixed(2)}</h2>
-                      </div>
-                      <div>
-                        <span>Ventas del Turno:</span>
-                        <h2 style={{ color: '#2b8a3e' }}>${shiftTotalUSD.toFixed(2)}</h2>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <span>Efectivo Esperado en Gaveta:</span>
-                        <h3>${(currentShift.opening_float_usd + shiftCashUSD).toFixed(2)}</h3>
-                      </div>
+                      <div><span>Fondo Inicial:</span><h2>${currentShift.opening_float_usd.toFixed(2)}</h2></div>
+                      <div><span>Ventas del Turno:</span><h2 style={{ color: '#2b8a3e' }}>${shiftTotalUSD.toFixed(2)}</h2></div>
+                      <div style={{ textAlign: 'right' }}><span>Efectivo Esperado en Gaveta:</span><h3>${(currentShift.opening_float_usd + shiftCashUSD + (shiftCashBs / (bcvRate || 1))).toFixed(2)}</h3></div>
                     </div>
 
                     <div className="invoice-payment-breakdown" style={{ marginTop: '20px' }}>
                       <h4>Desglose de Ingresos en Turno Actual</h4>
                       <p><span>Efectivo USD:</span> <strong>${shiftCashUSD.toFixed(2)}</strong></p>
-                      <p><span>Efectivo Bs:</span> <strong>Bs. {shiftCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></p>
+                      <p><span>Efectivo Bs:</span> <strong>Bs. {shiftCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
                       <p><span>Zelle:</span> <strong>${shiftZelle.toFixed(2)}</strong></p>
-                      <p><span>Pago Móvil:</span> <strong>Bs. {shiftPagoMovilBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></p>
-                      <p><span>Punto / Débito:</span> <strong>Bs. {shiftDebitBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></p>
+                      <p><span>Pago Móvil:</span> <strong>Bs. {shiftPagoMovilBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                      <p><span>Punto / Débito:</span> <strong>Bs. {shiftDebitBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
                     </div>
                   </div>
                 </div>
@@ -2460,12 +3560,8 @@ function App() {
                 <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                   <Lock size={48} color="#6c757d" style={{ marginBottom: '16px' }} />
                   <h4>No hay ningún turno de caja abierto</h4>
-                  <p style={{ color: '#6c757d', fontSize: '14px', margin: '8px 0 24px 0' }}>
-                    Selecciona una de tus cajas físicas registradas para iniciar operaciones.
-                  </p>
-                  <button className="btn-primary" onClick={() => setShowOpenShiftModal(true)} style={{ margin: '0 auto' }}>
-                    Abrir Nueva Caja / Turno
-                  </button>
+                  <p style={{ color: '#6c757d', fontSize: '14px', margin: '8px 0 24px 0' }}>Selecciona una de tu cajas físicas registradas para iniciar operaciones.</p>
+                  <button className="btn-primary" onClick={() => setShowOpenShiftModal(true)} style={{ margin: '0 auto' }}>Abrir Nueva Caja / Turno</button>
                 </div>
               )}
             </div>
@@ -2473,7 +3569,39 @@ function App() {
 
           {activeTab === 'history' && (
             <div className="product-list-card" style={{ width: '100%' }}>
-              <h3>Registro de Ventas y Cuentas ({sales.length})</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                <h3 style={{ margin: 0 }}>Registro de Ventas y Cuentas ({filteredSales.length})</h3>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button 
+                    onClick={() => { setHistoryFilterType('all'); setHistoryCustomDate(''); }} 
+                    style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: historyFilterType === 'all' ? '#1c7ed6' : '#fff', color: historyFilterType === 'all' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    Todos
+                  </button>
+                  <button 
+                    onClick={() => { setHistoryFilterType('yesterday'); setHistoryCustomDate(''); }} 
+                    style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: historyFilterType === 'yesterday' ? '#1c7ed6' : '#fff', color: historyFilterType === 'yesterday' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    Ayer
+                  </button>
+                  <button 
+                    onClick={() => { setHistoryFilterType('last_week'); setHistoryCustomDate(''); }} 
+                    style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: historyFilterType === 'last_week' ? '#1c7ed6' : '#fff', color: historyFilterType === 'last_week' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    Semana Pasada
+                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fff', border: '1px solid #ced4da', borderRadius: '4px', padding: '2px 6px' }}>
+                    <span style={{ fontSize: '11px', color: '#6c757d' }}>Fecha:</span>
+                    <input 
+                      type="date" 
+                      value={historyCustomDate} 
+                      onChange={(e) => { setHistoryCustomDate(e.target.value); setHistoryFilterType('custom'); }} 
+                      style={{ border: 'none', fontSize: '12px', outline: 'none', background: 'transparent' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="table-responsive">
                 <table className="fiskal-table">
                   <thead>
@@ -2488,23 +3616,19 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sales.length === 0 ? (
-                      <tr>
-                        <td colSpan="7" className="empty-text">No hay ventas registradas.</td>
-                      </tr>
+                    {filteredSales.length === 0 ? (
+                      <tr><td colSpan="7" className="empty-text">No hay ventas registradas para este filtro.</td></tr>
                     ) : (
-                      sales.map((sale) => (
+                      filteredSales.map((sale) => (
                         <tr key={sale.id}>
-                          <td><strong>#{sale.id.toString().startsWith('local') ? 'Pendiente' : sale.id}</strong></td>
+                          <td><strong>#{String(sale.id).startsWith('local') ? 'Pendiente' : sale.id}</strong></td>
                           <td>{new Date(sale.created_at).toLocaleString()}</td>
                           <td>{sale.client_name || 'Cliente General'}</td>
                           <td><strong>${sale.total_usd.toFixed(2)}</strong></td>
                           <td>
                             {sale.status === 'credit' ? (
                               <span style={{ color: '#fa5252', fontWeight: 'bold' }}>${(sale.balance_due_usd !== undefined ? sale.balance_due_usd : sale.total_usd).toFixed(2)}</span>
-                            ) : (
-                              <span>$0.00</span>
-                            )}
+                            ) : (<span>$0.00</span>)}
                           </td>
                           <td>
                             {sale.status === 'credit' ? (
@@ -2518,23 +3642,15 @@ function App() {
                           <td className="action-cell">
                             <div className="action-buttons">
                               {sale.status === 'pending' && (
-                                <button className="btn-icon-success" onClick={() => handleResumeOrder(sale)} title="Retomar cuenta">
-                                  <Play size={16} />
-                                </button>
+                                <button className="btn-icon-success" onClick={() => handleResumeOrder(sale)} title="Retomar cuenta"><Play size={16} /></button>
                               )}
                               {sale.status === 'credit' && (
-                                <button className="btn-icon-success" onClick={() => handleStartSettleCredit(sale)} title="Abonar">
-                                  <DollarSign size={16} />
-                                </button>
+                                <button className="btn-icon-success" onClick={() => handleStartSettleCredit(sale)} title="Abonar"><DollarSign size={16} /></button>
                               )}
                               {sale.status === 'credit' && (
-                                <button className="btn-icon-whatsapp" onClick={() => sendWhatsAppReminder(sale)} title="WhatsApp">
-                                  <MessageCircle size={16} />
-                                </button>
+                                <button className="btn-icon-whatsapp" onClick={() => sendWhatsAppReminder(sale)} title="WhatsApp"><MessageCircle size={16} /></button>
                               )}
-                              <button className="btn-icon-primary" onClick={() => handleViewInvoice(sale)} title="Ver Factura">
-                                <Eye size={18} />
-                              </button>
+                              <button className="btn-icon-primary" onClick={() => handleViewInvoice(sale)} title="Ver Factura"><Eye size={18} /></button>
                             </div>
                           </td>
                         </tr>
@@ -2574,7 +3690,36 @@ function App() {
               </div>
 
               <div className="product-list-card">
-                <h3>Lista y Rendimiento de Clientes ({clientsWithMetrics.length})</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                  <h3 style={{ margin: 0 }}>Directorio y Filtrado de Clientes</h3>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <button 
+                      onClick={() => setClientFilterTab('all')} 
+                      style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: clientFilterTab === 'all' ? '#1c7ed6' : '#fff', color: clientFilterTab === 'all' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      Todos ({clientsWithMetrics.length})
+                    </button>
+                    <button 
+                      onClick={() => setClientFilterTab('best')} 
+                      style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: clientFilterTab === 'best' ? '#2b8a3e' : '#fff', color: clientFilterTab === 'best' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      ⭐ Mejor Cliente
+                    </button>
+                    <button 
+                      onClick={() => setClientFilterTab('debtors')} 
+                      style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: clientFilterTab === 'debtors' ? '#fa5252' : '#fff', color: clientFilterTab === 'debtors' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      ⚠️ Morosos ({clientsWithMetrics.filter(c => c.totalPending > 0).length})
+                    </button>
+                    <button 
+                      onClick={() => setClientFilterTab('frequent')} 
+                      style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: clientFilterTab === 'frequent' ? '#ae3ec9' : '#fff', color: clientFilterTab === 'frequent' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      🔥 Más Frecuentes
+                    </button>
+                  </div>
+                </div>
+
                 <div className="table-responsive">
                   <table className="fiskal-table">
                     <thead>
@@ -2582,44 +3727,37 @@ function App() {
                         <th>Cliente & Cédula</th>
                         <th>Total Facturado</th>
                         <th>Saldo Pendiente</th>
-                        <th>Rendimiento</th>
+                        <th>Compras</th>
                         <th style={{ textAlign: 'center' }}>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {clientsWithMetrics.length === 0 ? (
-                        <tr><td colSpan="5" className="empty-text">No hay clientes registrados.</td></tr>
+                      {getFilteredClientsByTab().length === 0 ? (
+                        <tr><td colSpan="5" className="empty-text">No hay clientes que coincidan con este filtro.</td></tr>
                       ) : (
-                        clientsWithMetrics.map((cli, index) => (
-                          <tr key={cli.id}>
+                        getFilteredClientsByTab().map((cli, index) => (
+                          <tr key={cli.id} style={{ cursor: 'pointer' }} onClick={() => handleOpenClientDetail(cli)} title="Haz clic para ver historial y notas">
                             <td>
                               <strong>{cli.name}</strong><br/>
-                              <span style={{ fontSize: '11px', color: '#6c757d' }}>{cli.document || 'Sin Cédula'}</span>
+                              <span style={{ fontSize: '11px', color: '#6c757d' }}>{cli.document || 'Sin Cédula'} | {cli.phone || 'Sin Telf'}</span>
                             </td>
                             <td><strong>${cli.totalBilled.toFixed(2)}</strong></td>
                             <td>
                               {cli.totalPending > 0 ? (
                                 <span style={{ color: '#fa5252', fontWeight: 'bold' }}>${cli.totalPending.toFixed(2)}</span>
-                              ) : (
-                                <span style={{ color: '#2b8a3e' }}>$0.00</span>
-                              )}
+                              ) : (<span style={{ color: '#2b8a3e' }}>$0.00</span>)}
                             </td>
-                            <td>
-                              {index === 0 && cli.totalBilled > 0 ? (
-                                <span className="badge-completed" style={{ background: '#e7f5ff', color: '#1971c2' }}>
-                                  <Award size={12}/> Top 1 (VIP)
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: '12px', color: '#495057' }}>Activo</span>
-                              )}
-                            </td>
-                            <td className="action-cell">
+                            <td><span style={{ background: '#f1f3f5', padding: '2px 8px', borderRadius: '10px', fontSize: '12px', fontWeight: 'bold' }}>{cli.salesCount}</span></td>
+                            <td className="action-cell" onClick={(e) => e.stopPropagation()}>
                               <div className="action-buttons">
                                 {cli.totalPending > 0 && cli.phone && (
                                   <button className="btn-icon-whatsapp" onClick={() => sendClientGeneralWhatsApp(cli, cli.totalPending)} title="Cobro por WhatsApp">
                                     <MessageCircle size={16} />
                                   </button>
                                 )}
+                                <button className="btn-icon-primary" onClick={() => handleOpenClientDetail(cli)} title="Ver Historial y Notas">
+                                  <Eye size={16} />
+                                </button>
                                 <button className="btn-icon-danger" onClick={() => handleDeleteClient(cli.id)} title="Eliminar">
                                   <Trash2 size={16} />
                                 </button>
@@ -2689,7 +3827,13 @@ function App() {
               </div>
 
               <div className="product-list-card">
-                <h3>Inventario Actual ({products.length})</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                  <h3 style={{ margin: 0 }}>Inventario Actual ({products.length})</h3>
+                  <button className="btn-secondary" onClick={() => setShowPrintCatalog(true)} style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center' }}>
+                    <QrCode size={14} style={{ marginRight: '6px' }}/> Imprimir Códigos QR (Carta)
+                  </button>
+                </div>
+                
                 <div className="table-responsive">
                   <table className="fiskal-table">
                     <thead>
@@ -2710,7 +3854,7 @@ function App() {
                               <img src={prod.image_url} alt="" style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
                             ) : (
                               <div style={{ width: '40px', height: '40px', background: '#f1f3f5', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#adb5bd' }}>
-                                <ImageIcon size={18} />
+                                <Package size={20} strokeWidth={1.5} />
                               </div>
                             )}
                           </td>
@@ -2720,15 +3864,9 @@ function App() {
                           <td><strong>{prod.stock}</strong></td>
                           <td className="action-cell">
                             <div className="action-buttons">
-                              <button className="btn-icon-primary" onClick={() => handleOpenLabel(prod)} title="QR">
-                                <QrCode size={16} />
-                              </button>
-                              <button className="btn-icon-edit" onClick={() => handleStartEditProduct(prod)} title="Editar">
-                                <Edit2 size={16} />
-                              </button>
-                              <button className="btn-icon-danger" onClick={() => handleDeleteProduct(prod.id)} title="Eliminar">
-                                <Trash2 size={16} />
-                              </button>
+                              <button className="btn-icon-primary" onClick={() => handleOpenLabel(prod)} title="QR"><QrCode size={16} /></button>
+                              <button className="btn-icon-edit" onClick={() => handleStartEditProduct(prod)} title="Editar"><Edit2 size={16} /></button>
+                              <button className="btn-icon-danger" onClick={() => handleDeleteProduct(prod.id)} title="Eliminar"><Trash2 size={16} /></button>
                             </div>
                           </td>
                         </tr>
@@ -2740,8 +3878,49 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'settings' && (currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
+          {activeTab === 'settings' && (currentUserRole === 'owner' || currentUserRole === 'super_admin' || currentUserRole === 'system_vendor') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
+              
+              {/* Nueva Sección: Configuración de Facturación SaaS */}
+              {currentUserRole === 'super_admin' && (
+                <div className="product-form-card" style={{ maxWidth: '100%' }}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#4c6ef5' }}>
+                    <FileCheck size={20} /> Configuración de Facturación SaaS
+                  </h3>
+                  <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '16px' }}>Personaliza la apariencia de los recibos en PDF que generas para tus comercios afiliados.</p>
+                  
+                  <form onSubmit={handleSaveSaasSettings} className="fiskal-form">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label>Encabezado Personalizado</label>
+                        <textarea 
+                          rows="2" 
+                          value={saasInvoiceHeader} 
+                          onChange={e => setSaasInvoiceHeader(e.target.value)} 
+                          placeholder="Ej. Inversiones Fiskal C.A. / RIF: J-000000 / Dirección..." 
+                          style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }} 
+                        />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label>Pie de Página / Términos</label>
+                        <textarea 
+                          rows="2" 
+                          value={saasInvoiceFooter} 
+                          onChange={e => setSaasInvoiceFooter(e.target.value)} 
+                          placeholder="Ej. Los pagos de mensualidad no son reembolsables. Gracias por su confianza." 
+                          style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }} 
+                        />
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', marginTop: '16px' }}>
+                      <button type="submit" className="btn-primary" disabled={savingSettings} style={{ background: '#4c6ef5' }}>
+                        {savingSettings ? 'Guardando...' : 'Guardar Diseño de Factura'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
               <div className="products-layout" style={{ gap: '20px' }}>
                 <div className="product-form-card">
                   <div style={{ marginBottom: '16px' }}>
@@ -2808,7 +3987,7 @@ function App() {
                       <input type="text" value={newRegisterName} onChange={(e) => setNewRegisterName(e.target.value)} placeholder="Ej. Caja 2" required />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px', height: '42px' }}>
-                      <input type="checkbox" id="isMainReg" checked={isMainRegister} onChange={(e) => setIsMainRegister(e.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                      <input type="checkbox" id="isMainReg" checked={isMainRegister} onChange={(e) => setIsMainRegister(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
                       <label htmlFor="isMainReg" style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>¿Es Principal?</label>
                     </div>
                     <button type="submit" className="btn-primary" style={{ height: '42px', padding: '0 16px' }}>
@@ -2853,7 +4032,231 @@ function App() {
         </section>
       </main>
 
-      {/* MODAL PARA ESCÁNER DE CÁMARA (NUEVO MOTOR EN VIVO: HTML5-QRCODE) */}
+      {/* NUEVO MODAL: Pre-Facturación SaaS */}
+      {showPreInvoiceModal && preInvoiceStore && (
+        <div className="modal-overlay" style={{ zIndex: 10005 }}>
+          <div className="modal-content" style={{ width: '500px' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={20} /> Preparar Factura SaaS</h3>
+              <button className="btn-close-modal" onClick={() => setShowPreInvoiceModal(false)}><X size={20} /></button>
+            </div>
+            <div className="modal-body fiskal-form">
+              <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '16px' }}>
+                Generando recibo para <strong>{preInvoiceStore.name}</strong>. Puedes añadir cargos adicionales o descuentos puntuales antes de crear el PDF.
+              </p>
+              
+              <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', fontWeight: 'bold' }}>Suscripción Mensual Base:</span>
+                <span style={{ fontSize: '15px', color: '#2b8a3e', fontWeight: 'bold' }}>
+                  ${getCalculatedMonthlyPrice(preInvoiceStore.custom_discount, preInvoiceStore.monthly_price_agreed).toFixed(2)}
+                </span>
+              </div>
+
+              <div className="form-group">
+                <label style={{ color: '#1c7ed6' }}>Concepto Adicional (Opcional)</label>
+                <input 
+                  type="text" 
+                  value={preInvoiceExtraDesc} 
+                  onChange={(e) => setPreInvoiceExtraDesc(e.target.value)} 
+                  placeholder="Ej. Servicio de Capacitación de Empleados" 
+                />
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div className="form-group">
+                  <label style={{ color: '#1c7ed6' }}>Monto Adicional ($)</label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={preInvoiceExtraAmount} 
+                    onChange={(e) => setPreInvoiceExtraAmount(e.target.value)} 
+                    placeholder="0.00" 
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={{ color: '#fa5252' }}>Descuento Especial ($)</label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={preInvoiceDiscount} 
+                    onChange={(e) => setPreInvoiceDiscount(e.target.value)} 
+                    placeholder="0.00" 
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowPreInvoiceModal(false)}>Cancelar</button>
+              <button type="button" className="btn-primary" onClick={generateCustomSaaSInvoice} style={{ background: '#4c6ef5' }}>Generar PDF Final</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDailyTrialAlert && (
+        <div className="modal-overlay" style={{ zIndex: 10005 }}>
+          <div className="modal-content" style={{ width: '420px', textAlign: 'center', padding: '10px' }}>
+            <div className="modal-header" style={{ borderBottom: 'none' }}>
+              <h3>{trialAlertData.isTrial ? '🎁 ¡Periodo de Cortesía Activo!' : '⚠️ Aviso de Renovación'}</h3>
+            </div>
+            <div className="modal-body" style={{ padding: '10px 20px' }}>
+              {trialAlertData.isTrial ? (
+                <p style={{ fontSize: '14px', color: '#495057', lineHeight: '1.5' }}>
+                  Tu comercio cuenta con <strong>{trialAlertData.daysLeft} días restantes</strong> de prueba gratuita. Tienes acceso completo a todas las funciones y productos del sistema.
+                </p>
+              ) : (
+                <p style={{ fontSize: '14px', color: '#495057', lineHeight: '1.5' }}>
+                  {trialAlertData.expired 
+                    ? 'Tu suscripción mensual ha expirado. Comunícate con el soporte o administración para renovar.' 
+                    : `A tu suscripción mensual le quedan ${trialAlertData.daysLeft} días para vencer. Evita interrupciones renovando a tiempo.`}
+                </p>
+              )}
+            </div>
+            <div className="modal-footer" style={{ borderTop: 'none', justifyContent: 'center', paddingBottom: '20px' }}>
+              <button className="btn-primary" onClick={() => setShowDailyTrialAlert(false)} style={{ width: '100%' }}>
+                Entendido, entrar al sistema
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedClientDetail && (
+        <div className="modal-overlay" style={{ zIndex: 10002 }}>
+          <div className="modal-content" style={{ width: '600px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h3>Detalle de Cliente: {selectedClientDetail.name}</h3>
+              <button className="btn-close-modal" onClick={() => setSelectedClientDetail(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body fiskal-form" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
+                <div><span>Cédula / RIF:</span><br/><strong>{selectedClientDetail.document || 'No registrada'}</strong></div>
+                <div><span>Teléfono:</span><br/><strong>{selectedClientDetail.phone || 'No registrado'}</strong></div>
+                <div><span>Total Facturado:</span><br/><strong style={{ color: '#2b8a3e' }}>${selectedClientDetail.totalBilled.toFixed(2)}</strong></div>
+                <div><span>Saldo Pendiente:</span><br/><strong style={{ color: selectedClientDetail.totalPending > 0 ? '#fa5252' : '#2b8a3e' }}>${selectedClientDetail.totalPending.toFixed(2)}</strong></div>
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}><Edit2 size={14}/> Comentario / Nota Personalizada</label>
+                <textarea 
+                  rows="3" 
+                  value={tempClientNote} 
+                  onChange={(e) => setTempClientNote(e.target.value)} 
+                  placeholder="Escribe notas sobre este cliente..."
+                  style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}
+                />
+                <button 
+                  type="button" 
+                  onClick={() => handleSaveClientNote(selectedClientDetail.id)}
+                  style={{ marginTop: '6px', background: '#1c7ed6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  Guardar Nota
+                </button>
+              </div>
+
+              <div>
+                <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Productos Más Comprados</h4>
+                <div className="table-responsive" style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                  <table className="fiskal-table" style={{ fontSize: '12px' }}>
+                    <thead>
+                      <tr><th>Producto</th><th>Cant. Total</th><th>Total USD</th></tr>
+                    </thead>
+                    <tbody>
+                      {getClientHistoryAndTopProducts(selectedClientDetail.name).topProducts.length === 0 ? (
+                        <tr><td colSpan="3" className="empty-text">Sin compras registradas aún.</td></tr>
+                      ) : (
+                        getClientHistoryAndTopProducts(selectedClientDetail.name).topProducts.map((p, idx) => (
+                          <tr key={idx}>
+                            <td><strong>{p.name}</strong></td>
+                            <td>{p.qty} ud.</td>
+                            <td>${p.total.toFixed(2)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Historial de Facturas del Cliente</h4>
+                <div className="table-responsive" style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                  <table className="fiskal-table" style={{ fontSize: '12px' }}>
+                    <thead>
+                      <tr><th>Factura</th><th>Fecha</th><th>Total</th><th>Estatus</th></tr>
+                    </thead>
+                    <tbody>
+                      {getClientHistoryAndTopProducts(selectedClientDetail.name).cliSales.length === 0 ? (
+                        <tr><td colSpan="4" className="empty-text">No hay facturas asociadas.</td></tr>
+                      ) : (
+                        getClientHistoryAndTopProducts(selectedClientDetail.name).cliSales.map(s => (
+                          <tr key={s.id}>
+                            <td>#{s.id}</td>
+                            <td>{new Date(s.created_at).toLocaleDateString()}</td>
+                            <td><strong>${s.total_usd.toFixed(2)}</strong></td>
+                            <td>{s.status.toUpperCase()}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setSelectedClientDetail(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPrintCatalog && (
+        <div className="modal-overlay" style={{ zIndex: 10001 }}>
+          <div className="modal-content letter-print" style={{ width: '800px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h3>Catálogo de Etiquetas QR para Impresión (Carta / A4)</h3>
+              <button className="btn-close-modal" onClick={() => setShowPrintCatalog(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ background: '#f8f9fa' }}>
+              <div className="catalog-print-grid">
+                {products.length === 0 ? (
+                  <p style={{ gridColumn: 'span 2', textAlign: 'center', padding: '20px' }}>No hay productos registrados para imprimir.</p>
+                ) : (
+                  products.map(prod => (
+                    <div key={prod.id} className="print-label-item">
+                      <div className="store-tag-header">{currentStoreName.toUpperCase()}</div>
+                      <h4 style={{ fontSize: '14px', margin: '4px 0', color: '#212529', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                        {prod.name}
+                      </h4>
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`ID:${prod.id}|PROD:${prod.name}|PRECIO:$${prod.price.toFixed(2)}`)}`}
+                        alt="QR"
+                        style={{ width: '100px', height: '100px', margin: '8px auto' }}
+                      />
+                      <div className="tag-price-box" style={{ padding: '4px 12px', marginTop: '4px' }}>
+                        <span className="tag-currency" style={{ fontSize: '10px' }}>USD</span>
+                        <span className="tag-price-value" style={{ fontSize: '16px' }}>${prod.price.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowPrintCatalog(false)}>Cerrar</button>
+              <button className="btn-primary" onClick={() => window.print()} disabled={products.length === 0}>
+                Imprimir (Tamaño Carta / A4)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCameraScannerModal && (
         <div className="modal-overlay" style={{ zIndex: 10005 }}>
           <div className="modal-content" style={{ width: '380px', textAlign: 'center', padding: '20px' }}>
@@ -2864,47 +4267,30 @@ function App() {
               </button>
             </div>
             <div className="modal-body" style={{ padding: '12px 0' }}>
-              {/* Contenedor oficial para la librería html5-qrcode */}
               <div id="fiskal-qr-reader" style={{ width: '100%', minHeight: '250px', background: '#000', borderRadius: '8px', overflow: 'hidden' }}></div>
-
               {cameraScanError ? (
                 <p style={{ color: '#fa5252', fontSize: '12px', marginTop: '8px' }}>{cameraScanError}</p>
               ) : (
                 <p style={{ color: '#6c757d', fontSize: '12px', marginTop: '8px' }}>Apunta al código para escanear automáticamente</p>
               )}
-
-              {/* Botón de captura directa nativa (Lo mantengo oculto para no eliminar código tuyo, pero el escaneo en vivo ya funciona perfectamente) */}
-              <div style={{ marginTop: '12px', display: 'none' }}>
-                <label className="btn-primary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px', cursor: 'pointer', background: '#2b8a3e', color: '#fff', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold' }}>
-                  <Camera size={18} /> Tomar Foto del Código (Respaldo)
-                  <input type="file" accept="image/*" capture="environment" onChange={handleCapturePhotoScan} style={{ display: 'none' }} />
-                </label>
-              </div>
             </div>
             <div className="modal-footer" style={{ borderTop: 'none', justifyContent: 'center' }}>
-              <button type="button" className="btn-secondary" onClick={stopCameraScanner} style={{ width: '100%' }}>
-                Cancelar Escáner
-              </button>
+              <button type="button" className="btn-secondary" onClick={stopCameraScanner} style={{ width: '100%' }}>Cancelar Escáner</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL PARA CREAR ACCESO DE DUEÑO DESDE EL PANEL MAESTRO */}
       {showOwnerModal && targetStoreForOwner && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
           <div className="modal-content" style={{ width: '440px' }}>
             <div className="modal-header">
               <h3>Crear Acceso de Dueño</h3>
-              <button className="btn-close-modal" onClick={() => setShowOwnerModal(false)}>
-                <X size={20} />
-              </button>
+              <button className="btn-close-modal" onClick={() => setShowOwnerModal(false)}><X size={20} /></button>
             </div>
             <form onSubmit={handleCreateStoreOwnerSubmit}>
               <div className="modal-body fiskal-form">
-                <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '12px' }}>
-                  Comercio: <strong>{targetStoreForOwner.name}</strong>
-                </p>
+                <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '12px' }}>Comercio: <strong>{targetStoreForOwner.name}</strong></p>
                 <div className="form-group">
                   <label>Nombre del Dueño</label>
                   <input type="text" value={ownerModalName} onChange={(e) => setOwnerModalName(e.target.value)} required />
@@ -2929,15 +4315,12 @@ function App() {
         </div>
       )}
 
-      {/* MODAL REGISTRO RÁPIDO DE CLIENTE (POS) */}
       {showQuickClientModal && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
           <div className="modal-content" style={{ width: '400px' }}>
             <div className="modal-header">
               <h3>Registro Rápido de Cliente</h3>
-              <button className="btn-close-modal" onClick={() => { setShowQuickClientModal(false); setClientDoc(''); setClientName(''); }}>
-                <X size={20} />
-              </button>
+              <button className="btn-close-modal" onClick={() => { setShowQuickClientModal(false); setClientDoc(''); setClientName(''); }}><X size={20} /></button>
             </div>
             <form onSubmit={(e) => handleAddClient(e, true)}>
               <div className="modal-body fiskal-form">
@@ -2969,15 +4352,12 @@ function App() {
         </div>
       )}
 
-      {/* MODAL DETALLE DE FACTURA */}
       {showInvoiceModal && selectedInvoice && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
           <div className="modal-content" style={{ width: '500px' }}>
             <div className="modal-header">
-              <h3>Factura #{selectedInvoice.id.toString().startsWith('local') ? 'Pendiente' : selectedInvoice.id}</h3>
-              <button className="btn-close-modal" onClick={() => setShowInvoiceModal(false)}>
-                <X size={20} />
-              </button>
+              <h3>Factura #{String(selectedInvoice.id).startsWith('local') ? 'Pendiente' : selectedInvoice.id}</h3>
+              <button className="btn-close-modal" onClick={() => setShowInvoiceModal(false)}><X size={20} /></button>
             </div>
             <div className="modal-body fiskal-form" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '13px', color: '#495057' }}>
@@ -2995,12 +4375,7 @@ function App() {
               <div className="table-responsive" style={{ marginBottom: '16px' }}>
                 <table className="receipt-table">
                   <thead>
-                    <tr>
-                      <th>Cant</th>
-                      <th>Producto</th>
-                      <th>Precio Unit</th>
-                      <th>Subtotal</th>
-                    </tr>
+                    <tr><th>Cant</th><th>Producto</th><th>Precio Unit</th><th>Subtotal</th></tr>
                   </thead>
                   <tbody>
                     {selectedInvoice.items?.map((item, idx) => (
@@ -3017,13 +4392,11 @@ function App() {
 
               <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '6px' }}>
-                  <span>Total Facturado:</span>
-                  <strong>${selectedInvoice.total_usd.toFixed(2)}</strong>
+                  <span>Total Facturado:</span><strong>${selectedInvoice.total_usd.toFixed(2)}</strong>
                 </div>
                 {selectedInvoice.balance_due_usd > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#fa5252' }}>
-                    <span>Saldo Pendiente:</span>
-                    <strong>${selectedInvoice.balance_due_usd.toFixed(2)}</strong>
+                    <span>Saldo Pendiente:</span><strong>${selectedInvoice.balance_due_usd.toFixed(2)}</strong>
                   </div>
                 )}
               </div>
@@ -3048,48 +4421,33 @@ function App() {
         </div>
       )}
 
-      {/* MODALES ADICIONALES (Caja, WhatsApp, Pagos, Facturas, etc.) */}
       {showOpenShiftModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ width: '420px' }}>
+          <div className="modal-content" style={{ width: '460px' }}>
             <div className="modal-header">
               <h3>Apertura de Caja / Turno</h3>
-              <button className="btn-close-modal" onClick={() => setShowOpenShiftModal(false)}>
-                <X size={20} />
-              </button>
+              <button className="btn-close-modal" onClick={() => setShowOpenShiftModal(false)}><X size={20} /></button>
             </div>
             <form onSubmit={handleOpenShift}>
               <div className="modal-body fiskal-form">
                 <div className="form-group">
                   <label>Seleccionar Caja Física</label>
-                  <select 
-                    value={selectedRegisterIdForOpen} 
-                    onChange={(e) => setSelectedRegisterIdForOpen(e.target.value)}
-                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', background: '#fff' }}
-                    required
-                  >
+                  <select value={selectedRegisterIdForOpen} onChange={(e) => setSelectedRegisterIdForOpen(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', background: '#fff' }} required>
                     {registers.length === 0 && <option value="">-- No hay cajas configuradas --</option>}
-                    {registers.map(reg => (
-                      <option key={reg.id} value={reg.id}>
-                        {reg.name} {reg.is_main ? '⭐ (Caja Principal)' : ''}
-                      </option>
-                    ))}
+                    {registers.map(reg => (<option key={reg.id} value={reg.id}>{reg.name} {reg.is_main ? '⭐ (Caja Principal)' : ''}</option>))}
                   </select>
                 </div>
-                <div className="form-group">
-                  <label>Fondo de Cambio Inicial ($ USD)</label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={openingFloat} 
-                    onChange={(e) => setOpeningFloat(e.target.value)} 
-                    placeholder="Ej. 50.00" 
-                    required 
-                  />
-                  <span style={{ fontSize: '11px', color: '#6c757d', marginTop: '4px' }}>
-                    Dinero físico en dólares con el que arranca esta caja hoy.
-                  </span>
+                <div className="payment-inputs-grid">
+                  <div className="form-group">
+                    <label>Efectivo Inicial ($ USD)</label>
+                    <input type="number" step="0.01" value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)} placeholder="0.00" required />
+                  </div>
+                  <div className="form-group">
+                    <label>Efectivo Inicial (Bs VES)</label>
+                    <input type="number" step="0.01" value={openingFloatVes} onChange={(e) => setOpeningFloatVes(e.target.value)} placeholder="0.00" required />
+                  </div>
                 </div>
+                <span style={{ fontSize: '11px', color: '#6c757d', marginTop: '4px' }}>Dinero físico disponible en caja para ambas denominaciones al arrancar el turno.</span>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn-secondary" onClick={() => setShowOpenShiftModal(false)}>Cancelar</button>
@@ -3102,49 +4460,34 @@ function App() {
 
       {showCloseShiftModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ width: '450px' }}>
+          <div className="modal-content" style={{ width: '460px' }}>
             <div className="modal-header">
               <h3>Cierre de Turno ({getCurrentRegisterName()})</h3>
-              <button className="btn-close-modal" onClick={() => setShowCloseShiftModal(false)}>
-                <X size={20} />
-              </button>
+              <button className="btn-close-modal" onClick={() => setShowCloseShiftModal(false)}><X size={20} /></button>
             </div>
             <div className="modal-body">
               <div className="payment-summary-box">
-                <div>
-                  <span>Efectivo Esperado:</span>
-                  <h2>${(currentShift ? currentShift.opening_float_usd + shiftCashUSD : 0).toFixed(2)}</h2>
+                <div><span>Efectivo Esperado (USD):</span><h2>${(currentShift ? currentShift.opening_float_usd + shiftCashUSD + (shiftCashBs / (bcvRate || 1)) : 0).toFixed(2)}</h2></div>
+              </div>
+              <div className="payment-inputs-grid" style={{ marginBottom: '16px' }}>
+                <div className="form-group">
+                  <label>Efectivo Físico Contado ($ USD)</label>
+                  <input type="number" step="0.01" value={actualCashUSD} onChange={(e) => setActualCashUSD(e.target.value)} placeholder="0.00" required />
+                </div>
+                <div className="form-group">
+                  <label>Efectivo Físico Contado (Bs VES)</label>
+                  <input type="number" step="0.01" value={actualCashBs} onChange={(e) => setActualCashBs(e.target.value)} placeholder="0.00" required />
                 </div>
               </div>
-              <div className="form-group" style={{ marginBottom: '16px' }}>
-                <label>Efectivo Físico Contado ($ USD)</label>
-                <input 
-                  type="number" 
-                  step="0.01" 
-                  value={actualCashCounted} 
-                  onChange={(e) => setActualCashCounted(e.target.value)} 
-                  placeholder="0.00" 
-                  required 
-                />
-                <span style={{ fontSize: '11px', color: '#6c757d', marginTop: '4px' }}>
-                  Cuenta los billetes reales en gaveta e ingrésalos aquí.
-                </span>
-              </div>
+              <span style={{ fontSize: '11px', color: '#6c757d', display: 'block', marginBottom: '16px' }}>Cuenta los billetes reales en gaveta de ambas monedas para un arqueo exacto.</span>
               <div className="form-group">
                 <label>Notas u Observaciones (Opcional)</label>
-                <input 
-                  type="text" 
-                  value={shiftNotes} 
-                  onChange={(e) => setShiftNotes(e.target.value)} 
-                  placeholder="Ej. Sin novedad / Retiro de $20" 
-                />
+                <input type="text" value={shiftNotes} onChange={(e) => setShiftNotes(e.target.value)} placeholder="Ej. Sin novedad / Retiro de $20" />
               </div>
             </div>
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setShowCloseShiftModal(false)}>Cancelar</button>
-              <button type="button" className="btn-primary" onClick={handleCloseShift} style={{ background: '#fa5252' }}>
-                Confirmar Cierre de Turno
-              </button>
+              <button type="button" className="btn-primary" onClick={handleCloseShift} style={{ background: '#fa5252' }}>Confirmar Cierre de Turno</button>
             </div>
           </div>
         </div>
@@ -3154,30 +4497,23 @@ function App() {
         <div className="modal-overlay">
           <div className="modal-content label-modal-content">
             <div className="modal-header">
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <QrCode size={18} /> Etiqueta de Producto
-              </h3>
-              <button className="btn-close-modal" onClick={() => setShowLabelModal(false)}>
-                <X size={20} />
-              </button>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><QrCode size={18} /> Etiqueta de Producto</h3>
+              <button className="btn-close-modal" onClick={() => setShowLabelModal(false)}><X size={20} /></button>
             </div>
             <div className="modal-body label-print-area" style={{ textAlign: 'center', padding: '24px' }}>
-              <div className="store-tag-header">FISKAL STORE</div>
+              <div className="store-tag-header">{currentStoreName.toUpperCase()}</div>
               <h2 className="tag-product-name">{labelProduct.name}</h2>
               <div className="tag-qr-container">
                 <img 
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`ID:${labelProduct.id}|PROD:${labelProduct.name}|PRECIO:$${labelProduct.price.toFixed(2)}`)}`} 
-                  alt="QR Producto" 
-                  style={{ width: '160px', height: '160px', margin: '12px auto', display: 'block' }}
+                  alt="QR Producto" style={{ width: '160px', height: '160px', margin: '12px auto', display: 'block' }}
                 />
               </div>
               <div className="tag-price-box">
                 <span className="tag-currency">USD</span>
                 <span className="tag-price-value">${labelProduct.price.toFixed(2)}</span>
               </div>
-              <div style={{ fontSize: '11px', color: '#6c757d', marginTop: '6px' }}>
-                Escanea para consultar o pagar referencialmente
-              </div>
+              <div style={{ fontSize: '11px', color: '#6c757d', marginTop: '6px' }}>Escanea para consultar o pagar referencialmente</div>
             </div>
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setShowLabelModal(false)}>Cerrar</button>
@@ -3220,8 +4556,29 @@ function App() {
                 <div>
                   <span>Total a Pagar:</span>
                   <h2>${totalUSD.toFixed(2)}</h2>
+                  <span style={{ fontSize: '13px', color: '#6c757d', fontWeight: '600' }}>Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               </div>
+
+              <div className="payment-status-box" style={{ marginBottom: '16px' }}>
+                <div className="status-row">
+                  <span>Total Pagado:</span>
+                  <strong>${totalPaidUSD.toFixed(2)} (Bs. {(totalPaidUSD * bcvRate).toFixed(2)})</strong>
+                </div>
+                <div className="status-row">
+                  <span>Restante / Falta:</span>
+                  <strong style={{ color: remainingUSD > 0 ? '#fa5252' : '#2b8a3e' }}>
+                    ${remainingUSD.toFixed(2)} (Bs. {remainingBs.toFixed(2)})
+                  </strong>
+                </div>
+                {changeUSD > 0 && (
+                  <div className="status-row highlight" style={{ color: '#2b8a3e' }}>
+                    <span>Cambio / Vuelto:</span>
+                    <strong>${changeUSD.toFixed(2)} (Bs. {changeBs.toFixed(2)})</strong>
+                  </div>
+                )}
+              </div>
+
               <div className="payment-inputs-grid">
                 <div className="form-group">
                   <label>Efectivo ($ USD)</label>
@@ -3251,9 +4608,7 @@ function App() {
             </div>
             <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               {!settlingSale && (
-                <button className="btn-secondary" onClick={handleCreditCheckout} style={{ borderColor: '#fa5252', color: '#fa5252' }}>
-                  Pasar a Crédito
-                </button>
+                <button className="btn-secondary" onClick={handleCreditCheckout} style={{ borderColor: '#fa5252', color: '#fa5252' }}>Pasar a Crédito</button>
               )}
               <div style={{ display: 'flex', gap: '8px', marginLeft: settlingSale ? 'auto' : '0' }}>
                 <button className="btn-secondary" onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}>Cancelar</button>
