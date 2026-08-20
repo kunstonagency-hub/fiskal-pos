@@ -1192,7 +1192,7 @@ function App() {
     setShowPreInvoiceModal(true);
   };
 
-  const generateCustomSaaSInvoice = async () => {
+const generateCustomSaaSInvoice = async () => {
     if (!preInvoiceStore) return;
     
     const doc = new jsPDF();
@@ -1210,33 +1210,23 @@ function App() {
     let currentY = 20;
 
     try {
-      // Intentamos agregar el logo nativo de la app directamente desde el asset local.
-      // NOTA TÉCNICA: jsPDF NO soporta nativamente formato .SVG.
-      // Si el entorno te arroja un error en la consola o el logo no aparece, 
-      // debes convertir tu archivo logo_2.svg a logo_2.png en la carpeta assets 
-      // y actualizar la importación arriba.
-      doc.addImage(logoDark, 'PNG', 14, currentY - 5, 30, 30);
-      currentY += 35;
+      // Usamos dimensiones proporcionales (ancho 35, alto automático o proporcional) para que no se estire
+      doc.addImage(logoDark, 'PNG', 14, currentY, 35, 12);
+      currentY += 18; // Reducimos espacio vertical ya que el logo es más compacto
     } catch (e) {
-      console.warn("No se pudo renderizar el logo en el PDF. Posible formato no soportado (SVG). Se recomienda usar PNG.", e);
+      console.warn("No se pudo renderizar el logo en el PDF.", e);
       currentY += 10;
     }
 
-    // Encabezado Personalizado
-    doc.setFontSize(22);
-    doc.setTextColor(43, 138, 62); // Verde Fiskal
-    doc.text("FISKAL", 14, currentY);
-    currentY += 8;
+    // Eliminamos el texto "FISKAL" duplicado y dejamos directo el subtítulo
+    doc.setFontSize(10);
+    doc.setTextColor(100);
 
     if (saasInvoiceHeader) {
-      doc.setFontSize(10);
-      doc.setTextColor(100);
       const splitHeader = doc.splitTextToSize(saasInvoiceHeader, 180);
       doc.text(splitHeader, 14, currentY);
       currentY += (splitHeader.length * 5) + 5;
     } else {
-      doc.setFontSize(10);
-      doc.setTextColor(100);
       doc.text("Recibo de Servicios SaaS", 14, currentY);
       currentY += 10;
     }
@@ -1312,14 +1302,13 @@ function App() {
     doc.save(fileName);
     setShowPreInvoiceModal(false);
     
-    // Preguntar por envío vía WhatsApp
-    if(window.confirm(`El archivo ${fileName} se ha descargado.\n\nPor políticas de seguridad de WhatsApp, los PDFs deben adjuntarse manualmente.\n\n¿Deseas abrir WhatsApp Web ahora para enviar un mensaje de texto al cliente y adjuntarle su recibo?`)) {
+    if(window.confirm(`El archivo ${fileName} se ha descargado.\n\n¿Deseas abrir WhatsApp Web ahora para enviar un mensaje al cliente?`)) {
        const phone = formatWhatsAppNumber(store.phone);
        if (!phone) {
          alert("El comercio no tiene un teléfono registrado para abrir WhatsApp.");
          return;
        }
-       const msg = `¡Hola ${store.owner_name || store.name}! Te escribimos del equipo de Fiskal. Hemos generado el recibo en PDF de tu factura por un total de $${totalToPay.toFixed(2)}. Te lo envío adjunto a este mensaje. ¡Gracias por confiar en nosotros!`;
+       const msg = `¡Hola ${store.owner_name || store.name}! Te escribimos del equipo de Fiskal. Hemos generado el recibo en PDF de tu factura por un total de $${totalToPay.toFixed(2)}. ¡Gracias por confiar en nosotros!`;
        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
     }
   };
