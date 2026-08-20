@@ -6,7 +6,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import './App.css';
-import logoDark from './assets/logo_2.svg'; 
+import logoDark from './assets/logo_2.png'; 
 import logoLight from './assets/logo.svg'; 
 
 const venezuelaCitiesMap = {
