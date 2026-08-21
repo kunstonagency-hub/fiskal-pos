@@ -128,6 +128,12 @@ function App() {
   const [currentUserRole, setCurrentUserRole] = useState('cajero');
   const [currentStoreId, setCurrentStoreId] = useState(null);
   const [currentStoreName, setCurrentStoreName] = useState('Fiskal Store');
+  
+  // NUEVOS ESTADOS: Máscaras y Tipos de Comercio
+  const [currentStoreType, setCurrentStoreType] = useState('standard'); // 'standard' | 'restaurant'
+  const [adminDemoMask, setAdminDemoMask] = useState('standard'); // Para la demo del super_admin
+  const [selectedRestaurantCategory, setSelectedRestaurantCategory] = useState(null); 
+  
   const [adminStores, setAdminStores] = useState([]);
   const [employees, setEmployees] = useState([]);
 
@@ -153,6 +159,7 @@ function App() {
   const [newVendorEmail, setNewVendorEmail] = useState('');
   const [newVendorPhone, setNewVendorPhone] = useState('');
   const [creatingVendor, setCreatingVendor] = useState(false);
+  
   const [showVendorStoreModal, setShowVendorStoreModal] = useState(false);
   const [vendorStoreName, setVendorStoreName] = useState('');
   const [vendorStoreRif, setVendorStoreRif] = useState('');
@@ -160,6 +167,8 @@ function App() {
   const [vendorOwnerPhone, setVendorOwnerPhone] = useState('');
   const [vendorOwnerEmail, setVendorOwnerEmail] = useState('');
   const [vendorPaidAdvance, setVendorPaidAdvance] = useState(false);
+  const [vendorNewStoreType, setVendorNewStoreType] = useState('standard'); // Selector para Vendedores de Sistema
+
   const [showDailyTrialAlert, setShowDailyTrialAlert] = useState(false);
   const [trialAlertData, setTrialAlertData] = useState({ isTrial: true, daysLeft: 10, expired: false });
 
@@ -180,6 +189,112 @@ function App() {
   const [storeState, setStoreState] = useState('');
   const [storePaidAdvance, setStorePaidAdvance] = useState(false);
   const [storeCustomDiscount, setStoreCustomDiscount] = useState(0); 
+  const [newStoreType, setNewStoreType] = useState('standard'); // Selector para Super Admin
+
+  const [productModifiers, setProductModifiers] = useState(['Cebolla', 'Papa', 'Queso', 'Salsas']); // Etiquetas base
+  const [newModifierText, setNewModifierText] = useState(''); // Texto para agregar nueva etiqueta
+  const [showModifierModal, setShowModifierModal] = useState(false);
+  const [productForModifiers, setProductForModifiers] = useState(null);
+  const [dynamicToggles, setDynamicToggles] = useState({}); // Toggles dinámicos
+
+const confirmAddToCartWithModifiers = () => {
+  if (!productForModifiers) return;
+
+  // 1. Definimos primero el identificador único para evitar errores de referencia
+  const cartItemId = `${productForModifiers.id}_mod_${Date.now()}`;
+
+  // 2. Verificamos cuáles desmarcó el usuario (los que están en false)
+  const excluded = Object.keys(dynamicToggles).filter(k => !dynamicToggles[k]);
+  let customizationText = "Con todo";
+  
+  if (excluded.length > 0) {
+    customizationText = excluded.map(item => `Sin ${item}`).join(', ');
+  }
+
+  // 3. Creamos el ítem para añadirlo al carrito con todas sus propiedades seguras
+  const itemToAdd = {
+    ...productForModifiers,
+    cartItemId,
+    quantity: 1,
+    customization: customizationText
+  };
+
+  setCart([...cart, itemToAdd]);
+  setShowModifierModal(false);
+  setProductForModifiers(null);
+};
+
+  const handleOpenModifierModal = (prod) => {
+    setProductForModifiers(prod);
+    
+    // Leemos las etiquetas que guardaste en este producto específico
+    let modsArray = ['Cebolla', 'Papa', 'Queso', 'Salsas'];
+    if (prod.modifiers) {
+      modsArray = typeof prod.modifiers === 'string' 
+        ? prod.modifiers.split(',').map(s => s.trim()).filter(Boolean) 
+        : prod.modifiers;
+    }
+
+    // Por defecto todos empiezan marcados ("Con todo")
+    const initialToggles = {};
+    modsArray.forEach(m => {
+      initialToggles[m] = true;
+    });
+
+    setDynamicToggles(initialToggles);
+    setShowModifierModal(true);
+  };
+
+const handleOpenWeightModal = (prod) => {
+  setProductForWeight(prod);
+  setWeightValue('1');
+  setWeightUnit(prod.modifiers && prod.modifiers[0] ? prod.modifiers[0] : 'kg');
+  setShowWeightModal(true);
+};
+
+const confirmAddToCartWithWeight = () => {
+  if (!productForWeight) return;
+  const val = parseFloat(weightValue) || 0;
+  if (val <= 0) return;
+
+  let finalItemPrice = productForWeight.price;
+  let weightLabel = `${val} Kg`;
+
+  if (weightUnit === 'g') {
+    finalItemPrice = productForWeight.price * (val / 1000);
+    weightLabel = `${val} g`;
+  } else {
+    finalItemPrice = productForWeight.price * val;
+  }
+
+  const weightedItem = {
+    ...productForWeight,
+    cartId: `${productForWeight.id}_weight_${Date.now()}`,
+    price: finalItemPrice,
+    quantity: 1,
+    customNote: `Peso: ${weightLabel} (Base: $${productForWeight.price.toFixed(2)}/${weightUnit})`
+  };
+
+  setCart([...cart, weightedItem]);
+  setShowWeightModal(false);
+  setProductForWeight(null);
+};
+
+  const addProductModifierTag = () => {
+    if (!newModifierText.trim()) return;
+    if (productModifiers.includes(newModifierText.trim())) return;
+    setProductModifiers([...productModifiers, newModifierText.trim()]);
+    setNewModifierText('');
+  };
+
+  const removeProductModifierTag = (tagToRemove) => {
+    setProductModifiers(productModifiers.filter(t => t !== tagToRemove));
+  };
+
+  const [showWeightModal, setShowWeightModal] = useState(false);
+  const [productForWeight, setProductForWeight] = useState(null);
+  const [weightValue, setWeightValue] = useState('1');
+  const [weightUnit, setWeightUnit] = useState('kg');
 
   const [showOwnerModal, setShowOwnerModal] = useState(false);
   const [targetStoreForOwner, setTargetStoreForOwner] = useState(null);
@@ -297,6 +412,7 @@ function App() {
       } else {
         setCurrentStoreId(null);
         setCurrentStoreName('Fiskal Store');
+        setCurrentStoreType('standard');
         setCurrentUserRole('cajero');
         setProducts([]);
         setSales([]);
@@ -337,7 +453,8 @@ function App() {
     }
   }, [isOnline]);
 
-  const loadGlobalSaasSettings = async () => {
+// =================== FIN DEL BLOQUE 1 ===================
+const loadGlobalSaasSettings = async () => {
     if(!navigator.onLine) return;
     try {
       const { data: priceData } = await supabase.from('settings').select('value').eq('key', 'base_monthly_price').maybeSingle();
@@ -382,8 +499,9 @@ function App() {
     const finalDiscountPercent = Math.max(globalPromoDiscount || 0, customDiscount || 0);
     return baseMonthlyPrice * (1 - (finalDiscountPercent / 100));
   };
+
   const checkStoreTrialAndExpiration = async (storeId) => {
-    if (!storeId) return;
+    if (!storeId || storeId === 'null' || storeId === 'undefined') return;
     const sessionKey = `fiskal_trial_shown_${storeId}`;
     if (sessionStorage.getItem(sessionKey)) return;
 
@@ -414,7 +532,7 @@ function App() {
     }
   };
 
-  const fetchUserProfileAndStore = async (user) => {
+const fetchUserProfileAndStore = async (user) => {
     try {
       let profile;
       if (navigator.onLine) {
@@ -443,33 +561,43 @@ function App() {
           fetchAdminStores();
           fetchSystemVendors();
           fetchSaasTransactions();
-          const { data: defaultStore } = await supabase.from('stores').select('id, name').eq('name', 'Mi Comercio Nuevo').maybeSingle();
-          if (defaultStore) {
-            activeStoreId = defaultStore.id;
-            setCurrentStoreName(defaultStore.name);
-            localStorage.setItem(`fiskal_cache_store_name_${activeStoreId}`, defaultStore.name);
+          
+          // Buscamos prioritariamente un comercio que contenga productos guardados para el super_admin
+          const { data: prodStore } = await supabase.from('products').select('store_id').limit(1).maybeSingle();
+          if (prodStore && prodStore.store_id) {
+            activeStoreId = prodStore.store_id;
+          } else if (!activeStoreId) {
+            const { data: realStore } = await supabase.from('stores').select('id, name, store_type').order('created_at', { ascending: true }).limit(1).maybeSingle();
+            if (realStore) {
+              activeStoreId = realStore.id;
+            }
           }
+        }
+      }
+
+      if (activeStoreId && activeStoreId !== 'null' && activeStoreId !== 'undefined') {
+        if (navigator.onLine) {
+          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active, store_type').eq('id', activeStoreId).single();
+          
+          if (storeInfo) {
+            if (storeInfo.is_active === false) {
+              alert("⚠️ Este comercio se encuentra suspendido por la administración. Acceso denegado.");
+              await supabase.auth.signOut();
+              return;
+            }
+            if (storeInfo.name) {
+              setCurrentStoreName(storeInfo.name);
+              setCurrentStoreType(storeInfo.store_type || 'standard');
+              localStorage.setItem(`fiskal_cache_store_name_${activeStoreId}`, storeInfo.name);
+              localStorage.setItem(`fiskal_cache_store_type_${activeStoreId}`, storeInfo.store_type || 'standard');
+            }
+          }
+          checkStoreTrialAndExpiration(activeStoreId);
         } else {
           const cachedName = localStorage.getItem(`fiskal_cache_store_name_${activeStoreId}`);
           if (cachedName) setCurrentStoreName(cachedName);
-        }
-      } else if (profile.store_id) {
-        if (navigator.onLine) {
-          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active').eq('id', profile.store_id).single();
-          
-          if (storeErr || !storeInfo || storeInfo.is_active === false) {
-            alert("⚠️ Este comercio se encuentra suspendido por la administración. Acceso denegado.");
-            await supabase.auth.signOut();
-            return;
-          }
-          if (storeInfo && storeInfo.name) {
-            setCurrentStoreName(storeInfo.name);
-            localStorage.setItem(`fiskal_cache_store_name_${profile.store_id}`, storeInfo.name);
-          }
-          checkStoreTrialAndExpiration(profile.store_id);
-        } else {
-          const cachedName = localStorage.getItem(`fiskal_cache_store_name_${profile.store_id}`);
-          if (cachedName) setCurrentStoreName(cachedName);
+          const cachedType = localStorage.getItem(`fiskal_cache_store_type_${activeStoreId}`);
+          if (cachedType) setCurrentStoreType(cachedType);
         }
       }
 
@@ -626,7 +754,8 @@ function App() {
         system_vendor_id: vendorId,
         registration_paid: vendorPaidAdvance,
         monthly_price_agreed: priceToLock,
-        custom_discount: globalPromoDiscount
+        custom_discount: globalPromoDiscount,
+        store_type: vendorNewStoreType
       }]).select().single();
 
       if (storeErr) throw storeErr;
@@ -659,6 +788,7 @@ function App() {
       setVendorOwnerPhone('');
       setVendorOwnerEmail('');
       setVendorPaidAdvance(false);
+      setVendorNewStoreType('standard');
       setShowVendorStoreModal(false);
       
       if(currentUserRole === 'super_admin') {
@@ -776,7 +906,8 @@ function App() {
               is_trial: true, 
               trial_end_date: trialEnd,
               monthly_price_agreed: baseMonthlyPrice,
-              custom_discount: globalPromoDiscount 
+              custom_discount: globalPromoDiscount,
+              store_type: 'standard'
             }])
             .select().single();
             
@@ -863,7 +994,7 @@ function App() {
 
   const fetchAdminStores = async () => {
     try {
-      const { data, error } = await supabase.from('stores').select('*, system_vendors(name)').order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('stores').select('*, system_vendors!system_vendor_id(name)').order('created_at', { ascending: false });
       if (error) throw error;
       setAdminStores(data || []);
     } catch (error) {
@@ -987,6 +1118,7 @@ function App() {
       alert("Error al registrar caja: " + error.message);
     }
   };
+  
   const handleDeleteRegister = async (regId) => {
     if (registers.length <= 1) {
       alert("Debes tener al menos una caja registrada en tu comercio.");
@@ -1035,6 +1167,7 @@ function App() {
     setStoreState(store.state || '');
     setStorePaidAdvance(false);
     setStoreCustomDiscount(store.custom_discount !== undefined && store.custom_discount !== null ? store.custom_discount : globalPromoDiscount);
+    setNewStoreType(store.store_type || 'standard');
   };
 
   const resetStoreForm = () => {
@@ -1050,6 +1183,7 @@ function App() {
     setStoreState('');
     setStorePaidAdvance(false);
     setStoreCustomDiscount(0);
+    setNewStoreType('standard');
   };
 
   const handleSaveStore = async (e) => {
@@ -1072,11 +1206,13 @@ function App() {
 
     try {
       if (editingStore) {
-        const { error } = await supabase.from('stores').update(payload).eq('id', editingStore.id);
+        const updatePayload = { ...payload, store_type: newStoreType };
+        const { error } = await supabase.from('stores').update(updatePayload).eq('id', editingStore.id);
         if (error) throw error;
         alert("¡Comercio actualizado exitosamente!");
         if (editingStore.id === currentStoreId) {
           setCurrentStoreName(storeName.trim());
+          setCurrentStoreType(newStoreType);
         }
       } else {
         const trialEnd = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
@@ -1095,7 +1231,8 @@ function App() {
           is_trial: isTrial, 
           trial_end_date: trialEnd,
           subscription_expires_at: subEnd,
-          monthly_price_agreed: priceToLock
+          monthly_price_agreed: priceToLock,
+          store_type: newStoreType
         }]).select().single();
         
         if (error) throw error;
@@ -1192,7 +1329,7 @@ function App() {
     setShowPreInvoiceModal(true);
   };
 
-const generateCustomSaaSInvoice = async () => {
+  const generateCustomSaaSInvoice = async () => {
     if (!preInvoiceStore) return;
     
     const doc = new jsPDF();
@@ -1210,24 +1347,19 @@ const generateCustomSaaSInvoice = async () => {
     let currentY = 20;
 
     try {
-      // Obtenemos las dimensiones reales del archivo PNG importado
-      const imgWidth = logoDark.width || 1590; // Ancho original de tu imagen
-      const imgHeight = logoDark.height || 461; // Alto original de tu imagen
+      const imgWidth = logoDark.width || 1590; 
+      const imgHeight = logoDark.height || 461; 
       
-      // Definimos un ancho fijo deseado para el PDF (por ejemplo, 35 mm)
       const pdfImageWidth = 35;
-      
-      // Calculamos la altura proporcional exacta para evitar deformaciones
       const pdfImageHeight = (imgHeight * pdfImageWidth) / imgWidth;
 
       doc.addImage(logoDark, 'PNG', 14, currentY, pdfImageWidth, pdfImageHeight);
-      currentY += pdfImageHeight + 6; // Espacio dinámico basado en el alto real
+      currentY += pdfImageHeight + 6; 
     } catch (e) {
       console.warn("No se pudo renderizar el logo en el PDF.", e);
       currentY += 10;
     }
 
-    // Eliminamos el texto "FISKAL" duplicado y dejamos directo el subtítulo
     doc.setFontSize(10);
     doc.setTextColor(100);
 
@@ -1240,7 +1372,6 @@ const generateCustomSaaSInvoice = async () => {
       currentY += 10;
     }
     
-    // Datos del Cliente
     doc.setFontSize(12);
     doc.setTextColor(0);
     doc.text(`Comercio: ${store.name}`, 14, currentY);
@@ -1249,7 +1380,6 @@ const generateCustomSaaSInvoice = async () => {
     doc.text(`Fecha de Emisión: ${new Date().toLocaleDateString()}`, 14, currentY + 18);
     currentY += 28;
     
-    // Configurar Tabla
     const tableColumn = ["Descripción", "Precio Base", "Descuentos", "Subtotal"];
     const tableRows = [];
     
@@ -1289,12 +1419,10 @@ const generateCustomSaaSInvoice = async () => {
     
     const finalY = doc.lastAutoTable.finalY || currentY;
     
-    // Totales
     doc.setFontSize(14);
     doc.setTextColor(0);
     doc.text(`Total Facturado: $${totalToPay.toFixed(2)}`, 14, finalY + 15);
     
-    // Pie de página
     if (saasInvoiceFooter) {
       doc.setFontSize(9);
       doc.setTextColor(120);
@@ -1306,7 +1434,6 @@ const generateCustomSaaSInvoice = async () => {
       doc.text("¡Gracias por confiar en Fiskal para la gestión de su negocio!", 14, finalY + 30);
     }
     
-    // Guardar Documento
     const fileName = `Recibo_Fiskal_${store.name.replace(/\s+/g, '_')}.pdf`;
     doc.save(fileName);
     setShowPreInvoiceModal(false);
@@ -1558,7 +1685,7 @@ const generateCustomSaaSInvoice = async () => {
       let finalCloudProducts = cloudProducts.filter(p => !deletedIds.includes(p.id));
 
       const updateActions = actions.filter(a => a.type === 'UPDATE_SALE');
-      // Fix bug: Should filter UPDATE_PRODUCT not UPDATE_SALE
+      // Corrección del bug: se filtran las actualizaciones de producto correctamente
       const productUpdateActions = actions.filter(a => a.type === 'UPDATE_PRODUCT');
       finalCloudProducts = finalCloudProducts.map(p => {
         const update = productUpdateActions.find(a => a.productId === p.id);
@@ -1640,6 +1767,7 @@ const generateCustomSaaSInvoice = async () => {
       console.error('Error cargando clientes:', error.message);
     }
   };
+  // =================== FIN DEL BLOQUE 2 ===================
   const checkActiveShift = async () => {
     try {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -1865,6 +1993,7 @@ const generateCustomSaaSInvoice = async () => {
         category: category || 'General',
         barcode: barcode.trim() || null,
         image_url: imageUrl,
+        modifiers: productModifiers.join(', '),
         store_id: currentStoreId
       };
 
@@ -1914,7 +2043,8 @@ const generateCustomSaaSInvoice = async () => {
         stock: parseInt(stock) || 0, 
         category: category || 'General',
         barcode: barcode.trim() || null,
-        image_url: imageUrl
+        image_url: imageUrl,
+        modifiers: productModifiers.join(', ')
       };
 
       if (!isOnline) {
@@ -1951,6 +2081,16 @@ const generateCustomSaaSInvoice = async () => {
     setBarcode(prod.barcode || '');
     setImagePreview(prod.image_url || null);
     setImageFile(null);
+
+    // NUEVO: Cargar las etiquetas de este platillo específico al editar
+    if (prod.modifiers) {
+      const arr = typeof prod.modifiers === 'string' 
+        ? prod.modifiers.split(',').map(s => s.trim()).filter(Boolean) 
+        : prod.modifiers;
+      setProductModifiers(arr);
+    } else {
+      setProductModifiers(['Cebolla', 'Papa', 'Queso', 'Salsas']);
+    }
   };
 
   const resetProductForm = () => {
@@ -1963,6 +2103,8 @@ const generateCustomSaaSInvoice = async () => {
     setBarcode('');
     setImageFile(null);
     setImagePreview(null);
+    setProductModifiers(['Cebolla', 'Papa', 'Queso', 'Salsas']); // <--- Añade esta línea
+    setNewModifierText(''); // <--- Añade esta línea
   };
 
   const handleDeleteProduct = async (id) => {
@@ -2231,8 +2373,11 @@ const generateCustomSaaSInvoice = async () => {
     }
   };
 
-  const removeFromCart = (id) => {
-    setCart(prevCart => prevCart.filter(item => item.id !== id));
+  const removeFromCart = (targetKey) => {
+  setCart(cart.filter(item => {
+    const uniqueKey = item.cartItemId || item.id;
+    return uniqueKey !== targetKey;
+  }));
   };
 
   const updateQuantity = (id, delta) => {
@@ -2674,10 +2819,24 @@ const generateCustomSaaSInvoice = async () => {
     }
   };
 
-  const filteredProductsForCatalog = products.filter(p =>
-    p.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
-    (p.barcode && p.barcode.toLowerCase().includes(productSearchQuery.toLowerCase()))
-  );
+const fastFoodCategories = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas'];
+
+  const filteredProductsForCatalog = products.filter(p => {
+    const matchesQuery = p.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+      (p.barcode && p.barcode.toLowerCase().includes(productSearchQuery.toLowerCase()));
+
+    if (!matchesQuery) return false;
+
+    const cat = (p.category || '').trim().toLowerCase();
+
+    if (currentStoreType === 'restaurant') {
+      // En modo restaurante: ocultamos 'general'
+      return cat !== 'general';
+    } else {
+      // En tienda normal: ocultamos las categorías de comida rápida
+      return !fastFoodCategories.includes(cat);
+    }
+  });
 
   const currentShiftSales = currentShift ? sales.filter(s => s.shift_id === currentShift.id && s.status === 'completed') : [];
   const shiftTotalUSD = currentShiftSales.reduce((sum, s) => sum + s.total_usd, 0);
@@ -2790,7 +2949,8 @@ const generateCustomSaaSInvoice = async () => {
     return { totalIncome, totalExpenses, netProfit, totalPendingComm };
   };
 
-  if (!session) {
+// =================== FIN DEL BLOQUE 3 ===================
+if (!session) {
     return (
       <div className="fiskal-login-container">
         <div className="product-form-card" style={{ width: '400px', maxWidth: '100%', padding: '32px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
@@ -2872,14 +3032,14 @@ const generateCustomSaaSInvoice = async () => {
           <span>Sistema de Gestión</span>
         </div>
         <nav className="nav-menu">
-          <button className={activeTab === 'pos' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('pos'); setSettlingSale(null); setIsSidebarExpanded(false); }}>
-            <ShoppingCart size={20} /> <span>Terminal (POS)</span>
+          <button className={activeTab === 'pos' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('pos'); setSelectedRestaurantCategory(null); setSettlingSale(null); setIsSidebarExpanded(false); }}>
+            <ShoppingCart size={20} /> <span>{currentStoreType === 'restaurant' ? 'Comandas (POS)' : 'Terminal (POS)'}</span>
           </button>
           <button className={activeTab === 'cash' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('cash'); setIsSidebarExpanded(false); }}>
             <Lock size={20} /> <span>Caja / Turnos</span>
           </button>
           <button className={activeTab === 'products' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('products'); resetProductForm(); setIsSidebarExpanded(false); }}>
-            <Package size={20} /> <span>Productos & Stock</span>
+            <Package size={20} /> <span>{currentStoreType === 'restaurant' ? 'Menú & Stock' : 'Productos & Stock'}</span>
           </button>
           <button className={activeTab === 'history' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('history'); setIsSidebarExpanded(false); }}>
             <History size={20} /> <span>Historial</span>
@@ -2888,6 +3048,16 @@ const generateCustomSaaSInvoice = async () => {
             <Users size={20} /> <span>Clientes</span>
           </button>
           
+          {currentStoreType === 'restaurant' && (
+           <button 
+           className={activeTab === 'kds' ? 'nav-btn active' : 'nav-btn'} 
+           onClick={(e) => { e.stopPropagation(); setActiveTab('kds'); }}
+           >
+          <span style={{ fontSize: '18px', display: 'flex', alignItems: 'center', width: '20px', justifyContent: 'center' }}>🍳</span> 
+          <span>KDS Cocina</span>
+          </button>
+        )}
+
           {currentUserRole === 'system_vendor' && (
             <button className={activeTab === 'vendor_portal' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('vendor_portal'); setIsSidebarExpanded(false); }} style={{ color: '#2b8a3e', fontWeight: 'bold' }}>
               <UserPlus size={20} /> <span>Registrar Comercios</span>
@@ -2915,9 +3085,9 @@ const generateCustomSaaSInvoice = async () => {
       <main className="fiskal-main">
         <header className="main-header">
           <h1>
-            {activeTab === 'pos' ? 'Terminal de Venta' : 
+            {activeTab === 'pos' ? (currentStoreType === 'restaurant' ? 'Punto de Venta (Comandas)' : 'Terminal de Venta') : 
              activeTab === 'cash' ? 'Arqueo y Control de Caja' :
-             activeTab === 'products' ? 'Gestión de Productos e Inventario' : 
+             activeTab === 'products' ? (currentStoreType === 'restaurant' ? 'Gestión de Menú e Inventario' : 'Gestión de Productos e Inventario') : 
              activeTab === 'history' ? 'Historial de Ventas' : 
              activeTab === 'clients' ? 'Gestión de Clientes y Rendimiento' : 
              activeTab === 'vendor_portal' ? 'Portal de Vendedor de Sistema (Alta de Comercios)' :
@@ -2950,21 +3120,63 @@ const generateCustomSaaSInvoice = async () => {
             </div>
             
             <div className="exchange-rate-badge">
-              <span>Tasa BCV: <strong>Bs. {bcvRate ? bcvRate.toFixed(2) : '---'}</strong></span>
-              <button className={`btn-sync ${loadingRate ? 'spinning' : ''}`} onClick={() => syncBcvRate(currentStoreId)} title="Sincronizar con BCV" disabled={!isOnline}>
-                <RefreshCw size={14} />
-              </button>
-              {lastSync && <span className="sync-time">{lastSync}</span>}
-            </div>
+      <span>Tasa BCV: <strong>Bs. {bcvRate ? bcvRate.toFixed(2) : '---'}</strong></span>
+      <button className={`btn-sync ${loadingRate ? 'spinning' : ''}`} onClick={() => syncBcvRate(currentStoreId)} title="Sincronizar Tasa">
+        <RefreshCw size={14} />
+      </button>
+      {lastSync && <span className="sync-time">{lastSync}</span>}
+    </div>
+
+    {currentUserRole === 'system_vendor' && (
+      <div style={{ display: 'flex', alignItems: 'center', background: '#e9ecef', padding: '3px', borderRadius: '6px', gap: '2px', marginLeft: 'auto' }}>
+        <button
+          onClick={() => setCurrentStoreType('general')}
+          style={{
+            background: currentStoreType === 'general' ? '#fff' : 'transparent',
+            border: 'none',
+            padding: '4px 10px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            color: currentStoreType === 'general' ? '#212529' : '#6c757d',
+            boxShadow: currentStoreType === 'general' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+            transition: 'all 0.2s'
+          }}
+        >
+          Tienda Estándar
+        </button>
+        <button
+          onClick={() => setCurrentStoreType('restaurant')}
+          style={{
+            background: currentStoreType === 'restaurant' ? '#d9480f' : 'transparent',
+            border: 'none',
+            padding: '4px 10px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            color: currentStoreType === 'restaurant' ? '#fff' : '#6c757d',
+            boxShadow: currentStoreType === 'restaurant' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+            transition: 'all 0.2s'
+          }}
+        >
+          Comida Rápida
+        </button>
+      </div>
+    )}
+            
+            
+
           </div>
         </header>
 
-        <section className="content-area">
-          {activeTab === 'pos' && (
+<section className="content-area">
+           {activeTab === 'pos' && (
             <div className="pos-grid">
               <div className="products-catalog">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                  <h3>Catálogo Rápido</h3>
+                  <h3>{currentStoreType === 'restaurant' ? 'Menú de Platillos' : 'Catálogo Rápido'}</h3>
                   <form onSubmit={handleBarcodeSubmit} style={{ display: 'flex', gap: '6px', width: '300px' }}>
                     <div style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center' }}>
                       <Barcode size={16} style={{ position: 'absolute', left: '10px', top: '10px', color: '#6c757d', zIndex: 2 }} />
@@ -2995,7 +3207,7 @@ const generateCustomSaaSInvoice = async () => {
                     type="text"
                     value={productSearchQuery}
                     onChange={(e) => setProductSearchQuery(e.target.value)}
-                    placeholder="Buscar producto por nombre o SKU manualmente..."
+                    placeholder={currentStoreType === 'restaurant' ? "Buscar platillo, bebida o combo..." : "Buscar producto por nombre o SKU manualmente..."}
                     style={{ width: '100%', padding: '8px 8px 8px 34px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', outline: 'none', background: '#fff' }}
                   />
                 </div>
@@ -3006,36 +3218,125 @@ const generateCustomSaaSInvoice = async () => {
                     <span>La caja se encuentra cerrada. Debes abrir un turno en la pestaña <strong>Caja / Turnos</strong> para poder facturar.</span>
                   </div>
                 )}
-                <div className="catalog-grid">
-                  {filteredProductsForCatalog.length === 0 ? (
-                    <p className="empty-text">No se encontraron productos en el catálogo.</p>
-                  ) : (
-                    filteredProductsForCatalog.map((prod) => (
-                      <div 
-                        key={prod.id} 
-                        className={`product-card ${prod.stock <= 0 ? 'out-of-stock' : ''}`} 
-                        onClick={() => addToCart(prod)}
-                      >
-                        <div className="img-container">
-                          {prod.image_url ? (
-                            <img src={prod.image_url} alt={prod.name} />
-                          ) : (
-                            <Package size={36} strokeWidth={1.5} color="#adb5bd" />
-                          )}
-                        </div>
-                        <div className="product-card-content">
-                          <h4>{prod.name}</h4>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 'auto' }}>
-                            <span className="product-price">${prod.price.toFixed(2)}</span>
-                            <span style={{ fontSize: '11px', background: prod.stock <= 2 ? '#ffe3e3' : '#f8f9fa', color: prod.stock <= 2 ? '#fa5252' : '#495057', padding: '4px 8px', borderRadius: '12px', fontWeight: 'bold', border: '1px solid #e9ecef' }}>
-                              {prod.stock !== undefined ? prod.stock : 0} ud.
-                            </span>
+
+                {currentStoreType === 'restaurant' && !selectedRestaurantCategory ? (
+                  /* VISTA DE CATEGORÍAS DE RESTAURANTE */
+                  <div>
+                    {(() => {
+                      const restaurantProducts = products.filter(p => {
+                        const cat = (p.category || '').trim().toLowerCase();
+                        return cat !== 'general' && cat !== 'por peso';
+                      });
+                      const uniqueCategories = [...new Set(restaurantProducts.map(p => (p.category || 'General').trim()))];
+
+                      if (uniqueCategories.length === 0) {
+                        return (
+                          <div style={{ textAlign: 'center', padding: '40px', background: '#f8f9fa', borderRadius: '8px', border: '1px dashed #ced4da' }}>
+                            <Package size={40} color="#adb5bd" style={{ marginBottom: '12px' }} />
+                            <h4>No hay categorías ni platillos creados</h4>
+                            <p style={{ fontSize: '13px', color: '#6c757d', marginTop: '4px' }}>Ve a la pestaña <strong>Menú & Stock</strong> para registrar tus platillos y asignarles categorías (ej. Hamburguesas, Perros, Bebidas).</p>
                           </div>
+                        );
+                      }
+
+                      return (
+                        <div className="catalog-grid">
+                          {uniqueCategories
+                            .filter(cat => currentStoreType !== 'restaurant' || cat.toLowerCase() !== 'por peso')
+                            .map((cat, idx) => {
+                            const count = restaurantProducts.filter(p => (p.category || '').trim().toLowerCase() === cat.toLowerCase()).length;
+                            return (
+                              <div 
+                                key={idx} 
+                                className="product-card" 
+                                onClick={() => setSelectedRestaurantCategory(cat)}
+                                style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)', border: '2px solid #dee2e6' }}
+                              >
+                                <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+                                  <Store size={28} color="#2b8a3e" />
+                                </div>
+                                <h4 style={{ fontSize: '16px', fontWeight: 'bold', color: '#212529', marginBottom: '4px', textAlign: 'center' }}>{cat}</h4>
+                                <span style={{ fontSize: '12px', color: '#6c757d', background: '#fff', padding: '2px 8px', borderRadius: '10px' }}>{count} platillo{count === 1 ? '' : 's'}</span>
+                              </div>
+                            );
+                          })}
                         </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  /* VISTA DE PLATILLOS (O TIENDA ESTÁNDAR) */
+                  <div>
+                    {currentStoreType === 'restaurant' && (
+                      <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button 
+                          onClick={() => setSelectedRestaurantCategory(null)} 
+                          style={{ background: '#e9ecef', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', color: '#495057' }}
+                        >
+                          ← Volver a Categorías ({selectedRestaurantCategory})
+                        </button>
                       </div>
-                    ))
-                  )}
-                </div>
+                    )}
+
+                    <div className="catalog-grid">
+                      {(() => {
+                        let displayProducts = filteredProductsForCatalog;
+                        
+                        // FILTRO ESTRICTO DE AISLAMIENTO ENTRE MODOS
+                        const fastFoodCats = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas', 'pepitos'];
+                        displayProducts = displayProducts.filter(p => {
+                          const cat = (p.category || '').trim().toLowerCase();
+                          if (currentStoreType === 'restaurant') {
+                            return cat !== 'general' && cat !== 'por peso';
+                          } else {
+                            return !fastFoodCats.includes(cat) && cat !== 'restaurante';
+                          }
+                        });
+
+                        if (currentStoreType === 'restaurant' && selectedRestaurantCategory) {
+                          displayProducts = displayProducts.filter(p => (p.category || '').trim().toLowerCase() === selectedRestaurantCategory.toLowerCase());
+                        }
+
+                        return displayProducts.length === 0 ? (
+                          <p className="empty-text">No se encontraron platillos o productos en esta vista.</p>
+                        ) : (
+                            displayProducts.map((prod) => (
+                            <div 
+                              key={prod.id} 
+                              className={`product-card ${prod.stock <= 0 ? 'out-of-stock' : ''}`} 
+                              onClick={() => {
+                                 if (currentStoreType === 'restaurant') {
+                                 handleOpenModifierModal(prod);
+                                 } else if (prod.category === 'Por Peso') {
+                                     handleOpenWeightModal(prod);
+                                     } else {
+                                    addToCart(prod);
+                                }
+                              }}
+                            >
+                              <div className="img-container">
+                                {prod.image_url ? (
+                                  <img src={prod.image_url} alt={prod.name} />
+                                ) : (
+                                  <Package size={36} strokeWidth={1.5} color="#adb5bd" />
+                                )}
+                              </div>
+                              <div className="product-card-content">
+                                <h4>{prod.name}</h4>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 'auto' }}>
+                                  <span className="product-price">${prod.price.toFixed(2)}</span>
+                                  <span style={{ fontSize: '11px', background: prod.stock <= 2 ? '#ffe3e3' : '#f8f9fa', color: prod.stock <= 2 ? '#fa5252' : '#495057', padding: '4px 8px', borderRadius: '12px', fontWeight: 'bold', border: '1px solid #e9ecef' }}>
+                                    {prod.stock !== undefined ? prod.stock : 0} ud.
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="cart-summary">
@@ -3104,16 +3405,29 @@ const generateCustomSaaSInvoice = async () => {
                     <p className="empty-text">El carrito está vacío.</p>
                   ) : (
                     cart.map(item => (
-                      <div key={item.id} className="cart-item">
+                      <div key={item.cartItemId || item.id} className="cart-item">
                         <div className="cart-item-info">
                           <strong>{item.name}</strong>
+                          {(item.customization || item.customNote) ? (
+                          <span style={{ fontSize: '11px', color: '#fa5252', display: 'block', fontWeight: 'bold' }}>
+                            {item.customization || item.customNote}
+                          </span>
+                        ) : currentStoreType === 'restaurant' ? (
+                          <span style={{ fontSize: '11px', color: '#1c7ed6', display: 'block', fontWeight: 'bold' }}>
+                            Con todo
+                          </span>
+                        
+                        ) : null}
+
                           <span>${item.price.toFixed(2)} c/u</span>
                         </div>
                         <div className="cart-item-controls">
-                          <button onClick={() => updateQuantity(item.id, -1)}><Minus size={14}/></button>
+                          <button onClick={() => updateQuantity(item.cartItemId || item.id, -1)}><Minus size={14}/></button>
                           <span>{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.id, 1)}><Plus size={14}/></button>
-                          <button className="btn-delete" onClick={() => removeFromCart(item.id)}><Trash2 size={14}/></button>
+                          <button onClick={() => updateQuantity(item.cartItemId || item.id, 1)}><Plus size={14}/></button>
+                          <button className="btn-delete" onClick={() => removeFromCart(item.cartItemId || item.id)}>
+                          <Trash2 size={14} />
+                          </button>
                         </div>
                       </div>
                     ))
@@ -3131,7 +3445,7 @@ const generateCustomSaaSInvoice = async () => {
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button className="btn-secondary" onClick={handleHoldOrder} disabled={cart.length === 0 || processing || !currentShift} style={{ flex: 1, fontSize: '13px' }}>
-                      <Clock size={14} /> En Espera
+                      <Clock size={14} /> {currentStoreType === 'restaurant' ? 'A Cocina / Espera' : 'En Espera'}
                     </button>
                     <button className="btn-primary checkout-btn" onClick={() => { setSettlingSale(null); setShowPaymentModal(true); }} disabled={cart.length === 0 || !currentShift} style={{ flex: 2 }}>
                       <CreditCard size={16} /> Cobrar
@@ -3164,6 +3478,15 @@ const generateCustomSaaSInvoice = async () => {
                   <label>RIF / Cédula del Comercio</label>
                   <input type="text" value={vendorStoreRif} onChange={e => setVendorStoreRif(e.target.value)} placeholder="Ej. J-12345678-9" />
                 </div>
+                
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label>Tipo de Interfaz (Máscara) del Cliente</label>
+                  <select value={vendorNewStoreType} onChange={e => setVendorNewStoreType(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}>
+                    <option value="standard">Minimarket / Tienda Estándar</option>
+                    <option value="restaurant">Restaurante / Comida Rápida</option>
+                  </select>
+                </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div className="form-group">
                     <label>Nombre del Dueño</label>
@@ -3193,6 +3516,29 @@ const generateCustomSaaSInvoice = async () => {
 
           {activeTab === 'admin' && currentUserRole === 'super_admin' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+              {/* Selector de Demo para el Super Admin */}
+              <div style={{ background: '#e7f5ff', padding: '16px', borderRadius: '6px', border: '1px solid #74c0fc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Eye size={20} color="#1c7ed6" />
+                  <div>
+                    <h4 style={{ margin: 0, color: '#1971c2' }}>Modo Demostración (Super Admin)</h4>
+                    <span style={{ fontSize: '12px', color: '#495057' }}>Cambia la interfaz para mostrarle a un cliente cómo se ve el sistema.</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button 
+                    onClick={() => setCurrentStoreType('standard')} 
+                    style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '4px', border: currentStoreType === 'standard' ? 'none' : '1px solid #ced4da', background: currentStoreType === 'standard' ? '#1c7ed6' : '#fff', color: currentStoreType === 'standard' ? '#fff' : '#495057', cursor: 'pointer', fontWeight: 'bold' }}>
+                    Tienda Estándar
+                  </button>
+                  <button 
+                    onClick={() => setCurrentStoreType('restaurant')} 
+                    style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '4px', border: currentStoreType === 'restaurant' ? 'none' : '1px solid #ced4da', background: currentStoreType === 'restaurant' ? '#d9480f' : '#fff', color: currentStoreType === 'restaurant' ? '#fff' : '#495057', cursor: 'pointer', fontWeight: 'bold' }}>
+                    Comida Rápida
+                  </button>
+                </div>
+              </div>
               
               {/* TARJETAS FINANCIERAS RESUMEN */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
@@ -3333,6 +3679,15 @@ const generateCustomSaaSInvoice = async () => {
                       <label>RIF del Negocio</label>
                       <input type="text" value={storeRif} onChange={(e) => setStoreRif(e.target.value)} placeholder="Ej. J-12345678-9" />
                     </div>
+                    
+                    <div className="form-group" style={{ marginBottom: '16px' }}>
+                      <label>Tipo de Interfaz (Máscara)</label>
+                      <select value={newStoreType} onChange={(e) => setNewStoreType(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}>
+                        <option value="standard">Minimarket / Tienda Estándar</option>
+                        <option value="restaurant">Restaurante / Comida Rápida</option>
+                      </select>
+                    </div>
+
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                       <div className="form-group">
                         <label>Nombre del Propietario</label>
@@ -3474,7 +3829,10 @@ const generateCustomSaaSInvoice = async () => {
                             <tr key={store.id}>
                               <td>
                                 <strong>{store.name}</strong><br/>
-                                <span style={{ fontSize: '11px', color: '#d9480f' }}>Vendedor: <strong>{store.system_vendors?.name || 'Admin Central'}</strong></span>
+                                <span style={{ fontSize: '11px', color: '#d9480f' }}>Vendedor: <strong>{store.system_vendors?.name || 'Admin Central'}</strong></span><br/>
+                                <span style={{ fontSize: '10px', background: store.store_type === 'restaurant' ? '#ffe8cc' : '#e7f5ff', color: store.store_type === 'restaurant' ? '#d9480f' : '#1971c2', padding: '2px 4px', borderRadius: '4px' }}>
+                                  {store.store_type === 'restaurant' ? 'Restaurante' : 'Estándar'}
+                                </span>
                               </td>
                               <td>
                                 <strong>${finalDisplayPrice.toFixed(2)}</strong><br/>
@@ -3624,33 +3982,59 @@ const generateCustomSaaSInvoice = async () => {
                           <td>{sale.client_name || 'Cliente General'}</td>
                           <td><strong>${sale.total_usd.toFixed(2)}</strong></td>
                           <td>
-                            {sale.status === 'credit' ? (
-                              <span style={{ color: '#fa5252', fontWeight: 'bold' }}>${(sale.balance_due_usd !== undefined ? sale.balance_due_usd : sale.total_usd).toFixed(2)}</span>
-                            ) : (<span>$0.00</span>)}
-                          </td>
-                          <td>
-                            {sale.status === 'credit' ? (
-                              <span className="badge-credit"><AlertCircle size={12}/> Crédito</span>
-                            ) : sale.status === 'pending' ? (
-                              <span className="badge-pending"><Clock size={12}/> En Espera</span>
-                            ) : (
-                              <span className="badge-completed"><CheckCircle size={12}/> Pagada</span>
-                            )}
-                          </td>
-                          <td className="action-cell">
-                            <div className="action-buttons">
-                              {sale.status === 'pending' && (
-                                <button className="btn-icon-success" onClick={() => handleResumeOrder(sale)} title="Retomar cuenta"><Play size={16} /></button>
-                              )}
-                              {sale.status === 'credit' && (
-                                <button className="btn-icon-success" onClick={() => handleStartSettleCredit(sale)} title="Abonar"><DollarSign size={16} /></button>
-                              )}
-                              {sale.status === 'credit' && (
-                                <button className="btn-icon-whatsapp" onClick={() => sendWhatsAppReminder(sale)} title="WhatsApp"><MessageCircle size={16} /></button>
-                              )}
-                              <button className="btn-icon-primary" onClick={() => handleViewInvoice(sale)} title="Ver Factura"><Eye size={18} /></button>
-                            </div>
-                          </td>
+  {sale.status === 'credit' ? (
+    <span className="badge-credit"><AlertCircle size={12}/> Crédito</span>
+  ) : ['pending', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'].includes(String(sale.status).toLowerCase()) ? (
+    <span className="badge-pending"><Clock size={12}/> En Espera</span>
+  ) : (
+    <span className="badge-completed"><CheckCircle size={12}/> Pagada</span>
+  )}
+</td>
+<td className="action-cell">
+  <div className="action-buttons">
+    {/* ACTUALIZADO: Permitir retomar la cuenta si está pendiente, preparando o lista */}
+    {['pending', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'].includes(String(sale.status).toLowerCase()) && (
+      <button className="btn-icon-success" onClick={() => handleResumeOrder(sale)} title="Retomar cuenta"><Play size={16} /></button>
+    )}
+    {sale.status === 'credit' && (
+      <button className="btn-icon-success" onClick={() => handleStartSettleCredit(sale)} title="Abonar"><DollarSign size={16} /></button>
+    )}
+    {sale.status === 'credit' && (
+      <button className="btn-icon-whatsapp" onClick={() => sendWhatsAppReminder(sale)} title="WhatsApp"><MessageCircle size={16} /></button>
+    )}
+    <button className="btn-icon-primary" onClick={() => handleViewInvoice(sale)} title="Ver Factura"><Eye size={18} /></button>
+
+    {/* Botón de Eliminar (Solo para Dueños/Admins) */}
+    {(currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
+      <button 
+        style={{ background: '#fa5252', color: 'white', border: 'none', borderRadius: '4px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        onClick={async (e) => {
+          e.stopPropagation(); 
+          const confirmDelete = window.confirm(`⚠️ ¿ESTÁS SEGURO? Estás a punto de ELIMINAR permanentemente la Factura/Pedido #${String(sale.id).startsWith('local') ? 'Pendiente' : sale.id}. Esta acción no se puede deshacer.`);
+          if (confirmDelete) {
+            try {
+              if (typeof supabase !== 'undefined') {
+                const { error: pErr } = await supabase.from('payment_history').delete().eq('sale_id', sale.id);
+                if (pErr) throw pErr;
+                const { error: sErr } = await supabase.from('sales').delete().eq('id', sale.id);
+                if (sErr) throw sErr;
+              }
+              if (typeof setSales === 'function') {
+                setSales(prevSales => prevSales.filter(s => s.id !== sale.id));
+              }
+            } catch (err) {
+              console.error("Error al eliminar la factura:", err);
+              alert("Hubo un error al eliminar el pedido: " + err.message);
+            }
+          }
+        }} 
+        title="Eliminar Pedido (Solo Dueño)"
+      >
+        <Trash2 size={16} /> 
+      </button>
+    )}
+  </div>
+</td>
                         </tr>
                       ))
                     )}
@@ -3774,10 +4158,10 @@ const generateCustomSaaSInvoice = async () => {
           {activeTab === 'products' && (
             <div className="products-layout">
               <div className="product-form-card">
-                <h3>{editingProduct ? `Editando: ${editingProduct.name}` : 'Agregar Nuevo Producto'}</h3>
+                <h3>{editingProduct ? `Editando: ${editingProduct.name}` : `Agregar Nuevo ${currentStoreType === 'restaurant' ? 'Platillo / Ítem' : 'Producto'}`}</h3>
                 <form onSubmit={editingProduct ? handleUpdateProduct : handleAddProduct} className="fiskal-form">
                   <div className="form-group">
-                    <label>Fotografía del Producto</label>
+                    <label>Fotografía {currentStoreType === 'restaurant' ? 'del Platillo' : 'del Producto'}</label>
                     <div style={{ border: '2px dashed #ced4da', padding: '16px', textAlign: 'center', borderRadius: '6px', background: '#f8f9fa' }}>
                       {imagePreview ? (
                         <div style={{ marginBottom: '10px' }}>
@@ -3794,8 +4178,8 @@ const generateCustomSaaSInvoice = async () => {
                   </div>
 
                   <div className="form-group">
-                    <label>Nombre del Producto</label>
-                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Ej. Harina PAN" />
+                    <label>Nombre {currentStoreType === 'restaurant' ? 'del Platillo' : 'del Producto'}</label>
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder={currentStoreType === 'restaurant' ? "Ej. Hamburguesa Doble" : "Ej. Harina PAN"} />
                   </div>
                   <div className="form-group">
                     <label>Código de Barras / SKU</label>
@@ -3806,13 +4190,107 @@ const generateCustomSaaSInvoice = async () => {
                     <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required placeholder="0.00" />
                   </div>
                   <div className="form-group">
+
                     <label>Stock (Unidades)</label>
                     <input type="number" value={stock} onChange={(e) => setStock(e.target.value)} required placeholder="0" />
                   </div>
                   <div className="form-group">
                     <label>Categoría</label>
-                    <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Víveres" />
+                    <select 
+                      value={
+                        ['General', 'Por Peso', ...products.map(p => (p.category || '').trim())].includes(category) 
+                          ? category 
+                          : 'OTRA'
+                      } 
+                      onChange={(e) => {
+                        if (e.target.value === 'OTRA') {
+                          setCategory(''); 
+                        } else {
+                          setCategory(e.target.value);
+                          if(e.target.value === 'Por Peso') setProductModifiers(['kg']); 
+                        }
+                      }} 
+                      style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', marginBottom: category === 'Por Peso' || !['General', 'Por Peso', ...products.map(p => (p.category || '').trim())].includes(category) ? '8px' : '0' }}
+                    >
+                      <option value="General">General</option>
+                      {currentStoreType !== 'restaurant' && <option value="Por Peso">Por Peso (Balanza)</option>}
+                      
+                      {[...new Set(products.map(p => (p.category || '').trim()).filter(c => c && c !== 'General' && c !== 'Por Peso'))].map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                      
+                      <option value="OTRA" style={{ fontWeight: 'bold', color: '#1c7ed6' }}>+ Crear nueva categoría...</option>
+                    </select>
+
+                    {!['General', 'Por Peso', ...products.map(p => (p.category || '').trim())].includes(category) && (
+                      <input 
+                        type="text" 
+                        value={category} 
+                        onChange={(e) => setCategory(e.target.value)} 
+                        placeholder="Escribe el nombre de la nueva categoría..." 
+                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #1c7ed6', fontSize: '13px', background: '#e7f5ff', marginTop: '8px' }}
+                        autoFocus
+                      />
+                    )}
                   </div>
+
+                  {category === 'Por Peso' && currentStoreType !== 'restaurant' && (
+                    <div className="form-group" style={{ background: '#e7f5ff', padding: '12px', borderRadius: '6px', border: '1px solid #74c0fc', marginBottom: '16px', marginTop: '12px' }}>
+                      <label style={{ color: '#1971c2', fontWeight: 'bold' }}>Unidad de Medida Base</label>
+                      <select 
+                        value={productModifiers[0] || 'kg'} 
+                        onChange={(e) => setProductModifiers([e.target.value])}
+                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px' }}
+                      >
+                        <option value="kg">Kilogramos (Kg)</option>
+                        <option value="g">Gramos (g)</option>
+                      </select>
+                      <span style={{ fontSize: '11px', color: '#495057', display: 'block', marginTop: '6px' }}>
+                        El precio de venta que colocaste arriba será el costo por cada 1 {productModifiers[0] || 'kg'} exacto de este producto.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* SECCIÓN DE ETIQUETAS DINÁMICAS (SÓLO MODO RESTAURANTE) */}
+                  {currentStoreType === 'restaurant' && (
+                    <div className="form-group" style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px', border: '1px solid #ced4da', marginBottom: '16px' }}>
+                      <label style={{ fontWeight: 'bold', color: '#2b8a3e', marginBottom: '6px', display: 'block', fontSize: '13px' }}>
+                        Etiquetas de Modificación (Ingredientes)
+                      </label>
+                      <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                        <input 
+                          type="text" 
+                          value={newModifierText} 
+                          onChange={(e) => setNewModifierText(e.target.value)} 
+                          placeholder="Ej. Cebolla, Queso, Salsas..." 
+                          style={{ flex: 1, padding: '6px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da' }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addProductModifierTag(); } }}
+                        />
+                        <button 
+                          type="button" 
+                          onClick={addProductModifierTag} 
+                          style={{ background: '#2b8a3e', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                          + Añadir etiqueta
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {productModifiers.map((mod, idx) => (
+                          <span key={idx} style={{ background: '#e9ecef', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid #dee2e6' }}>
+                            {mod}
+                            <button 
+                              type="button" 
+                              onClick={() => removeProductModifierTag(mod)} 
+                              style={{ background: 'none', border: 'none', color: '#fa5252', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', padding: 0, lineHeight: 1 }}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', gap: '8px' }}>
                     {editingProduct && (
                       <button type="button" className="btn-secondary" onClick={resetProductForm} style={{ flex: 1 }}>Cancelar</button>
@@ -3824,9 +4302,19 @@ const generateCustomSaaSInvoice = async () => {
                 </form>
               </div>
 
-              <div className="product-list-card">
+<div className="product-list-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-                  <h3 style={{ margin: 0 }}>Inventario Actual ({products.length})</h3>
+                  <h3 style={{ margin: 0 }}>
+                    Inventario Actual ({products.filter(p => {
+                      const fastFoodCats = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas'];
+                      const cat = (p.category || '').trim().toLowerCase();
+                      if (currentStoreType === 'restaurant') {
+                        return cat !== 'general' && cat !== 'por peso';
+                      } else {
+                        return !fastFoodCats.includes(cat);
+                      }
+                    }).length})
+                  </h3>
                   <button className="btn-secondary" onClick={() => setShowPrintCatalog(true)} style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center' }}>
                     <QrCode size={14} style={{ marginRight: '6px' }}/> Imprimir Códigos QR (Carta)
                   </button>
@@ -3845,7 +4333,15 @@ const generateCustomSaaSInvoice = async () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {products.map((prod) => (
+                      {products.filter(p => {
+                        const fastFoodCats = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas'];
+                        const cat = (p.category || '').trim().toLowerCase();
+                        if (currentStoreType === 'restaurant') {
+                          return cat !== 'general' && cat !== 'por peso';
+                        } else {
+                          return !fastFoodCats.includes(cat);
+                        }
+                      }).map((prod) => (
                         <tr key={prod.id}>
                           <td>
                             {prod.image_url ? (
@@ -3873,13 +4369,245 @@ const generateCustomSaaSInvoice = async () => {
                   </table>
                 </div>
               </div>
-            </div>
+              </div>
           )}
 
+{activeTab === 'kds' && (
+  <div 
+    id="kds-panel"
+    style={{ padding: '24px', background: '#f8f9fa', minHeight: '100vh', width: '100%', boxSizing: 'border-box', overflowY: 'auto' }}
+  >
+    {/* REPRODUCTOR DE AUDIO OCULTO Y PRECARGADO */}
+    <audio id="restaurant-bell" src="https://assets.mixkit.co/sfx/preview/mixkit-front-desk-bells-567.mp3" preload="auto"></audio>
+
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+      <div>
+        <h2 style={{ margin: 0, color: '#212529', letterSpacing: '-0.5px' }}>Panel de Cocina (KDS)</h2>
+        <p style={{ fontSize: '13px', color: '#868e96', margin: '4px 0 0 0' }}>Gestión de comandas en tiempo real</p>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <button 
+          onClick={() => {
+            const panel = document.getElementById('kds-panel');
+            if (!document.fullscreenElement) {
+              if (panel && panel.requestFullscreen) {
+                panel.requestFullscreen().catch(err => console.error("Error fullscreen:", err));
+              }
+            } else {
+              if (document.exitFullscreen) document.exitFullscreen();
+            }
+          }}
+          style={{ background: '#212529', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          🖥️ Pantalla Completa
+        </button>
+
+        <span style={{ background: '#2b8a3e', color: '#fff', padding: '8px 16px', borderRadius: '4px', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ width: '8px', height: '8px', background: '#51cf66', borderRadius: '50%', display: 'inline-block' }}></span> En Vivo
+        </span>
+      </div>
+    </div>
+
+    {(() => {
+      try {
+        const rawOrders = (typeof sales !== 'undefined' && Array.isArray(sales)) ? sales : [];
+        
+        const getItems = (s) => {
+          if (!s) return [];
+          if (Array.isArray(s.items)) return s.items;
+          if (typeof s.items === 'string') { try { return JSON.parse(s.items); } catch(e){} }
+          if (Array.isArray(s.cart)) return s.cart;
+          if (typeof s.cart === 'string') { try { return JSON.parse(s.cart); } catch(e){} }
+          return [];
+        };
+
+        const generalKeywords = ['toddy', 'harina', 'azucar', 'galletas', 'citrato', 'disco duro', 'cronch', 'palitos', 'pepsi', 'coca cola', 'refresco', 'agua', 'cerveza'];
+
+        const waitingOrders = rawOrders.filter(s => {
+          if (!s) return false;
+          const status = String(s.status || s.estatus || s.state || '').trim().toLowerCase();
+          
+          if (['completed', 'pagada', 'paid', 'credit', 'crédito'].includes(status)) return false;
+          
+          const validKitchenStates = ['pending', 'en espera', 'pendiente', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'];
+          if (!validKitchenStates.includes(status)) return false;
+
+          const itemsList = getItems(s);
+          if (itemsList.length === 0) return false;
+
+          const kitchenItems = itemsList.filter(item => {
+            const name = String(item.name || '').toLowerCase();
+            return !generalKeywords.some(gk => name.includes(gk));
+          });
+
+          return kitchenItems.length > 0;
+        });
+
+        if (waitingOrders.length === 0) {
+          return (
+            <div style={{ textAlign: 'center', padding: '60px', background: '#fff', borderRadius: '4px', border: '1px solid #dee2e6' }}>
+              <p style={{ color: '#868e96', fontSize: '15px', margin: 0 }}>
+                No hay comandas pendientes en este momento.
+              </p>
+            </div>
+          );
+        }
+
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+            {waitingOrders.map((order, index) => {
+              const orderId = order && order.id ? order.id.toString() : String(index + 1);
+              
+              const itemsList = getItems(order).filter(item => {
+                const name = String(item.name || '').toLowerCase();
+                return !generalKeywords.some(gk => name.includes(gk));
+              });
+              
+              const currentStatus = String(order.status || order.estatus || 'pending').trim().toLowerCase();
+              const isPreparing = currentStatus === 'preparando' || currentStatus === 'en preparación';
+              const isReady = currentStatus === 'ready' || currentStatus === 'listo' || currentStatus === 'espera_pago';
+
+              let headerBg = '#e03131'; 
+              let headerColor = '#fff';
+              let borderColor = '#e03131';
+              let statusText = 'PENDIENTE';
+
+              if (isPreparing) {
+                headerBg = '#fab005'; 
+                headerColor = '#212529';
+                borderColor = '#fab005';
+                statusText = 'PREPARANDO';
+              } else if (isReady) {
+                headerBg = '#2b8a3e'; 
+                headerColor = '#fff';
+                borderColor = '#2b8a3e';
+                statusText = 'LISTO PARA ENTREGAR';
+              }
+
+              const timeStr = order.created_at ? new Date(order.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--';
+
+              return (
+                <div key={order && order.id ? order.id : index} style={{ background: '#fff', borderRadius: '4px', border: `1px solid ${borderColor}`, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                  
+                  <div style={{ background: headerBg, color: headerColor, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <strong style={{ fontSize: '18px', lineHeight: 1 }}>#{orderId.slice(-4)}</strong>
+                      <span style={{ fontSize: '11px', opacity: 0.9 }}>{timeStr}</span>
+                    </div>
+                    <span style={{ fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.5px' }}>{statusText}</span>
+                  </div>
+
+                  <div style={{ padding: '16px', flex: 1 }}>
+                    {itemsList.map((item, i) => {
+                      const itemName = item && item.name ? item.name : 'Producto';
+                      const itemQty = item && item.quantity ? item.quantity : 1;
+                      
+                      let rawMods = [];
+                      if (item.modifiers) rawMods = rawMods.concat(Array.isArray(item.modifiers) ? item.modifiers : [item.modifiers]);
+                      if (item.modificadores) rawMods = rawMods.concat(Array.isArray(item.modificadores) ? item.modificadores : [item.modificadores]);
+                      if (item.extras) rawMods = rawMods.concat(Array.isArray(item.extras) ? item.extras : [item.extras]);
+                      if (item.options) rawMods = rawMods.concat(Array.isArray(item.options) ? item.options : [item.options]);
+                      if (item.nota) rawMods.push(item.nota);
+                      if (item.note) rawMods.push(item.note);
+
+                      const itemModifiers = rawMods.filter(Boolean).map(m => {
+                        if (typeof m === 'object') return m.name || m.nombre || m.descripcion || JSON.stringify(m);
+                        return String(m);
+                      });
+
+                      return (
+                        <div key={i} style={{ paddingBottom: '12px', marginBottom: '12px', borderBottom: i === itemsList.length - 1 ? 'none' : '1px dashed #e9ecef' }}>
+                          <div style={{ fontWeight: '600', fontSize: '16px', color: '#212529' }}>{itemQty} x {itemName}</div>
+                          {itemModifiers.length > 0 && (
+                            <div style={{ fontSize: '13px', color: '#e03131', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '8px', borderLeft: '2px solid #ffc9c9' }}>
+                              {itemModifiers.map((mod, mi) => (
+                                <span key={mi} style={{ fontWeight: 'bold' }}>• {mod}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ display: 'flex', borderTop: `1px solid ${borderColor}` }}>
+                    {!isPreparing && !isReady && (
+                      <button 
+                        onClick={async (e) => {
+                          e.currentTarget.blur();
+                          if (typeof setSales === 'function') {
+                            setSales(sales.map(s => s.id === order.id ? { ...s, status: 'preparando' } : s));
+                          }
+                          try {
+                            if (typeof supabase !== 'undefined') {
+                              await supabase.from('sales').update({ status: 'preparando' }).eq('id', order.id);
+                            }
+                          } catch (err) { console.error("Error al actualizar estatus:", err); }
+                        }}
+                        style={{ flex: 1, background: '#fff', color: '#e03131', border: 'none', padding: '14px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', transition: 'background 0.2s' }}
+                        onMouseOver={e => e.currentTarget.style.background = '#fff5f5'}
+                        onMouseOut={e => e.currentTarget.style.background = '#fff'}
+                      >
+                        Preparar
+                      </button>
+                    )}
+
+                    {!isReady && (
+                      <button 
+                        onClick={async (e) => {
+                          e.currentTarget.blur();
+                          
+                          // 🔔 Lógica NATIVA y segura de la Campana 🔔
+                          try {
+                            const bellElement = document.getElementById('restaurant-bell');
+                            if (bellElement) {
+                              bellElement.currentTime = 0; // Reinicia el audio si tocan dos veces rápido
+                              bellElement.play().catch(err => console.log("El navegador bloqueó el audio:", err));
+                            }
+                          } catch (error) {
+                            console.error("Error reproduciendo campana:", error);
+                          }
+
+                          if (typeof setSales === 'function') {
+                            setSales(sales.map(s => s.id === order.id ? { ...s, status: 'ready' } : s));
+                          }
+                          try {
+                            if (typeof supabase !== 'undefined') {
+                              await supabase.from('sales').update({ status: 'ready' }).eq('id', order.id);
+                            }
+                          } catch (err) { console.error("Error al actualizar estatus:", err); }
+                        }}
+                        style={{ flex: 1, background: isPreparing ? '#fab005' : '#f8f9fa', color: isPreparing ? '#212529' : '#868e96', border: 'none', borderLeft: isPreparing ? 'none' : '1px solid #dee2e6', padding: '14px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' }}
+                      >
+                        Despachar
+                      </button>
+                    )}
+
+                    {isReady && (
+                      <div style={{ width: '100%', textAlign: 'center', padding: '14px', background: '#2b8a3e', color: '#fff', fontSize: '13px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Esperando Mesonero
+                      </div>
+                    )}
+                  </div>
+                  
+                </div>
+              );
+            })}
+          </div>
+        );
+      } catch (err) {
+        return (
+          <div style={{ padding: '20px', background: '#ffe3e3', color: '#c92a2a', borderRadius: '4px', border: '1px solid #ffc9c9' }}>
+            <strong>Error:</strong> {err.message}
+          </div>
+        );
+      }
+    })()}
+  </div>
+)}
           {activeTab === 'settings' && (currentUserRole === 'owner' || currentUserRole === 'super_admin' || currentUserRole === 'system_vendor') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
               
-              {/* Nueva Sección: Configuración de Facturación SaaS */}
               {currentUserRole === 'super_admin' && (
                 <div className="product-form-card" style={{ maxWidth: '100%' }}>
                   <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#4c6ef5' }}>
@@ -4030,7 +4758,6 @@ const generateCustomSaaSInvoice = async () => {
         </section>
       </main>
 
-      {/* NUEVO MODAL: Pre-Facturación SaaS */}
       {showPreInvoiceModal && preInvoiceStore && (
         <div className="modal-overlay" style={{ zIndex: 10005 }}>
           <div className="modal-content" style={{ width: '500px' }}>
@@ -4618,6 +5345,104 @@ const generateCustomSaaSInvoice = async () => {
           </div>
         </div>
       )}
+{showModifierModal && productForModifiers && (
+        <div className="modal-overlay" style={{ zIndex: 10006 }}>
+          <div className="modal-content" style={{ width: '400px' }}>
+            <div className="modal-header">
+              <h3>Personalizar: {productForModifiers.name}</h3>
+              <button className="btn-close-modal" onClick={() => setShowModifierModal(false)}><X size={20} /></button>
+            </div>
+            <div className="modal-body fiskal-form">
+              <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '16px' }}>
+                Por defecto se incluye <strong>"Con todo"</strong>. Desmarca los ingredientes que el cliente NO desee.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: '#f8f9fa', padding: '16px', borderRadius: '6px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: 'bold', color: '#2b8a3e' }}>
+                  <input type="checkbox" checked={true} disabled style={{ width: '18px', height: '18px' }} />
+                  Con todo (Base)
+                </label>
+                <hr style={{ border: '0', borderTop: '1px solid #dee2e6', margin: '2px 0' }} />
+                
+                {Object.keys(dynamicToggles).length === 0 ? (
+                  <p style={{ fontSize: '12px', color: '#6c757d', fontStyle: 'italic' }}>Este platillo no tiene modificadores configurados.</p>
+                ) : (
+                  Object.keys(dynamicToggles).map((modName, idx) => (
+                    <label key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '14px' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={dynamicToggles[modName]} 
+                        onChange={(e) => setDynamicToggles({ ...dynamicToggles, [modName]: e.target.checked })} 
+                        style={{ width: '18px', height: '18px', cursor: 'pointer' }} 
+                      />
+                      {modName}
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowModifierModal(false)}>Cancelar</button>
+              <button type="button" className="btn-primary" onClick={confirmAddToCartWithModifiers} style={{ background: '#2b8a3e' }}>
+                Añadir a la Comanda
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showWeightModal && productForWeight && (
+        <div className="modal-overlay" style={{ zIndex: 10007 }}>
+          <div className="modal-content" style={{ width: '380px', textAlign: 'center' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>⚖️ Balanza: {productForWeight.name}</h3>
+              <button className="btn-close-modal" onClick={() => setShowWeightModal(false)}><X size={20} /></button>
+            </div>
+            <div className="modal-body fiskal-form" style={{ textAlign: 'left' }}>
+              <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '16px' }}>
+                Precio base: <strong>${productForWeight.price.toFixed(2)} USD</strong> por cada 1 {productForWeight.modifiers && productForWeight.modifiers[0] ? productForWeight.modifiers[0] : 'kg'}.
+              </p>
+
+              <div className="form-group">
+                <label>Cantidad en la Balanza ({weightUnit === 'kg' ? 'Kilogramos' : 'Gramos'})</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input 
+                    type="number" 
+                    step="0.001" 
+                    value={weightValue} 
+                    onChange={(e) => setWeightValue(e.target.value)} 
+                    placeholder="Ej. 0.500" 
+                    style={{ flex: 2, padding: '10px', fontSize: '16px', fontWeight: 'bold' }} 
+                    autoFocus
+                  />
+                  <select 
+                    value={weightUnit} 
+                    onChange={(e) => setWeightUnit(e.target.value)}
+                    style={{ flex: 1, padding: '10px', fontSize: '14px', borderRadius: '6px', border: '1px solid #ced4da' }}
+                  >
+                    <option value="kg">Kg</option>
+                    <option value="g">Gramos</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ background: '#e7f5ff', padding: '12px', borderRadius: '6px', marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#1971c2' }}>Total a cobrar:</span>
+                <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#2b8a3e' }}>
+                  ${((parseFloat(weightValue) || 0) * (weightUnit === 'g' ? productForWeight.price / 1000 : productForWeight.price)).toFixed(2)} USD
+                </span>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowWeightModal(false)}>Cancelar</button>
+              <button type="button" className="btn-primary" onClick={confirmAddToCartWithWeight} style={{ background: '#2b8a3e' }}>
+                Añadir al Carrito
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
