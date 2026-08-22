@@ -399,31 +399,42 @@ const confirmAddToCartWithWeight = () => {
   const [modalProductId, setModalProductId] = useState('');
   const [modalClientName, setModalClientName] = useState('Cliente General');
 
-  // ⬇️ BLOQUE NUEVO: Escucha en tiempo real para el KDS y POS ⬇️
+  // ⬇️ BLOQUE CORREGIDO: Escucha en tiempo real robusta para el KDS y POS ⬇️
   useEffect(() => {
-    // Si no hay comercio activo o estamos sin internet, no nos conectamos
     if (!currentStoreId || !isOnline) return;
 
+    // Creamos un canal único por comercio para evitar interferencias
     const salesChannel = supabase
-      .channel('kds-live-updates')
+      .channel(`kds-live-updates-${currentStoreId}`)
       .on(
         'postgres_changes',
         { 
-          event: '*', // Escucha inserts (nuevas comandas), updates (despachos) y deletes
+          event: '*', 
           schema: 'public', 
-          table: 'sales', 
-          filter: `store_id=eq.${currentStoreId}` 
+          table: 'sales'
         },
         (payload) => {
-          console.log('¡Movimiento detectado en comandas!', payload);
-          // Refrescamos la lista automáticamente en la pantalla
-          fetchSales(currentStoreId);
+          console.log('¡Movimiento detectado en tiempo real!', payload);
+          
+          // Validamos de forma segura que el cambio pertenezca al comercio actual
+          const storeIdMatch = 
+            (payload.new && String(payload.new.store_id) === String(currentStoreId)) || 
+            (payload.old && String(payload.old.store_id) === String(currentStoreId));
+
+          if (storeIdMatch) {
+            // Refrescamos la lista de ventas instantáneamente en la interfaz
+            fetchSales(currentStoreId);
+          }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Estatus de suscripción Realtime:", status);
+      });
 
     return () => {
-      supabase.removeChannel(salesChannel);
+      supabase.removeChannel(status => {
+        supabase.removeChannel(salesChannel);
+      });
     };
   }, [currentStoreId, isOnline]);
 
