@@ -2380,11 +2380,16 @@ const fetchUserProfileAndStore = async (user) => {
   }));
   };
 
-  const updateQuantity = (id, delta) => {
-    const productInfo = products.find(p => p.id === id);
+  const updateQuantity = (targetKey, delta) => {
     setCart(prevCart => prevCart.map(item => {
-      if (item.id === id) {
+      // Validamos si es un platillo con modificadores (cartItemId) o un producto normal (id)
+      const uniqueKey = item.cartItemId || item.id;
+      
+      if (uniqueKey === targetKey) {
+        // Buscamos el producto original para verificar el stock correctamente
+        const productInfo = products.find(p => p.id === item.id);
         const newQty = item.quantity + delta;
+        
         if (delta > 0 && productInfo && newQty > productInfo.stock) {
           alert(`Stock máximo alcanzado (${productInfo.stock} unidades).`);
           return item;
