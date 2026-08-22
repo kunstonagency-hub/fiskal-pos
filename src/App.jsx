@@ -2819,21 +2819,29 @@ const fetchUserProfileAndStore = async (user) => {
     }
   };
 
-const fastFoodCategories = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas'];
+const fastFoodCategories = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas', 'pepitos'];
 
-  const filteredProductsForCatalog = products.filter(p => {
-    const matchesQuery = p.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
-      (p.barcode && p.barcode.toLowerCase().includes(productSearchQuery.toLowerCase()));
+  const filteredProductsForCatalog = (products || []).filter(p => {
+    if (!p) return false;
+    
+    // Validamos de forma segura la consulta de búsqueda
+    const searchQuery = (typeof productSearchQuery !== 'undefined' && productSearchQuery) ? String(productSearchQuery).toLowerCase() : '';
+    const productName = (p.name || '').toLowerCase();
+    const productBarcode = (p.barcode || '').toLowerCase();
+
+    const matchesQuery = !searchQuery || productName.includes(searchQuery) || (productBarcode && productBarcode.includes(searchQuery));
 
     if (!matchesQuery) return false;
 
     const cat = (p.category || '').trim().toLowerCase();
 
+    // ERROR CORREGIDO: Eliminamos la dependencia de 'activeStore' (que no existía) 
+    // y usamos directamente tu estado global currentStoreType.
     if (currentStoreType === 'restaurant') {
-      // En modo restaurante: ocultamos 'general'
+      // En modo restaurante: ocultamos solo la categoría 'general' de bodega pura
       return cat !== 'general';
     } else {
-      // En tienda normal: ocultamos las categorías de comida rápida
+      // En tienda normal/retail: ocultamos estrictamente cualquier categoría de comida rápida
       return !fastFoodCategories.includes(cat);
     }
   });
@@ -3294,8 +3302,12 @@ if (!session) {
                         });
 
                         if (currentStoreType === 'restaurant' && selectedRestaurantCategory) {
-                          displayProducts = displayProducts.filter(p => (p.category || '').trim().toLowerCase() === selectedRestaurantCategory.toLowerCase());
-                        }
+          const targetCat = selectedRestaurantCategory.trim().toLowerCase();
+          displayProducts = displayProducts.filter(p => {
+            const pCat = (p.category || '').trim().toLowerCase();
+            return pCat === targetCat || pCat.includes(targetCat) || targetCat.includes(pCat);
+          });
+        }
 
                         return displayProducts.length === 0 ? (
                           <p className="empty-text">No se encontraron platillos o productos en esta vista.</p>
@@ -4303,73 +4315,73 @@ if (!session) {
               </div>
 
 <div className="product-list-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-                  <h3 style={{ margin: 0 }}>
-                    Inventario Actual ({products.filter(p => {
-                      const fastFoodCats = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas'];
-                      const cat = (p.category || '').trim().toLowerCase();
-                      if (currentStoreType === 'restaurant') {
-                        return cat !== 'general' && cat !== 'por peso';
-                      } else {
-                        return !fastFoodCats.includes(cat);
-                      }
-                    }).length})
-                  </h3>
-                  <button className="btn-secondary" onClick={() => setShowPrintCatalog(true)} style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center' }}>
-                    <QrCode size={14} style={{ marginRight: '6px' }}/> Imprimir Códigos QR (Carta)
-                  </button>
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+    <h3 style={{ margin: 0 }}>
+      Inventario Actual ({products.filter(p => {
+        const fastFoodCats = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas', 'pepitos'];
+        const cat = (p.category || '').trim().toLowerCase();
+        if (currentStoreType === 'restaurant') {
+          return cat !== 'general' && cat !== 'por peso';
+        } else {
+          return !fastFoodCats.includes(cat);
+        }
+      }).length})
+    </h3>
+    <button className="btn-secondary" onClick={() => setShowPrintCatalog(true)} style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center' }}>
+      <QrCode size={14} style={{ marginRight: '6px' }}/> Imprimir Códigos QR (Carta)
+    </button>
+  </div>
+  
+  <div className="table-responsive">
+    <table className="fiskal-table">
+      <thead>
+        <tr>
+          <th>Foto</th>
+          <th>Nombre</th>
+          <th>SKU</th>
+          <th>Precio</th>
+          <th>Stock</th>
+          <th style={{ textAlign: 'center' }}>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {products.filter(p => {
+          const fastFoodCats = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas', 'pepitos'];
+          const cat = (p.category || '').trim().toLowerCase();
+          if (currentStoreType === 'restaurant') {
+            return cat !== 'general' && cat !== 'por peso';
+          } else {
+            return !fastFoodCats.includes(cat);
+          }
+        }).map((prod) => (
+          <tr key={prod.id}>
+            <td>
+              {prod.image_url ? (
+                <img src={prod.image_url} alt="" style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
+              ) : (
+                <div style={{ width: '40px', height: '40px', background: '#f1f3f5', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#adb5bd' }}>
+                  <Package size={20} strokeWidth={1.5} />
                 </div>
-                
-                <div className="table-responsive">
-                  <table className="fiskal-table">
-                    <thead>
-                      <tr>
-                        <th>Foto</th>
-                        <th>Nombre</th>
-                        <th>SKU</th>
-                        <th>Precio</th>
-                        <th>Stock</th>
-                        <th style={{ textAlign: 'center' }}>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {products.filter(p => {
-                        const fastFoodCats = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas'];
-                        const cat = (p.category || '').trim().toLowerCase();
-                        if (currentStoreType === 'restaurant') {
-                          return cat !== 'general' && cat !== 'por peso';
-                        } else {
-                          return !fastFoodCats.includes(cat);
-                        }
-                      }).map((prod) => (
-                        <tr key={prod.id}>
-                          <td>
-                            {prod.image_url ? (
-                              <img src={prod.image_url} alt="" style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
-                            ) : (
-                              <div style={{ width: '40px', height: '40px', background: '#f1f3f5', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#adb5bd' }}>
-                                <Package size={20} strokeWidth={1.5} />
-                              </div>
-                            )}
-                          </td>
-                          <td><strong>{prod.name}</strong></td>
-                          <td>{prod.barcode || '---'}</td>
-                          <td>${prod.price.toFixed(2)}</td>
-                          <td><strong>{prod.stock}</strong></td>
-                          <td className="action-cell">
-                            <div className="action-buttons">
-                              <button className="btn-icon-primary" onClick={() => handleOpenLabel(prod)} title="QR"><QrCode size={16} /></button>
-                              <button className="btn-icon-edit" onClick={() => handleStartEditProduct(prod)} title="Editar"><Edit2 size={16} /></button>
-                              <button className="btn-icon-danger" onClick={() => handleDeleteProduct(prod.id)} title="Eliminar"><Trash2 size={16} /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              )}
+            </td>
+            <td><strong>{prod.name}</strong></td>
+            <td>{prod.barcode || '---'}</td>
+            <td>${prod.price.toFixed(2)}</td>
+            <td><strong>{prod.stock}</strong></td>
+            <td className="action-cell">
+              <div className="action-buttons">
+                <button className="btn-icon-primary" onClick={() => handleOpenLabel(prod)} title="QR"><QrCode size={16} /></button>
+                <button className="btn-icon-edit" onClick={() => handleStartEditProduct(prod)} title="Editar"><Edit2 size={16} /></button>
+                <button className="btn-icon-danger" onClick={() => handleDeleteProduct(prod.id)} title="Eliminar"><Trash2 size={16} /></button>
               </div>
-              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
           )}
 
 {activeTab === 'kds' && (
@@ -4377,8 +4389,7 @@ if (!session) {
     id="kds-panel"
     style={{ padding: '24px', background: '#f8f9fa', minHeight: '100vh', width: '100%', boxSizing: 'border-box', overflowY: 'auto' }}
   >
-    {/* REPRODUCTOR DE AUDIO OCULTO Y PRECARGADO */}
-    <audio id="restaurant-bell" src="https://assets.mixkit.co/sfx/preview/mixkit-front-desk-bells-567.mp3" preload="auto"></audio>
+    
 
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
       <div>
@@ -4502,27 +4513,25 @@ if (!session) {
                       const itemName = item && item.name ? item.name : 'Producto';
                       const itemQty = item && item.quantity ? item.quantity : 1;
                       
-                      let rawMods = [];
-                      if (item.modifiers) rawMods = rawMods.concat(Array.isArray(item.modifiers) ? item.modifiers : [item.modifiers]);
-                      if (item.modificadores) rawMods = rawMods.concat(Array.isArray(item.modificadores) ? item.modificadores : [item.modificadores]);
-                      if (item.extras) rawMods = rawMods.concat(Array.isArray(item.extras) ? item.extras : [item.extras]);
-                      if (item.options) rawMods = rawMods.concat(Array.isArray(item.options) ? item.options : [item.options]);
-                      if (item.nota) rawMods.push(item.nota);
-                      if (item.note) rawMods.push(item.note);
-
-                      const itemModifiers = rawMods.filter(Boolean).map(m => {
-                        if (typeof m === 'object') return m.name || m.nombre || m.descripcion || JSON.stringify(m);
-                        return String(m);
-                      });
+                      // Leemos exactamente lo que el cajero marcó en el POS
+                      const customizationText = item.customization || item.customNote || '';
 
                       return (
                         <div key={i} style={{ paddingBottom: '12px', marginBottom: '12px', borderBottom: i === itemsList.length - 1 ? 'none' : '1px dashed #e9ecef' }}>
                           <div style={{ fontWeight: '600', fontSize: '16px', color: '#212529' }}>{itemQty} x {itemName}</div>
-                          {itemModifiers.length > 0 && (
-                            <div style={{ fontSize: '13px', color: '#e03131', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '8px', borderLeft: '2px solid #ffc9c9' }}>
-                              {itemModifiers.map((mod, mi) => (
-                                <span key={mi} style={{ fontWeight: 'bold' }}>• {mod}</span>
-                              ))}
+                          
+                          {customizationText && (
+                            <div style={{ 
+                              fontSize: '14px', 
+                              color: customizationText === 'Con todo' ? '#1c7ed6' : '#e03131', 
+                              marginTop: '4px', 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: '2px', 
+                              paddingLeft: '8px', 
+                              borderLeft: `2px solid ${customizationText === 'Con todo' ? '#a5d8ff' : '#ffc9c9'}` 
+                            }}>
+                              <span style={{ fontWeight: 'bold' }}>• {customizationText}</span>
                             </div>
                           )}
                         </div>
@@ -4557,13 +4566,11 @@ if (!session) {
                         onClick={async (e) => {
                           e.currentTarget.blur();
                           
-                          // 🔔 Lógica NATIVA y segura de la Campana 🔔
+                          // 🔔 Lógica de campana: Sonido de Ding-Dong clásico y corto 🔔
                           try {
-                            const bellElement = document.getElementById('restaurant-bell');
-                            if (bellElement) {
-                              bellElement.currentTime = 0; // Reinicia el audio si tocan dos veces rápido
-                              bellElement.play().catch(err => console.log("El navegador bloqueó el audio:", err));
-                            }
+                            // Audio directo en memoria usando Wikimedia (cero bloqueos)
+                            const bell = new Audio('https://upload.wikimedia.org/wikipedia/commons/3/34/Sound_Effect_-_Door_Bell.ogg');
+                            bell.play().catch(err => console.log("El navegador bloqueó el audio:", err));
                           } catch (error) {
                             console.error("Error reproduciendo campana:", error);
                           }
