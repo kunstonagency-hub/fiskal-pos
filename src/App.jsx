@@ -128,6 +128,10 @@ function App() {
   const [currentUserRole, setCurrentUserRole] = useState('cajero');
   const [currentStoreId, setCurrentStoreId] = useState(null);
   const [currentStoreName, setCurrentStoreName] = useState('Fiskal Store');
+
+  const [currentStoreCountry, setCurrentStoreCountry] = useState('venezuela'); // 'venezuela' | 'panama' | 'el_salvador'
+  const [storeCountry, setStoreCountry] = useState('venezuela'); // Para formularios de configuración/admin
+  const [vendorStoreCountry, setVendorStoreCountry] = useState('venezuela');
   
   // NUEVOS ESTADOS: Máscaras y Tipos de Comercio
   const [currentStoreType, setCurrentStoreType] = useState('standard'); // 'standard' | 'restaurant'
@@ -625,12 +629,11 @@ const fetchUserProfileAndStore = async (user) => {
           fetchSystemVendors();
           fetchSaasTransactions();
           
-          // Buscamos prioritariamente un comercio que contenga productos guardados para el super_admin
           const { data: prodStore } = await supabase.from('products').select('store_id').limit(1).maybeSingle();
           if (prodStore && prodStore.store_id) {
             activeStoreId = prodStore.store_id;
           } else if (!activeStoreId) {
-            const { data: realStore } = await supabase.from('stores').select('id, name, store_type').order('created_at', { ascending: true }).limit(1).maybeSingle();
+            const { data: realStore } = await supabase.from('stores').select('id, name, store_type').order('created_at', { ascending: false }).limit(1).maybeSingle();
             if (realStore) {
               activeStoreId = realStore.id;
             }
@@ -640,27 +643,39 @@ const fetchUserProfileAndStore = async (user) => {
 
       if (activeStoreId && activeStoreId !== 'null' && activeStoreId !== 'undefined') {
         if (navigator.onLine) {
-          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active, store_type').eq('id', activeStoreId).single();
+          // 👈 SOLUCIÓN: Aseguramos pedir 'store_type' explícitamente en la consulta
+          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active, store_type, country').eq('id', activeStoreId).single();
           
           if (storeInfo) {
+            console.log("🚨 DATOS CRUDOS DE SUPABASE PARA ESTA TIENDA:", storeInfo); // Esto te dirá la verdad absoluta en la consola
+
             if (storeInfo.is_active === false) {
               alert("⚠️ Este comercio se encuentra suspendido por la administración. Acceso denegado.");
               await supabase.auth.signOut();
               return;
             }
             if (storeInfo.name) {
+              // 👈 SOLUCIÓN SEGURA: Verificamos si existe la propiedad antes de hacer String()
+              let rawType = storeInfo.store_type ? String(storeInfo.store_type).trim().toLowerCase() : 'standard';
+              const safeType = rawType === 'restaurant' ? 'restaurant' : 'standard';
+              const safeCountry = storeInfo.country || 'venezuela';
+              
               setCurrentStoreName(storeInfo.name);
-              setCurrentStoreType(storeInfo.store_type || 'standard');
+              setCurrentStoreType(safeType);
+              setCurrentStoreCountry(safeCountry);
+              
               localStorage.setItem(`fiskal_cache_store_name_${activeStoreId}`, storeInfo.name);
-              localStorage.setItem(`fiskal_cache_store_type_${activeStoreId}`, storeInfo.store_type || 'standard');
+              localStorage.setItem(`fiskal_cache_store_type_${activeStoreId}`, safeType);
+              localStorage.setItem(`fiskal_cache_store_country_${activeStoreId}`, safeCountry);
             }
           }
-          checkStoreTrialAndExpiration(activeStoreId);
         } else {
           const cachedName = localStorage.getItem(`fiskal_cache_store_name_${activeStoreId}`);
           if (cachedName) setCurrentStoreName(cachedName);
           const cachedType = localStorage.getItem(`fiskal_cache_store_type_${activeStoreId}`);
           if (cachedType) setCurrentStoreType(cachedType);
+          const cachedCountry = localStorage.getItem(`fiskal_cache_store_country_${activeStoreId}`);
+          if (cachedCountry) setCurrentStoreCountry(cachedCountry);
         }
       }
 
@@ -784,7 +799,7 @@ const fetchUserProfileAndStore = async (user) => {
     }
   };
 
-  const handleVendorRegisterStoreSubmit = async (e) => {
+const handleVendorRegisterStoreSubmit = async (e) => {
     e.preventDefault();
     if (!vendorStoreName.trim()) return;
 
@@ -818,7 +833,8 @@ const fetchUserProfileAndStore = async (user) => {
         registration_paid: vendorPaidAdvance,
         monthly_price_agreed: priceToLock,
         custom_discount: globalPromoDiscount,
-        store_type: vendorNewStoreType
+        store_type: vendorNewStoreType,
+        country: vendorStoreCountry // 👈 Añadido para guardar el país seleccionado por el vendedor
       }]).select().single();
 
       if (storeErr) throw storeErr;
@@ -852,6 +868,7 @@ const fetchUserProfileAndStore = async (user) => {
       setVendorOwnerEmail('');
       setVendorPaidAdvance(false);
       setVendorNewStoreType('standard');
+      setVendorStoreCountry('venezuela'); // 👈 Resetea el país al valor por defecto
       setShowVendorStoreModal(false);
       
       if(currentUserRole === 'super_admin') {
@@ -1217,7 +1234,7 @@ const fetchUserProfileAndStore = async (user) => {
     }
   };
 
-  const handleStartEditStore = (store) => {
+const handleStartEditStore = (store) => {
     setEditingStore(store);
     setStoreName(store.name || '');
     setStoreRif(store.rif || store.document || '');
@@ -1228,12 +1245,13 @@ const fetchUserProfileAndStore = async (user) => {
     setStoreAddress(store.address || '');
     setStoreCity(store.city || '');
     setStoreState(store.state || '');
+    setStoreCountry(store.country || 'venezuela'); // 👈 Añadido para el selector de país
     setStorePaidAdvance(false);
     setStoreCustomDiscount(store.custom_discount !== undefined && store.custom_discount !== null ? store.custom_discount : globalPromoDiscount);
     setNewStoreType(store.store_type || 'standard');
   };
 
-  const resetStoreForm = () => {
+const resetStoreForm = () => {
     setEditingStore(null);
     setStoreName('');
     setStoreRif('');
@@ -1244,12 +1262,13 @@ const fetchUserProfileAndStore = async (user) => {
     setStoreAddress('');
     setStoreCity('');
     setStoreState('');
+    setStoreCountry('venezuela'); // 👈 Añadido para restablecer el país por defecto
     setStorePaidAdvance(false);
     setStoreCustomDiscount(0);
     setNewStoreType('standard');
   };
 
-  const handleSaveStore = async (e) => {
+const handleSaveStore = async (e) => {
     e.preventDefault();
     if (!storeName.trim()) return;
 
@@ -1264,18 +1283,20 @@ const fetchUserProfileAndStore = async (user) => {
       address: storeAddress.trim(),
       city: storeCity.trim(),
       state: storeState.trim(),
-      custom_discount: parseFloat(storeCustomDiscount) || 0
+      custom_discount: parseFloat(storeCustomDiscount) || 0,
+      country: storeCountry
     };
 
     try {
       if (editingStore) {
-        const updatePayload = { ...payload, store_type: newStoreType };
+        const updatePayload = { ...payload, store_type: newStoreType, country: storeCountry };
         const { error } = await supabase.from('stores').update(updatePayload).eq('id', editingStore.id);
         if (error) throw error;
         alert("¡Comercio actualizado exitosamente!");
         if (editingStore.id === currentStoreId) {
           setCurrentStoreName(storeName.trim());
           setCurrentStoreType(newStoreType);
+          setCurrentStoreCountry(storeCountry);
         }
       } else {
         const trialEnd = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
@@ -1295,7 +1316,8 @@ const fetchUserProfileAndStore = async (user) => {
           trial_end_date: trialEnd,
           subscription_expires_at: subEnd,
           monthly_price_agreed: priceToLock,
-          store_type: newStoreType
+          store_type: newStoreType,
+          country: storeCountry
         }]).select().single();
         
         if (error) throw error;
@@ -2463,7 +2485,7 @@ const fetchUserProfileAndStore = async (user) => {
     }).filter(Boolean));
   };
 
-  const updateCalculations = () => {
+const updateCalculations = () => {
     setCalcPayments({
       cashUSD: parseFloat(payCashUSD) || 0,
       cashBs: parseFloat(payCashBs) || 0,
@@ -2477,10 +2499,10 @@ const fetchUserProfileAndStore = async (user) => {
   const totalBs = totalUSD * bcvRate;
 
   const paidUSDFromCashUSD = calcPayments.cashUSD;
-  const paidUSDFromCashBs = calcPayments.cashBs / (bcvRate || 1);
-  const paidUSDFromPagoMovil = calcPayments.pagoMovil / (bcvRate || 1);
+  const paidUSDFromCashBs = currentStoreCountry === 'venezuela' ? (calcPayments.cashBs / (bcvRate || 1)) : 0;
+  const paidUSDFromPagoMovil = currentStoreCountry === 'venezuela' ? (calcPayments.pagoMovil / (bcvRate || 1)) : 0;
   const paidUSDFromZelle = calcPayments.zelle;
-  const paidUSDFromDebit = calcPayments.debit / (bcvRate || 1);
+  const paidUSDFromDebit = currentStoreCountry === 'venezuela' ? (calcPayments.debit / (bcvRate || 1)) : calcPayments.debit; // 👈 Si es Panamá/El Salvador, cobra débito directo en USD
 
   const totalPaidUSD = paidUSDFromCashUSD + paidUSDFromCashBs + paidUSDFromPagoMovil + paidUSDFromZelle + paidUSDFromDebit;
   const remainingUSD = Math.max(0, parseFloat((totalUSD - totalPaidUSD).toFixed(2)));
@@ -3559,10 +3581,12 @@ return (
                     <span>Total USD:</span>
                     <h2>${totalUSD.toFixed(2)}</h2>
                   </div>
-                  <div className="cart-total-row-bs">
-                    <span>Total Bolívares (BCV):</span>
-                    <h3>Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-                  </div>
+                  {currentStoreCountry === 'venezuela' && (
+                    <div className="cart-total-row-bs">
+                      <span>Total Bolívares (BCV):</span>
+                      <h3>Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button className="btn-secondary" onClick={handleHoldOrder} disabled={cart.length === 0 || processing || !currentShift} style={{ flex: 1, fontSize: '13px' }}>
                       <Clock size={14} /> {currentStoreType === 'restaurant' ? 'A Cocina / Espera' : 'En Espera'}
@@ -3576,9 +3600,9 @@ return (
             </div>
           )}
 
-          {activeTab === 'vendor_portal' && currentUserRole === 'system_vendor' && (
+{activeTab === 'vendor_portal' && currentUserRole === 'system_vendor' && (
             <div className="product-form-card" style={{ maxWidth: '700px', margin: '0 auto' }}>
-              <h3>Registrar Nuevo Comercio en Vivo (Demostración)</h3>
+              <h3>Registrar Nuevo Comercio</h3>
               <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '20px' }}>
                 Como vendedor de sistema, al registrar un comercio aquí, el negocio quedará vinculado a tu ID para el cálculo automático de tus comisiones (50% registro y 20% mensualidad).
               </p>
@@ -3604,6 +3628,15 @@ return (
                   <select value={vendorNewStoreType} onChange={e => setVendorNewStoreType(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}>
                     <option value="standard">Minimarket / Tienda Estándar</option>
                     <option value="restaurant">Restaurante / Comida Rápida</option>
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label>País Operativo del Comercio</label>
+                  <select value={vendorStoreCountry} onChange={e => setVendorStoreCountry(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}>
+                    <option value="venezuela">Venezuela (Bolívares / BCV / Pago Móvil)</option>
+                    <option value="panama">Panamá (Dolarizado / Sin BCV)</option>
+                    <option value="el_salvador">El Salvador (Dolarizado / Sin BCV)</option>
                   </select>
                 </div>
 
@@ -3787,7 +3820,7 @@ return (
                 </div>
               </div>
 
-              <div className="products-layout">
+<div className="products-layout">
                 <div className="product-form-card">
                   <h3>{editingStore ? `Editando: ${editingStore.name}` : 'Registrar Nuevo Comercio SaaS'}</h3>
                   <form onSubmit={handleSaveStore} className="fiskal-form">
@@ -3805,6 +3838,15 @@ return (
                       <select value={newStoreType} onChange={(e) => setNewStoreType(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}>
                         <option value="standard">Minimarket / Tienda Estándar</option>
                         <option value="restaurant">Restaurante / Comida Rápida</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: '16px' }}>
+                      <label>País Operativo del Comercio</label>
+                      <select value={storeCountry} onChange={(e) => setStoreCountry(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}>
+                        <option value="venezuela">Venezuela (Bolívares / BCV / Pago Móvil)</option>
+                        <option value="panama">Panamá (Dolarizado / Sin BCV)</option>
+                        <option value="el_salvador">El Salvador (Dolarizado / Sin BCV)</option>
                       </select>
                     </div>
 
@@ -5387,25 +5429,27 @@ return (
                 <div>
                   <span>Total a Pagar:</span>
                   <h2>${totalUSD.toFixed(2)}</h2>
-                  <span style={{ fontSize: '13px', color: '#6c757d', fontWeight: '600' }}>Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  {currentStoreCountry === 'venezuela' && (
+                    <span style={{ fontSize: '13px', color: '#6c757d', fontWeight: '600' }}>Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  )}
                 </div>
               </div>
 
               <div className="payment-status-box" style={{ marginBottom: '16px' }}>
                 <div className="status-row">
                   <span>Total Pagado:</span>
-                  <strong>${totalPaidUSD.toFixed(2)} (Bs. {(totalPaidUSD * bcvRate).toFixed(2)})</strong>
+                  <strong>${totalPaidUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${(totalPaidUSD * bcvRate).toFixed(2)})`}</strong>
                 </div>
                 <div className="status-row">
                   <span>Restante / Falta:</span>
                   <strong style={{ color: remainingUSD > 0 ? '#fa5252' : '#2b8a3e' }}>
-                    ${remainingUSD.toFixed(2)} (Bs. {remainingBs.toFixed(2)})
+                    ${remainingUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${remainingBs.toFixed(2)})`}
                   </strong>
                 </div>
                 {changeUSD > 0 && (
                   <div className="status-row highlight" style={{ color: '#2b8a3e' }}>
                     <span>Cambio / Vuelto:</span>
-                    <strong>${changeUSD.toFixed(2)} (Bs. {changeBs.toFixed(2)})</strong>
+                    <strong>${changeUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${changeBs.toFixed(2)})`}</strong>
                   </div>
                 )}
               </div>
@@ -5419,16 +5463,22 @@ return (
                   <label>Zelle ($)</label>
                   <input type="number" step="0.01" value={payZelle} onChange={(e) => setPayZelle(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
                 </div>
+                
+                {currentStoreCountry === 'venezuela' && (
+                  <>
+                    <div className="form-group">
+                      <label>Efectivo (Bs)</label>
+                      <input type="number" step="0.01" value={payCashBs} onChange={(e) => setPayCashBs(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
+                    </div>
+                    <div className="form-group">
+                      <label>Pago Móvil / Transf. (Bs)</label>
+                      <input type="number" step="0.01" value={payPagoMovil} onChange={(e) => setPayPagoMovil(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
+                    </div>
+                  </>
+                )}
+                
                 <div className="form-group">
-                  <label>Efectivo (Bs)</label>
-                  <input type="number" step="0.01" value={payCashBs} onChange={(e) => setPayCashBs(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
-                </div>
-                <div className="form-group">
-                  <label>Pago Móvil / Transf. (Bs)</label>
-                  <input type="number" step="0.01" value={payPagoMovil} onChange={(e) => setPayPagoMovil(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
-                </div>
-                <div className="form-group">
-                  <label>Punto de Venta / Débito (Bs)</label>
+                  <label>Punto de Venta / Débito {currentStoreCountry === 'venezuela' ? '(Bs)' : '($ USD)'}</label>
                   <input type="number" step="0.01" value={payDebit} onChange={(e) => setPayDebit(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
                 </div>
                 <div className="form-group">
