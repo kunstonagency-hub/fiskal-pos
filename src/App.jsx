@@ -2499,7 +2499,7 @@ const fetchUserProfileAndStore = async (user) => {
     await fetchProducts(currentStoreId);
   };
 
-  const handleHoldOrder = async () => {
+const handleHoldOrder = async () => {
     if (cart.length === 0 || !currentShift || !currentStoreId) return;
 
     setProcessing(true);
@@ -2531,7 +2531,13 @@ const fetchUserProfileAndStore = async (user) => {
       setCart([]);
       setSelectedClient('Cliente General');
       checkPendingSales();
-      alert("¡Estás Offline! Cuenta guardada en espera localmente.");
+      
+      // ⬇️ ALERTA DINÁMICA OFFLINE ⬇️
+      alert(currentStoreType === 'restaurant' 
+        ? "¡Estás Offline! Comanda guardada localmente y en cola para cocina." 
+        : "¡Estás Offline! Cuenta guardada en espera localmente."
+      );
+      
       setProcessing(false);
       return;
     }
@@ -2543,7 +2549,12 @@ const fetchUserProfileAndStore = async (user) => {
       setCart([]);
       setSelectedClient('Cliente General');
       fetchSales(currentStoreId);
-      alert("¡Venta guardada en espera exitosamente!");
+      
+      // ⬇️ ALERTA DINÁMICA ONLINE ⬇️
+      alert(currentStoreType === 'restaurant' 
+        ? "¡Comanda enviada a la cocina exitosamente!" 
+        : "¡Venta guardada en espera exitosamente!"
+      );
     }
     setProcessing(false);
   };
