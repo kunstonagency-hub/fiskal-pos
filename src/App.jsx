@@ -399,6 +399,34 @@ const confirmAddToCartWithWeight = () => {
   const [modalProductId, setModalProductId] = useState('');
   const [modalClientName, setModalClientName] = useState('Cliente General');
 
+  // ⬇️ BLOQUE NUEVO: Escucha en tiempo real para el KDS y POS ⬇️
+  useEffect(() => {
+    // Si no hay comercio activo o estamos sin internet, no nos conectamos
+    if (!currentStoreId || !isOnline) return;
+
+    const salesChannel = supabase
+      .channel('kds-live-updates')
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', // Escucha inserts (nuevas comandas), updates (despachos) y deletes
+          schema: 'public', 
+          table: 'sales', 
+          filter: `store_id=eq.${currentStoreId}` 
+        },
+        (payload) => {
+          console.log('¡Movimiento detectado en comandas!', payload);
+          // Refrescamos la lista automáticamente en la pantalla
+          fetchSales(currentStoreId);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(salesChannel);
+    };
+  }, [currentStoreId, isOnline]);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
