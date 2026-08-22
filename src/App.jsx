@@ -146,6 +146,9 @@ function App() {
   const [saasInvoiceHeader, setSaasInvoiceHeader] = useState('');
   const [saasInvoiceFooter, setSaasInvoiceFooter] = useState('');
 
+// ⬇️ NUEVO ESTADO: Notificación global de pedidos listos ⬇️
+  const [readyNotification, setReadyNotification] = useState(null);
+
   // Estados del Modal de Pre-Facturación SaaS
   const [showPreInvoiceModal, setShowPreInvoiceModal] = useState(false);
   const [preInvoiceStore, setPreInvoiceStore] = useState(null);
@@ -399,11 +402,10 @@ const confirmAddToCartWithWeight = () => {
   const [modalProductId, setModalProductId] = useState('');
   const [modalClientName, setModalClientName] = useState('Cliente General');
 
-  // ⬇️ BLOQUE CORREGIDO: Escucha en tiempo real robusta para el KDS y POS ⬇️
+// ⬇️ BLOQUE CORREGIDO: Escucha en tiempo real global (Sonido y Notificación) ⬇️
   useEffect(() => {
     if (!currentStoreId || !isOnline) return;
 
-    // Creamos un canal único por comercio para evitar interferencias
     const salesChannel = supabase
       .channel(`kds-live-updates-${currentStoreId}`)
       .on(
@@ -416,13 +418,36 @@ const confirmAddToCartWithWeight = () => {
         (payload) => {
           console.log('¡Movimiento detectado en tiempo real!', payload);
           
-          // Validamos de forma segura que el cambio pertenezca al comercio actual
           const storeIdMatch = 
             (payload.new && String(payload.new.store_id) === String(currentStoreId)) || 
             (payload.old && String(payload.old.store_id) === String(currentStoreId));
 
           if (storeIdMatch) {
-            // Refrescamos la lista de ventas instantáneamente en la interfaz
+            // DETECCIÓN GLOBAL DE PEDIDO LISTO
+            if (
+              payload.new && 
+              payload.old && 
+              payload.new.status === 'ready' && 
+              payload.old.status !== 'ready'
+            ) {
+              // 1. Reproducir sonido en TODOS los dispositivos
+              try {
+                const bell = new Audio('https://upload.wikimedia.org/wikipedia/commons/3/34/Sound_Effect_-_Door_Bell.ogg');
+                bell.play().catch(err => console.log("Audio bloqueado por el navegador:", err));
+              } catch(e) {}
+
+              // 2. Mostrar alerta flotante
+              const orderIdStr = String(payload.new.id);
+              const orderNumber = orderIdStr.startsWith('local') ? 'Pendiente' : orderIdStr.slice(-4);
+              setReadyNotification(`¡El pedido #${orderNumber} está listo para entregar!`);
+
+              // 3. Ocultar la alerta tras 6 segundos
+              setTimeout(() => {
+                setReadyNotification(null);
+              }, 6000);
+            }
+
+            // Refrescamos la lista de ventas instantáneamente
             fetchSales(currentStoreId);
           }
         }
@@ -432,9 +457,8 @@ const confirmAddToCartWithWeight = () => {
       });
 
     return () => {
-      supabase.removeChannel(status => {
-        supabase.removeChannel(salesChannel);
-      });
+      // CORRECCIÓN: Limpieza limpia de Supabase v2
+      supabase.removeChannel(salesChannel);
     };
   }, [currentStoreId, isOnline]);
 
@@ -3066,8 +3090,39 @@ if (!session) {
     );
   }
 
-  return (
+return (
     <div className="fiskal-container">
+      
+      {/* ⬇️ BLOQUE NUEVO: Alerta flotante global ⬇️ */}
+      {readyNotification && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          background: '#2b8a3e',
+          color: '#fff',
+          padding: '16px 24px',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          fontWeight: 'bold',
+          fontSize: '15px',
+          animation: 'slideIn 0.3s ease-out'
+        }}>
+          <span style={{ fontSize: '20px' }}>🔔</span>
+          {readyNotification}
+          <button 
+            onClick={() => setReadyNotification(null)}
+            style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', marginLeft: '8px', fontSize: '20px' }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      
       {isSidebarExpanded && (
         <div 
           onClick={() => setIsSidebarExpanded(false)} 
@@ -3172,54 +3227,52 @@ if (!session) {
             </div>
             
             <div className="exchange-rate-badge">
-      <span>Tasa BCV: <strong>Bs. {bcvRate ? bcvRate.toFixed(2) : '---'}</strong></span>
-      <button className={`btn-sync ${loadingRate ? 'spinning' : ''}`} onClick={() => syncBcvRate(currentStoreId)} title="Sincronizar Tasa">
-        <RefreshCw size={14} />
-      </button>
-      {lastSync && <span className="sync-time">{lastSync}</span>}
-    </div>
+              <span>Tasa BCV: <strong>Bs. {bcvRate ? bcvRate.toFixed(2) : '---'}</strong></span>
+              <button className={`btn-sync ${loadingRate ? 'spinning' : ''}`} onClick={() => syncBcvRate(currentStoreId)} title="Sincronizar Tasa">
+                <RefreshCw size={14} />
+              </button>
+              {lastSync && <span className="sync-time">{lastSync}</span>}
+            </div>
 
-    {currentUserRole === 'system_vendor' && (
-      <div style={{ display: 'flex', alignItems: 'center', background: '#e9ecef', padding: '3px', borderRadius: '6px', gap: '2px', marginLeft: 'auto' }}>
-        <button
-          onClick={() => setCurrentStoreType('general')}
-          style={{
-            background: currentStoreType === 'general' ? '#fff' : 'transparent',
-            border: 'none',
-            padding: '4px 10px',
-            borderRadius: '4px',
-            fontSize: '11px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            color: currentStoreType === 'general' ? '#212529' : '#6c757d',
-            boxShadow: currentStoreType === 'general' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            transition: 'all 0.2s'
-          }}
-        >
-          Tienda Estándar
-        </button>
-        <button
-          onClick={() => setCurrentStoreType('restaurant')}
-          style={{
-            background: currentStoreType === 'restaurant' ? '#d9480f' : 'transparent',
-            border: 'none',
-            padding: '4px 10px',
-            borderRadius: '4px',
-            fontSize: '11px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            color: currentStoreType === 'restaurant' ? '#fff' : '#6c757d',
-            boxShadow: currentStoreType === 'restaurant' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            transition: 'all 0.2s'
-          }}
-        >
-          Comida Rápida
-        </button>
-      </div>
-    )}
+            {currentUserRole === 'system_vendor' && (
+              <div style={{ display: 'flex', alignItems: 'center', background: '#e9ecef', padding: '3px', borderRadius: '6px', gap: '2px', marginLeft: 'auto' }}>
+                <button
+                  onClick={() => setCurrentStoreType('general')}
+                  style={{
+                    background: currentStoreType === 'general' ? '#fff' : 'transparent',
+                    border: 'none',
+                    padding: '4px 10px',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    color: currentStoreType === 'general' ? '#212529' : '#6c757d',
+                    boxShadow: currentStoreType === 'general' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Tienda Estándar
+                </button>
+                <button
+                  onClick={() => setCurrentStoreType('restaurant')}
+                  style={{
+                    background: currentStoreType === 'restaurant' ? '#d9480f' : 'transparent',
+                    border: 'none',
+                    padding: '4px 10px',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    color: currentStoreType === 'restaurant' ? '#fff' : '#6c757d',
+                    boxShadow: currentStoreType === 'restaurant' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Comida Rápida
+                </button>
+              </div>
+            )}
             
-            
-
           </div>
         </header>
 
@@ -4609,15 +4662,6 @@ if (!session) {
                       <button 
                         onClick={async (e) => {
                           e.currentTarget.blur();
-                          
-                          // 🔔 Lógica de campana: Sonido de Ding-Dong clásico y corto 🔔
-                          try {
-                            // Audio directo en memoria usando Wikimedia (cero bloqueos)
-                            const bell = new Audio('https://upload.wikimedia.org/wikipedia/commons/3/34/Sound_Effect_-_Door_Bell.ogg');
-                            bell.play().catch(err => console.log("El navegador bloqueó el audio:", err));
-                          } catch (error) {
-                            console.error("Error reproduciendo campana:", error);
-                          }
 
                           if (typeof setSales === 'function') {
                             setSales(sales.map(s => s.id === order.id ? { ...s, status: 'ready' } : s));
