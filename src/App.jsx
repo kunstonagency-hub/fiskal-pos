@@ -2841,10 +2841,20 @@ const handleHoldOrder = async () => {
         return;
       }
 
+      // 👈 GENERAMOS EL NÚMERO CORRELATIVO PROPIO DE ESTE COMERCIO
+      const invoiceNumber = await getNextInvoiceNumber(currentStoreId);
+
       const saleData = {
-        total_usd: totalUSD, total_bs: totalBs, items: cart,
-        client_name: selectedClient, status: finalStatus, balance_due_usd: newBalanceDue,
-        shift_id: currentShift.id, store_id: currentStoreId, payment_details: paymentDetails
+        invoice_number: invoiceNumber,
+        total_usd: totalUSD, 
+        total_bs: totalBs, 
+        items: cart,
+        client_name: selectedClient, 
+        status: finalStatus, 
+        balance_due_usd: newBalanceDue,
+        shift_id: currentShift.id, 
+        store_id: currentStoreId, 
+        payment_details: paymentDetails
       };
 
       const historyData = { amount_usd: actualPaidToRecord, payment_details: paymentDetails, store_id: currentStoreId };
@@ -2869,7 +2879,7 @@ const handleHoldOrder = async () => {
         setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
         setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
         checkPendingSales();
-        alert("¡Estás Offline! Venta guardada localmente.");
+        alert(`¡Estás Offline! Venta ${invoiceNumber} guardada localmente.`);
       } else {
         const { data: newSale, error } = await supabase.from('sales').insert([saleData]).select().single();
         if (error) {
@@ -2887,7 +2897,7 @@ const handleHoldOrder = async () => {
           setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
           setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
           fetchSales(currentStoreId);
-          alert(newBalanceDue > 0 ? `¡Venta registrada con saldo pendiente de $${newBalanceDue.toFixed(2)}!` : "¡Venta procesada con éxito!");
+          alert(newBalanceDue > 0 ? `¡Venta ${invoiceNumber} registrada con saldo pendiente de $${newBalanceDue.toFixed(2)}!` : `¡Venta ${invoiceNumber} procesada con éxito!`);
         }
       }
     }
@@ -2912,13 +2922,28 @@ const handleHoldOrder = async () => {
     setShowInvoiceModal(true);
   };
 
-  const getInvoiceClientDocument = () => {
-    if (!selectedInvoice) return '';
-    if (selectedInvoice.payment_details?.client_document) {
-      return selectedInvoice.payment_details.client_document;
+  const getNextInvoiceNumber = async (storeId) => {
+    if (!storeId) return 'A-001';
+    try {
+      if (navigator.onLine) {
+        const { count, error } = await supabase
+          .from('sales')
+          .select('id', { count: 'exact', head: true })
+          .eq('store_id', storeId);
+        
+        if (!error && count !== null) {
+          const nextSeq = count + 1;
+          return `A-${String(nextSeq).padStart(3, '0')}`;
+        }
+      } else {
+        const storeSales = sales.filter(s => String(s.store_id) === String(storeId));
+        const nextSeq = storeSales.length + 1;
+        return `A-${String(nextSeq).padStart(3, '0')}`;
+      }
+    } catch (e) {
+      console.warn("Error calculando correlativo:", e);
     }
-    const currentClientData = clients.find(c => c.name === selectedInvoice.client_name);
-    return currentClientData ? currentClientData.document : 'No registrado';
+    return `A-${Date.now().toString().slice(-4)}`;
   };
 
   const filteredClientsForPOS = clients.filter(c => {
@@ -4177,64 +4202,66 @@ return (
                     ) : (
                       filteredSales.map((sale) => (
                         <tr key={sale.id}>
-                          <td><strong>#{String(sale.id).startsWith('local') ? 'Pendiente' : sale.id}</strong></td>
+                          <td>
+                            <strong>
+                              {sale.invoice_number || (String(sale.id).startsWith('local') ? 'Pendiente' : `A-${String(sale.id).padStart(3, '0')}`)}
+                            </strong>
+                          </td>
                           <td>{new Date(sale.created_at).toLocaleString()}</td>
                           <td>{sale.client_name || 'Cliente General'}</td>
                           <td><strong>${sale.total_usd.toFixed(2)}</strong></td>
                           <td>
-  {sale.status === 'credit' ? (
-    <span className="badge-credit"><AlertCircle size={12}/> Crédito</span>
-  ) : ['pending', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'].includes(String(sale.status).toLowerCase()) ? (
-    <span className="badge-pending"><Clock size={12}/> En Espera</span>
-  ) : (
-    <span className="badge-completed"><CheckCircle size={12}/> Pagada</span>
-  )}
-</td>
-<td className="action-cell">
-  <div className="action-buttons">
-    {/* ACTUALIZADO: Permitir retomar la cuenta si está pendiente, preparando o lista */}
-    {['pending', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'].includes(String(sale.status).toLowerCase()) && (
-      <button className="btn-icon-success" onClick={() => handleResumeOrder(sale)} title="Retomar cuenta"><Play size={16} /></button>
-    )}
-    {sale.status === 'credit' && (
-      <button className="btn-icon-success" onClick={() => handleStartSettleCredit(sale)} title="Abonar"><DollarSign size={16} /></button>
-    )}
-    {sale.status === 'credit' && (
-      <button className="btn-icon-whatsapp" onClick={() => sendWhatsAppReminder(sale)} title="WhatsApp"><MessageCircle size={16} /></button>
-    )}
-    <button className="btn-icon-primary" onClick={() => handleViewInvoice(sale)} title="Ver Factura"><Eye size={18} /></button>
+                            {sale.status === 'credit' ? (
+                              <span className="badge-credit"><AlertCircle size={12}/> Crédito</span>
+                            ) : ['pending', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'].includes(String(sale.status).toLowerCase()) ? (
+                              <span className="badge-pending"><Clock size={12}/> En Espera</span>
+                            ) : (
+                              <span className="badge-completed"><CheckCircle size={12}/> Pagada</span>
+                            )}
+                          </td>
+                          <td className="action-cell">
+                            <div className="action-buttons">
+                              {['pending', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'].includes(String(sale.status).toLowerCase()) && (
+                                <button className="btn-icon-success" onClick={() => handleResumeOrder(sale)} title="Retomar cuenta"><Play size={16} /></button>
+                              )}
+                              {sale.status === 'credit' && (
+                                <button className="btn-icon-success" onClick={() => handleStartSettleCredit(sale)} title="Abonar"><DollarSign size={16} /></button>
+                              )}
+                              {sale.status === 'credit' && (
+                                <button className="btn-icon-whatsapp" onClick={() => sendWhatsAppReminder(sale)} title="WhatsApp"><MessageCircle size={16} /></button>
+                              )}
+                              <button className="btn-icon-primary" onClick={() => handleViewInvoice(sale)} title="Ver Factura"><Eye size={18} /></button>
 
-    {/* Botón de Eliminar (Solo para Dueños/Admins) */}
-    {(currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
-      <button 
-        style={{ background: '#fa5252', color: 'white', border: 'none', borderRadius: '4px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        onClick={async (e) => {
-          e.stopPropagation(); 
-          const confirmDelete = window.confirm(`⚠️ ¿ESTÁS SEGURO? Estás a punto de ELIMINAR permanentemente la Factura/Pedido #${String(sale.id).startsWith('local') ? 'Pendiente' : sale.id}. Esta acción no se puede deshacer.`);
-          if (confirmDelete) {
-            try {
-              if (typeof supabase !== 'undefined') {
-                const { error: pErr } = await supabase.from('payment_history').delete().eq('sale_id', sale.id);
-                if (pErr) throw pErr;
-                const { error: sErr } = await supabase.from('sales').delete().eq('id', sale.id);
-                if (sErr) throw sErr;
-              }
-              if (typeof setSales === 'function') {
-                setSales(prevSales => prevSales.filter(s => s.id !== sale.id));
-              }
-            } catch (err) {
-              console.error("Error al eliminar la factura:", err);
-              alert("Hubo un error al eliminar el pedido: " + err.message);
-            }
-          }
-        }} 
-        title="Eliminar Pedido (Solo Dueño)"
-      >
-        <Trash2 size={16} /> 
-      </button>
-    )}
-  </div>
-</td>
+                              {(currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
+                                <button 
+                                  style={{ background: '#fa5252', color: 'white', border: 'none', borderRadius: '4px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  onClick={async (e) => {
+                                    e.stopPropagation(); 
+                                    const confirmDelete = window.confirm(`⚠️ ¿ESTÁS SEGURO? Estás a punto de ELIMINAR permanentemente la Factura/Pedido #${sale.invoice_number || sale.id}. Esta acción no se puede deshacer.`);
+                                    if (confirmDelete) {
+                                      try {
+                                        if (typeof supabase !== 'undefined') {
+                                          const { error: pErr } = await supabase.from('payment_history').delete().eq('sale_id', sale.id);
+                                          if (pErr) throw pErr;
+                                          const { error: sErr } = await supabase.from('sales').delete().eq('id', sale.id);
+                                          if (sErr) throw sErr;
+                                        }
+                                        if (typeof setSales === 'function') {
+                                          setSales(prevSales => prevSales.filter(s => s.id !== sale.id));
+                                        }
+                                      } catch (err) {
+                                        console.error("Error al eliminar la factura:", err);
+                                        alert("Hubo un error al eliminar el pedido: " + err.message);
+                                      }
+                                    }
+                                  }} 
+                                  title="Eliminar Pedido (Solo Dueño)"
+                                >
+                                  <Trash2 size={16} /> 
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       ))
                     )}
