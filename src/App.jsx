@@ -204,7 +204,7 @@ function App() {
   const [productForModifiers, setProductForModifiers] = useState(null);
   const [dynamicToggles, setDynamicToggles] = useState({}); // Toggles dinámicos
 
-const confirmAddToCartWithModifiers = () => {
+  const confirmAddToCartWithModifiers = () => {
   if (!productForModifiers) return;
 
   // 1. Definimos primero el identificador único para evitar errores de referencia
@@ -395,6 +395,19 @@ const confirmAddToCartWithWeight = () => {
   const [clientPhone, setClientPhone] = useState('');
   const [clientEmail, setClientEmail] = useState('');
   const [loadingClient, setLoadingClient] = useState(false);
+
+  // Asegúrate de que esta función exista en el archivo donde manejas el modal o la vista de la factura
+  const getInvoiceClientDocument = (sale) => {
+  if (!sale) return 'N/A';
+  if (sale.client_document) return sale.client_document;
+  if (sale.client_id && typeof clients !== 'undefined') {
+    const foundClient = clients.find(c => c.id === sale.client_id);
+    if (foundClient && (foundClient.document || foundClient.rif)) {
+      return foundClient.document || foundClient.rif;
+    }
+  }
+  return 'N/A';
+};
 
   const [plantillas, setPlantillas] = useState({
     reposicionStock: '¡Hola {cliente}! Te saludamos de {comercio}. Te contamos que el producto {producto} ya está disponible nuevamente en stock. ¿Te guardamos el tuyo?',
