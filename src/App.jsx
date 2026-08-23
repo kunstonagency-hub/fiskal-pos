@@ -276,7 +276,7 @@ const confirmAddToCartWithWeight = () => {
 
   const weightedItem = {
     ...productForWeight,
-    cartId: `${productForWeight.id}_weight_${Date.now()}`,
+    cartItemId: `${productForWeight.id}_weight_${Date.now()}`,
     price: finalItemPrice,
     quantity: 1,
     customNote: `Peso: ${weightLabel} (Base: $${productForWeight.price.toFixed(2)}/${weightUnit})`
@@ -2678,7 +2678,10 @@ const handleHoldOrder = async () => {
       client_document: clientDocToSave
     };
 
+    const invoiceNumber = await getNextInvoiceNumber(currentStoreId);
+
     const saleData = {
+      invoice_number: invoiceNumber,
       total_usd: totalUSD, total_bs: totalBs, items: cart,
       client_name: selectedClient, status: 'credit', balance_due_usd: totalUSD,
       shift_id: currentShift.id, store_id: currentStoreId, payment_details: paymentDetails
@@ -2706,7 +2709,7 @@ const handleHoldOrder = async () => {
       setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
       setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
       checkPendingSales();
-      alert("¡Estás Offline! Crédito guardado localmente.");
+      alert(`¡Estás Offline! Crédito ${invoiceNumber} guardado localmente.`);
     } else {
       const { error, data: newSale } = await supabase.from('sales').insert([saleData]).select().single();
       if (error) {
@@ -2724,7 +2727,7 @@ const handleHoldOrder = async () => {
         setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
         setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
         fetchSales(currentStoreId);
-        alert("¡Venta a crédito registrada con éxito!");
+        alert(`¡Venta a crédito ${invoiceNumber} registrada con éxito!`);
       }
     }
     setProcessing(false);
