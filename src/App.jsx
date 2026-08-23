@@ -2939,19 +2939,36 @@ const handleHoldOrder = async () => {
     if (!storeId) return 'A-001';
     try {
       if (navigator.onLine) {
-        const { count, error } = await supabase
+        const { data, error } = await supabase
           .from('sales')
-          .select('id', { count: 'exact', head: true })
-          .eq('store_id', storeId);
-        
-        if (!error && count !== null) {
-          const nextSeq = count + 1;
-          return `A-${String(nextSeq).padStart(3, '0')}`;
+          .select('invoice_number')
+          .eq('store_id', storeId)
+          .not('invoice_number', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+          
+        let nextSeq = 1;
+        if (!error && data && data.invoice_number) {
+          const parts = data.invoice_number.split('-');
+          if (parts.length === 2) {
+            const currentNum = parseInt(parts[1], 10);
+            if (!isNaN(currentNum)) {
+              nextSeq = currentNum + 1;
+            }
+          }
         }
+        return `A-${String(nextSeq).padStart(3, '0')}`;
       } else {
         const storeSales = sales.filter(s => String(s.store_id) === String(storeId));
-        const nextSeq = storeSales.length + 1;
-        return `A-${String(nextSeq).padStart(3, '0')}`;
+        let maxNum = 0;
+        storeSales.forEach(s => {
+          if (s.invoice_number && s.invoice_number.startsWith('A-')) {
+            const num = parseInt(s.invoice_number.split('-')[1], 10);
+            if (!isNaN(num) && num > maxNum) maxNum = num;
+          }
+        });
+        return `A-${String(maxNum + 1).padStart(3, '0')}`;
       }
     } catch (e) {
       console.warn("Error calculando correlativo:", e);
@@ -5318,7 +5335,7 @@ return (
             <div className="modal-body fiskal-form" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '13px', color: '#495057' }}>
                 <span><strong>Cliente:</strong> {selectedInvoice.client_name || 'Cliente General'}</span>
-                <span><strong>Cédula:</strong> {getInvoiceClientDocument()}</span>
+                <span><strong>Cédula:</strong> {getInvoiceClientDocument(selectedInvoice)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '13px', color: '#495057' }}>
                 <span><strong>Fecha:</strong> {new Date(selectedInvoice.created_at).toLocaleString()}</span>
