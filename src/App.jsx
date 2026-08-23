@@ -3108,65 +3108,70 @@ const fastFoodCategories = ['hamburguesas', 'perros calientes', 'perros', 'pizza
 // =================== FIN DEL BLOQUE 3 ===================
 if (!session) {
     return (
-      <div className="fiskal-login-container">
-        <div className="product-form-card" style={{ width: '400px', maxWidth: '100%', padding: '32px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
-          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <img src={logoDark} alt="Fiskal Logo" style={{ height: '38px', objectFit: 'contain', marginBottom: '4px' }} />
-            <p style={{ fontSize: '13px', color: '#6c757d' }}>Sistema de Gestión Comercial y POS</p>
-          </div>
+      <div className="fiskal-login-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', width: '100%', background: '#f8f9fa', padding: '20px', boxSizing: 'border-box' }}>
+  <div className="product-form-card" style={{ width: '400px', maxWidth: '100%', padding: '32px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', background: '#fff', borderRadius: '8px' }}>
+    <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+      <img src={logoDark} alt="Fiskal Logo" style={{ height: '38px', objectFit: 'contain', marginBottom: '4px' }} />
+      <p style={{ fontSize: '13px', color: '#6c757d', margin: 0 }}>Sistema de Gestión Comercial y POS</p>
+    </div>
 
-          {authError && (
-            <div style={{ background: '#ffe3e3', color: '#c92a2a', padding: '10px', borderRadius: '6px', fontSize: '13px', marginBottom: '16px' }}>
-              {authError}
-            </div>
-          )}
+    {authError && (
+      <div style={{ background: '#ffe3e3', color: '#c92a2a', padding: '10px', borderRadius: '6px', fontSize: '13px', marginBottom: '16px' }}>
+        {authError}
+      </div>
+    )}
 
-          <form onSubmit={handleLoginSubmit} className="fiskal-form">
-            <div className="form-group">
-              <label>Correo Electrónico</label>
-              <div style={{ position: 'relative' }}>
-                <User size={16} style={{ position: 'absolute', left: '10px', top: '11px', color: '#adb5bd' }} />
-                <input 
-                  type="email" 
-                  value={authEmail} 
-                  onChange={(e) => setAuthEmail(e.target.value)} 
-                  placeholder="tu@correo.com" 
-                  style={{ paddingLeft: '34px', width: '100%' }}
-                  required 
-                />
-              </div>
-            </div>
-            <div className="form-group" style={{ marginBottom: '20px' }}>
-              <label>Contraseña</label>
-              <div style={{ position: 'relative' }}>
-                <Key size={16} style={{ position: 'absolute', left: '10px', top: '11px', color: '#adb5bd' }} />
-                <input 
-                  type="password" 
-                  value={authPassword} 
-                  onChange={(e) => setAuthPassword(e.target.value)} 
-                  placeholder="••••••••" 
-                  style={{ paddingLeft: '34px', width: '100%' }}
-                  required 
-                />
-              </div>
-            </div>
-            
-            <button type="submit" className="btn-primary" style={{ width: '100%', padding: '12px', fontSize: '15px' }} disabled={authLoading}>
-              {authLoading ? 'Procesando...' : (isRegistering ? 'Registrar Mi Nuevo Comercio' : 'Iniciar Sesión')}
-            </button>
-          </form>
-
-          <div style={{ textAlign: 'center', marginTop: '16px' }}>
-            <button 
-              type="button" 
-              onClick={() => setIsRegistering(!isRegistering)} 
-              style={{ background: 'none', border: 'none', color: '#1c7ed6', fontSize: '13px', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              {isRegistering ? '¿Ya tienes cuenta? Inicia sesión' : '¿Eres dueño de un negocio? Regístrate aquí'}
-            </button>
-          </div>
+    <form onSubmit={handleLoginSubmit} className="fiskal-form">
+      <div className="form-group" style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#495057' }}>Correo Electrónico</label>
+        <div style={{ position: 'relative' }}>
+          <User size={16} style={{ position: 'absolute', left: '10px', top: '11px', color: '#adb5bd' }} />
+          <input 
+            type="email" 
+            value={authEmail} 
+            onChange={(e) => setAuthEmail(e.target.value)} 
+            placeholder="tu@correo.com" 
+            style={{ paddingLeft: '34px', width: '100%', padding: '10px 10px 10px 34px', border: '1px solid #ced4da', borderRadius: '4px', outline: 'none' }}
+            required 
+          />
         </div>
       </div>
+      <div className="form-group" style={{ marginBottom: '20px' }}>
+        <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#495057' }}>Contraseña</label>
+        <div style={{ position: 'relative' }}>
+          <Key size={16} style={{ position: 'absolute', left: '10px', top: '11px', color: '#adb5bd' }} />
+          <input 
+            type="password" 
+            value={authPassword} 
+            onChange={(e) => setAuthPassword(e.target.value)} 
+            placeholder="••••••••" 
+            style={{ paddingLeft: '34px', width: '100%', padding: '10px 10px 10px 34px', border: '1px solid #ced4da', borderRadius: '4px', outline: 'none' }}
+            required 
+          />
+        </div>
+      </div>
+      
+      <button type="submit" className="btn-primary" style={{ width: '100%', padding: '12px', fontSize: '15px', background: '#212529', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }} disabled={authLoading}>
+        {authLoading ? 'Procesando...' : 'Iniciar Sesión'}
+      </button>
+    </form>
+
+    <div style={{ textAlign: 'center', marginTop: '16px' }}>
+      <a 
+        href="https://wa.me/584245013484?text=Hola,%20estoy%20interesado%20en%20adquirir%20una%20cuenta%20para%20el%20sistema%20Fiskal." 
+        target="_blank" 
+        rel="noopener noreferrer"
+        style={{ color: '#1c7ed6', fontSize: '13px', textDecoration: 'none', fontWeight: '500' }}
+      >
+        ¿Eres dueño de un negocio? Regístrate aquí
+      </a>
+    </div>
+  </div>
+
+  <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '12px', color: '#6c757d' }}>
+    © 2026 Fiskal. Desarrollado por <a href="https://wa.me/50764749094?text=Hola,%20me%20gustaría%20más%20información%20sobre%20sus%20servicios." target="_blank" rel="noopener noreferrer" style={{ color: '#1c7ed6', textDecoration: 'none', fontWeight: 'bold' }}>KunstonAgency</a>
+  </div>
+</div>
     );
   }
 
