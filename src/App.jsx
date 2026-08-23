@@ -1956,15 +1956,19 @@ const handleSaveStore = async (e) => {
 
     const cashUSDCounted = parseFloat(actualCashUSD) || 0;
     const cashBsCounted = parseFloat(actualCashBs) || 0;
-    const totalActualCashUSD = cashUSDCounted + (cashBsCounted / (bcvRate || 1));
+    const totalActualCashUSD = cashUSDCounted + (currentStoreCountry === 'venezuela' ? (cashBsCounted / (bcvRate || 1)) : 0);
 
     const shiftSales = sales.filter(s => s.shift_id === currentShift.id && s.status === 'completed');
     const cashCollectedUSD = shiftSales.reduce((sum, s) => sum + (s.payment_details?.cash_usd || 0), 0);
     const cashCollectedBs = shiftSales.reduce((sum, s) => sum + (s.payment_details?.cash_bs || 0), 0);
-    const cashCollectedBsInUSD = cashCollectedBs / (bcvRate || 1);
+    const cashCollectedBsInUSD = currentStoreCountry === 'venezuela' ? (cashCollectedBs / (bcvRate || 1)) : 0;
 
     const expectedCash = currentShift.opening_float_usd + cashCollectedUSD + cashCollectedBsInUSD;
     const difference = parseFloat((totalActualCashUSD - expectedCash).toFixed(2));
+
+    const finalNotesStr = currentStoreCountry === 'venezuela' 
+      ? `Contado: $${cashUSDCounted.toFixed(2)} + Bs. ${cashBsCounted.toFixed(2)}`
+      : `Contado: $${cashUSDCounted.toFixed(2)}`;
 
     try {
       const { error } = await supabase.from('shifts').update({
@@ -1973,7 +1977,7 @@ const handleSaveStore = async (e) => {
           expected_cash_usd: expectedCash,
           actual_cash_usd: totalActualCashUSD,
           difference_usd: difference,
-          notes: shiftNotes ? `${shiftNotes} | Contado: $${cashUSDCounted.toFixed(2)} + Bs. ${cashBsCounted.toFixed(2)}` : `Contado: $${cashUSDCounted.toFixed(2)} + Bs. ${cashBsCounted.toFixed(2)}`
+          notes: shiftNotes ? `${shiftNotes} | ${finalNotesStr}` : finalNotesStr
         }).eq('id', currentShift.id);
 
       if (error) throw error;
@@ -4061,16 +4065,29 @@ return (
                     <div className="payment-summary-box" style={{ marginTop: '16px' }}>
                       <div><span>Fondo Inicial:</span><h2>${currentShift.opening_float_usd.toFixed(2)}</h2></div>
                       <div><span>Ventas del Turno:</span><h2 style={{ color: '#2b8a3e' }}>${shiftTotalUSD.toFixed(2)}</h2></div>
-                      <div style={{ textAlign: 'right' }}><span>Efectivo Esperado en Gaveta:</span><h3>${(currentShift.opening_float_usd + shiftCashUSD + (shiftCashBs / (bcvRate || 1))).toFixed(2)}</h3></div>
+                      <div style={{ textAlign: 'right' }}><span>Efectivo Esperado en Gaveta:</span><h3>${(currentShift.opening_float_usd + shiftCashUSD + (currentStoreCountry === 'venezuela' ? (shiftCashBs / (bcvRate || 1)) : 0)).toFixed(2)}</h3></div>
                     </div>
 
                     <div className="invoice-payment-breakdown" style={{ marginTop: '20px' }}>
                       <h4>Desglose de Ingresos en Turno Actual</h4>
                       <p><span>Efectivo USD:</span> <strong>${shiftCashUSD.toFixed(2)}</strong></p>
-                      <p><span>Efectivo Bs:</span> <strong>Bs. {shiftCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                      <p><span>Zelle:</span> <strong>${shiftZelle.toFixed(2)}</strong></p>
-                      <p><span>Pago Móvil:</span> <strong>Bs. {shiftPagoMovilBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                      <p><span>Punto / Débito:</span> <strong>Bs. {shiftDebitBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                      
+                      <p>
+                        <span>{currentStoreCountry === 'panama' ? 'Yappy:' : currentStoreCountry === 'el_salvador' ? 'Transferencia / Chivo:' : 'Zelle:'}</span> 
+                        <strong>${shiftZelle.toFixed(2)}</strong>
+                      </p>
+                      
+                      <p>
+                        <span>Punto / Débito {currentStoreCountry === 'venezuela' ? '(Bs)' : '($ USD)'}:</span> 
+                        <strong>{currentStoreCountry === 'venezuela' ? `Bs. ${shiftDebitBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `$${shiftDebitBs.toFixed(2)}`}</strong>
+                      </p>
+
+                      {currentStoreCountry === 'venezuela' && (
+                        <>
+                          <p><span>Efectivo Bs:</span> <strong>Bs. {shiftCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                          <p><span>Pago Móvil:</span> <strong>Bs. {shiftPagoMovilBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -5315,12 +5332,18 @@ return (
                     <label>Efectivo Inicial ($ USD)</label>
                     <input type="number" step="0.01" value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)} placeholder="0.00" required />
                   </div>
-                  <div className="form-group">
-                    <label>Efectivo Inicial (Bs VES)</label>
-                    <input type="number" step="0.01" value={openingFloatVes} onChange={(e) => setOpeningFloatVes(e.target.value)} placeholder="0.00" required />
-                  </div>
+                  {currentStoreCountry === 'venezuela' && (
+                    <div className="form-group">
+                      <label>Efectivo Inicial (Bs VES)</label>
+                      <input type="number" step="0.01" value={openingFloatVes} onChange={(e) => setOpeningFloatVes(e.target.value)} placeholder="0.00" required />
+                    </div>
+                  )}
                 </div>
-                <span style={{ fontSize: '11px', color: '#6c757d', marginTop: '4px' }}>Dinero físico disponible en caja para ambas denominaciones al arrancar el turno.</span>
+                <span style={{ fontSize: '11px', color: '#6c757d', marginTop: '4px' }}>
+                  {currentStoreCountry === 'venezuela' 
+                    ? 'Dinero físico disponible en caja para ambas denominaciones al arrancar el turno.'
+                    : 'Dinero físico disponible en caja al arrancar el turno.'}
+                </span>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn-secondary" onClick={() => setShowOpenShiftModal(false)}>Cancelar</button>
@@ -5340,19 +5363,25 @@ return (
             </div>
             <div className="modal-body">
               <div className="payment-summary-box">
-                <div><span>Efectivo Esperado (USD):</span><h2>${(currentShift ? currentShift.opening_float_usd + shiftCashUSD + (shiftCashBs / (bcvRate || 1)) : 0).toFixed(2)}</h2></div>
+                <div><span>Efectivo Esperado (USD):</span><h2>${(currentShift ? currentShift.opening_float_usd + shiftCashUSD + (currentStoreCountry === 'venezuela' ? (shiftCashBs / (bcvRate || 1)) : 0) : 0).toFixed(2)}</h2></div>
               </div>
               <div className="payment-inputs-grid" style={{ marginBottom: '16px' }}>
                 <div className="form-group">
                   <label>Efectivo Físico Contado ($ USD)</label>
                   <input type="number" step="0.01" value={actualCashUSD} onChange={(e) => setActualCashUSD(e.target.value)} placeholder="0.00" required />
                 </div>
-                <div className="form-group">
-                  <label>Efectivo Físico Contado (Bs VES)</label>
-                  <input type="number" step="0.01" value={actualCashBs} onChange={(e) => setActualCashBs(e.target.value)} placeholder="0.00" required />
-                </div>
+                {currentStoreCountry === 'venezuela' && (
+                  <div className="form-group">
+                    <label>Efectivo Físico Contado (Bs VES)</label>
+                    <input type="number" step="0.01" value={actualCashBs} onChange={(e) => setActualCashBs(e.target.value)} placeholder="0.00" required />
+                  </div>
+                )}
               </div>
-              <span style={{ fontSize: '11px', color: '#6c757d', display: 'block', marginBottom: '16px' }}>Cuenta los billetes reales en gaveta de ambas monedas para un arqueo exacto.</span>
+              <span style={{ fontSize: '11px', color: '#6c757d', display: 'block', marginBottom: '16px' }}>
+                {currentStoreCountry === 'venezuela' 
+                  ? 'Cuenta los billetes reales en gaveta de ambas monedas para un arqueo exacto.'
+                  : 'Cuenta los billetes reales en gaveta para un arqueo exacto.'}
+              </span>
               <div className="form-group">
                 <label>Notas u Observaciones (Opcional)</label>
                 <input type="text" value={shiftNotes} onChange={(e) => setShiftNotes(e.target.value)} placeholder="Ej. Sin novedad / Retiro de $20" />
@@ -5460,7 +5489,9 @@ return (
                   <input type="number" step="0.01" value={payCashUSD} onChange={(e) => setPayCashUSD(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
                 </div>
                 <div className="form-group">
-                  <label>Zelle ($)</label>
+                  <label>
+                    {currentStoreCountry === 'panama' ? 'Yappy ($)' : currentStoreCountry === 'el_salvador' ? 'Transferencia / Chivo ($)' : 'Zelle ($)'}
+                  </label>
                   <input type="number" step="0.01" value={payZelle} onChange={(e) => setPayZelle(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
                 </div>
                 
@@ -5483,7 +5514,12 @@ return (
                 </div>
                 <div className="form-group">
                   <label>Referencia Bancaria (Opcional)</label>
-                  <input type="text" value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)} placeholder="Últimos 4 dígitos o ref" />
+                  <input 
+                    type="text" 
+                    value={paymentRef} 
+                    onChange={(e) => setPaymentRef(e.target.value)} 
+                    placeholder={currentStoreCountry === 'panama' ? 'Teléfono Yappy o Ref' : 'Últimos 4 dígitos o ref'} 
+                  />
                 </div>
               </div>
             </div>
