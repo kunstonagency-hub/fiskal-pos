@@ -1224,13 +1224,31 @@ const handleVendorRegisterStoreSubmit = async (e) => {
     }
   };
 
-  const handleToggleStoreStatus = async (storeId, currentStatus) => {
+  const handleDeleteStore = async (storeId, storeName) => {
+    if (currentUserRole !== 'super_admin') {
+      alert("Acceso denegado: Solo el Administrador Principal puede eliminar comercios.");
+      return;
+    }
+
+    const confirmText = `⚠️ ADVERTENCIA CRÍTICA ⚠️\n\n¿Estás absolutamente seguro de que deseas ELIMINAR permanentemente el comercio "${storeName}"?\n\nEsta acción borrará todo su historial y NO se puede deshacer.`;
+    
+    if (!window.confirm(confirmText)) return;
+
     try {
-      const { error } = await supabase.from('stores').update({ is_active: !currentStatus }).eq('id', storeId);
-      if (error) throw error;
+      const { error } = await supabase.from('stores').delete().eq('id', storeId);
+      
+      if (error) {
+        // Si Supabase bloquea el borrado por tener ventas o productos vinculados y no está configurado el borrado en cascada
+        if (error.message.includes('foreign key constraint') || error.code === '23503') {
+           throw new Error("No puedes eliminar este comercio porque tiene productos o ventas registradas. Ve a Supabase, busca las tablas relacionadas (products, sales) y activa 'Cascade Delete' en las llaves foráneas.");
+        }
+        throw error;
+      }
+      
+      alert(`El comercio "${storeName}" ha sido eliminado exitosamente.`);
       fetchAdminStores();
     } catch (error) {
-      alert("Error al cambiar estatus del comercio: " + error.message);
+      alert("Error al eliminar el comercio: " + error.message);
     }
   };
 
@@ -4031,6 +4049,9 @@ return (
                                   <button className="btn-icon-edit" onClick={() => handleStartEditStore(store)} title="Editar Datos y Promociones"><Edit2 size={16} /></button>
                                   <button className="btn-secondary" onClick={() => handleToggleStoreStatus(store.id, store.is_active)} style={{ borderColor: store.is_active ? '#fa5252' : '#2b8a3e', color: store.is_active ? '#fa5252' : '#2b8a3e', fontSize: '11px', padding: '4px 8px' }}>
                                     {store.is_active ? 'Suspender' : 'Activar'}
+                                  </button>
+                                  <button className="btn-icon-danger" onClick={() => handleDeleteStore(store.id, store.name)} title="Eliminar Comercio Definitivamente" style={{ background: '#fa5252', color: '#fff', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                    <Trash2 size={16} />
                                   </button>
                                 </div>
                               </td>
