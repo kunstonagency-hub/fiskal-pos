@@ -5195,164 +5195,76 @@ return (
 
       {showPreInvoiceModal && preInvoiceStore && (
         <div className="modal-overlay" style={{ zIndex: 10005 }}>
-          <div className="modal-content" style={{ width: '500px' }}>
+          <div className="modal-content" style={{ width: '550px' }}>
             <div className="modal-header">
-              <h3>Factura #{String(selectedInvoice.id).startsWith('local') ? 'Pendiente' : selectedInvoice.invoice_number || `A-${String(selectedInvoice.id).padStart(3, '0')}`}</h3>
-              <button className="btn-close-modal" onClick={() => setShowInvoiceModal(false)}><X size={20} /></button>
+              <h3>Recibo de Servicios SaaS - {preInvoiceStore.name}</h3>
+              <button className="btn-close-modal" onClick={() => setShowPreInvoiceModal(false)}><X size={20} /></button>
             </div>
             
-            <div className="modal-body fiskal-form" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            <div className="modal-body fiskal-form" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
               
-              {/* Cabecera Fiscal del Comercio */}
-              <div style={{ textAlign: 'center', marginBottom: '16px', borderBottom: '1px dashed #dee2e6', paddingBottom: '12px' }}>
-                <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#212529' }}>{currentStoreName}</h2>
-                {currentStoreRif && <div style={{ fontSize: '12px', color: '#495057' }}>{currentStoreCountry === 'venezuela' ? 'RIF' : 'RUC/Documento'}: {currentStoreRif}</div>}
-                {currentStoreAddress && <div style={{ fontSize: '12px', color: '#495057', marginTop: '2px' }}>{currentStoreAddress}</div>}
+              {/* Cabecera del Recibo */}
+              <div style={{ textAlign: 'center', marginBottom: '20px', borderBottom: '1px dashed #dee2e6', paddingBottom: '15px' }}>
+                <h2 style={{ margin: '0 0 4px 0', fontSize: '20px', color: '#212529' }}>Fiskal.</h2>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#495057' }}>Recibo de Servicios SaaS</div>
               </div>
 
-              {/* Datos del Cliente y Factura */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '13px', color: '#495057' }}>
-                <span><strong>Cliente:</strong> {selectedInvoice.client_name || 'Cliente General'}</span>
-                <span><strong>{currentStoreCountry === 'venezuela' ? 'Cédula/RIF' : 'Cédula/RUC'}:</strong> {selectedInvoice.payment_details?.client_document || 'N/A'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '13px', color: '#495057' }}>
-                <span><strong>Fecha:</strong> {new Date(selectedInvoice.created_at).toLocaleString()}</span>
-                <span><strong>Estatus:</strong> {selectedInvoice.status.toUpperCase()}</span>
+              {/* Datos del Comercio */}
+              <div style={{ marginBottom: '16px', fontSize: '13px', color: '#495057', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div><strong>Comercio:</strong> {preInvoiceStore.name}</div>
+                <div><strong>Propietario:</strong> {preInvoiceStore.owner_name || preInvoiceStore.full_name || 'Nombres'}</div>
+                <div><strong>{preInvoiceStore.country === 'venezuela' ? 'RIF' : 'RIF/Documento'}:</strong> {preInvoiceStore.rif || preInvoiceStore.document || '123456789-2'}</div>
+                <div><strong>Fecha de Emisión:</strong> {new Date().toLocaleDateString()}</div>
               </div>
 
-              {/* Inyección de lógica dinámica para Monedas e Impuestos */}
-              {(() => {
-                const isVzla = currentStoreCountry === 'venezuela';
-                // Usamos la tasa BCV guardada al momento de la venta, o la actual si no hay
-                const saleBcvRate = selectedInvoice.payment_details?.applied_bcv_rate || bcvRate || 1;
-                const showTaxes = selectedInvoice.tax_usd > 0;
-                
-                const formatMoney = (usdVal) => {
-                  if (isVzla) {
-                    return `Bs. ${(usdVal * saleBcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                  }
-                  return `$${usdVal.toFixed(2)}`;
-                };
+              {/* Tabla de Conceptos (Precio Base, Descuentos, Subtotal) */}
+              <div className="table-responsive" style={{ marginBottom: '20px' }}>
+                <table className="receipt-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #dee2e6', textAlign: 'left' }}>
+                      <th style={{ padding: '8px' }}>Descripción</th>
+                      <th style={{ padding: '8px', textAlign: 'center' }}>Precio Base</th>
+                      <th style={{ padding: '8px', textAlign: 'center' }}>Descuentos</th>
+                      <th style={{ padding: '8px', textAlign: 'right' }}>Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid #dee2e6' }}>
+                      <td style={{ padding: '8px' }}>Suscripción Mensual Sistema Fiskal</td>
+                      <td style={{ padding: '8px', textAlign: 'center' }}>${Number(preInvoiceStore.base_fee || preInvoiceStore.monthly_fee || 20).toFixed(2)}</td>
+                      <td style={{ padding: '8px', textAlign: 'center' }}>{preInvoiceStore.discount_text || '33%'}</td>
+                      <td style={{ padding: '8px', textAlign: 'right' }}><strong>${Number(preInvoiceStore.monthly_fee || 13.40).toFixed(2)}</strong></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
-                const formatRef = (usdVal) => {
-                  if (isVzla) {
-                    return `(Ref: $${usdVal.toFixed(2)})`;
-                  }
-                  return '';
-                };
-
-                return (
-                  <>
-                    {isVzla && (
-                      <div style={{ textAlign: 'right', fontSize: '11px', color: '#868e96', marginBottom: '8px' }}>
-                        Tasa BCV Aplicada: Bs. {saleBcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                    )}
-
-                    <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Artículos Facturados</h4>
-                    <div className="table-responsive" style={{ marginBottom: '16px' }}>
-                      <table className="receipt-table">
-                        <thead>
-                          <tr>
-                            <th>Cant</th>
-                            <th>Producto</th>
-                            <th>Precio Unit</th>
-                            <th>Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedInvoice.items?.map((item, idx) => {
-                            const itemTotalUsd = item.price * item.quantity;
-                            return (
-                              <tr key={idx}>
-                                <td>{item.quantity}</td>
-                                <td>{item.name}</td>
-                                <td>
-                                  <div>{formatMoney(item.price)}</div>
-                                  <div style={{ fontSize: '10px', color: '#868e96' }}>{formatRef(item.price)}</div>
-                                </td>
-                                <td>
-                                  <strong>{formatMoney(itemTotalUsd)}</strong>
-                                  <div style={{ fontSize: '10px', color: '#868e96', fontWeight: 'normal' }}>{formatRef(itemTotalUsd)}</div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+              {/* Total Facturado */}
+              <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#212529' }}>Total Facturado:</span>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#2b8a3e' }}>${Number(preInvoiceStore.monthly_fee || 13.40).toFixed(2)}</span>
+                  {preInvoiceStore.country === 'venezuela' && (
+                    <div style={{ fontSize: '12px', color: '#495057' }}>
+                      (Bs. {((Number(preInvoiceStore.monthly_fee || 13.40)) * (bcvRate || 1)).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                     </div>
-
-                    <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
-                      {showTaxes && (
-                        <>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px', color: '#495057' }}>
-                            <span>Subtotal:</span>
-                            <div style={{ textAlign: 'right' }}>
-                              <strong>{formatMoney(selectedInvoice.subtotal_usd || (selectedInvoice.total_usd - selectedInvoice.tax_usd))}</strong>
-                              <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.subtotal_usd || (selectedInvoice.total_usd - selectedInvoice.tax_usd))}</div>
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px', color: '#495057' }}>
-                            <span>Impuesto ({currentStoreTaxRate}%):</span>
-                            <div style={{ textAlign: 'right' }}>
-                              <strong>{formatMoney(selectedInvoice.tax_usd)}</strong>
-                              <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.tax_usd)}</div>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', marginBottom: '6px', alignItems: 'center' }}>
-                        <span>Total Facturado:</span>
-                        <div style={{ textAlign: 'right' }}>
-                          <strong>{formatMoney(selectedInvoice.total_usd)}</strong>
-                          <div style={{ fontSize: '12px', fontWeight: 'normal', color: '#495057' }}>{formatRef(selectedInvoice.total_usd)}</div>
-                        </div>
-                      </div>
-
-                      {selectedInvoice.balance_due_usd > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#fa5252', marginTop: '6px', borderTop: '1px solid #dee2e6', paddingTop: '6px' }}>
-                          <span>Saldo Pendiente:</span>
-                          <div style={{ textAlign: 'right' }}>
-                            <strong>{formatMoney(selectedInvoice.balance_due_usd)}</strong>
-                            <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.balance_due_usd)}</div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                );
-              })()}
-
-              {invoiceHistory.length > 0 && (
-                <div style={{ marginTop: '16px' }}>
-                  <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Historial de Abonos / Pagos</h4>
-                  {invoiceHistory.map((h, i) => {
-                    const histBcvRate = h.payment_details?.applied_bcv_rate || (selectedInvoice.payment_details?.applied_bcv_rate) || bcvRate || 1;
-                    const isVzlaHist = currentStoreCountry === 'venezuela';
-                    const abonoText = isVzlaHist 
-                      ? `Bs. ${(h.amount_usd * histBcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Ref: $${h.amount_usd.toFixed(2)})`
-                      : `$${h.amount_usd.toFixed(2)}`;
-                      
-                    return (
-                      <div key={i} style={{ fontSize: '12px', padding: '6px', background: '#e7f5ff', borderRadius: '4px', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{new Date(h.created_at).toLocaleString()}</span>
-                        <strong>Abono: {abonoText}</strong>
-                      </div>
-                    );
-                  })}
+                  )}
                 </div>
-              )}
+              </div>
+
+              <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '12px', color: '#868e96', fontStyle: 'italic' }}>
+                ¡Gracias por confiar en Fiskal para la gestión de su negocio!
+              </div>
+
             </div>
             
             <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowInvoiceModal(false)}>Cerrar</button>
+              <button type="button" className="btn-secondary" onClick={() => setShowPreInvoiceModal(false)}>Cerrar</button>
               <button type="button" className="btn-primary" onClick={() => window.print()}>Imprimir Recibo</button>
             </div>
           </div>
         </div>
       )}
-
       {showDailyTrialAlert && (
         <div className="modal-overlay" style={{ zIndex: 10005 }}>
           <div className="modal-content" style={{ width: '420px', textAlign: 'center', padding: '10px' }}>
