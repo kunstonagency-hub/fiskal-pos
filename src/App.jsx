@@ -357,6 +357,7 @@ const confirmAddToCartWithWeight = () => {
   const [actualCashUSD, setActualCashUSD] = useState('');
   const [actualCashBs, setActualCashBs] = useState('');
   const [shiftNotes, setShiftNotes] = useState('');
+  const [pastShifts, setPastShifts] = useState([]);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payCashUSD, setPayCashUSD] = useState('');
@@ -3260,9 +3261,24 @@ return (
           <button className={activeTab === 'pos' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('pos'); setSelectedRestaurantCategory(null); setSettlingSale(null); setIsSidebarExpanded(false); }}>
             <ShoppingCart size={20} /> <span>{currentStoreType === 'restaurant' ? 'Comandas (POS)' : 'Terminal (POS)'}</span>
           </button>
-          <button className={activeTab === 'cash' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('cash'); setIsSidebarExpanded(false); }}>
+          
+          <button className={activeTab === 'cash' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { 
+            e.stopPropagation(); 
+            setActiveTab('cash'); 
+            setIsSidebarExpanded(false); 
+            if (navigator.onLine && currentStoreId) {
+              supabase.from('shifts')
+                .select('*')
+                .eq('store_id', currentStoreId)
+                .eq('status', 'closed')
+                .order('closed_at', { ascending: false })
+                .limit(20)
+                .then(({ data }) => { if (data) setPastShifts(data); });
+            }
+          }}>
             <Lock size={20} /> <span>Caja / Turnos</span>
           </button>
+
           <button className={activeTab === 'products' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('products'); resetProductForm(); setIsSidebarExpanded(false); }}>
             <Package size={20} /> <span>{currentStoreType === 'restaurant' ? 'Menú & Stock' : 'Productos & Stock'}</span>
           </button>
@@ -4130,59 +4146,105 @@ return (
           )}
 
           {activeTab === 'cash' && (
-            <div className="product-form-card" style={{ maxWidth: '800px', margin: '0 auto' }}>
-              <h3>Gestión de Turno y Arqueo de Caja</h3>
-              
-              {currentShift ? (
-                <div style={{ marginTop: '20px' }}>
-                  <div className="shift-active-box">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                      <div>
-                        <span className="badge-completed">CAJA ABIERTA: {getCurrentRegisterName()}</span>
-                        <p style={{ fontSize: '13px', color: '#6c757d', marginTop: '4px' }}>Iniciado el: {new Date(currentShift.opened_at).toLocaleString()}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '900px', margin: '0 auto', width: '100%' }}>
+              <div className="product-form-card" style={{ width: '100%' }}>
+                <h3>Gestión de Turno y Arqueo de Caja</h3>
+                
+                {currentShift ? (
+                  <div style={{ marginTop: '20px' }}>
+                    <div className="shift-active-box">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <div>
+                          <span className="badge-completed">CAJA ABIERTA: {getCurrentRegisterName()}</span>
+                          <p style={{ fontSize: '13px', color: '#6c757d', marginTop: '4px' }}>Iniciado el: {new Date(currentShift.opened_at).toLocaleString()}</p>
+                        </div>
+                        <button className="btn-primary" onClick={() => setShowCloseShiftModal(true)} style={{ background: '#fa5252' }}>
+                          Cerrar Turno (Reporte Z)
+                        </button>
                       </div>
-                      <button className="btn-primary" onClick={() => setShowCloseShiftModal(true)} style={{ background: '#fa5252' }}>
-                        Cerrar Turno (Reporte Z)
-                      </button>
-                    </div>
 
-                    <div className="payment-summary-box" style={{ marginTop: '16px' }}>
-                      <div><span>Fondo Inicial:</span><h2>${currentShift.opening_float_usd.toFixed(2)}</h2></div>
-                      <div><span>Ventas del Turno:</span><h2 style={{ color: '#2b8a3e' }}>${shiftTotalUSD.toFixed(2)}</h2></div>
-                      <div style={{ textAlign: 'right' }}><span>Efectivo Esperado en Gaveta:</span><h3>${(currentShift.opening_float_usd + shiftCashUSD + (currentStoreCountry === 'venezuela' ? (shiftCashBs / (bcvRate || 1)) : 0)).toFixed(2)}</h3></div>
-                    </div>
+                      <div className="payment-summary-box" style={{ marginTop: '16px' }}>
+                        <div><span>Fondo Inicial:</span><h2>${currentShift.opening_float_usd.toFixed(2)}</h2></div>
+                        <div><span>Ventas del Turno:</span><h2 style={{ color: '#2b8a3e' }}>${shiftTotalUSD.toFixed(2)}</h2></div>
+                        <div style={{ textAlign: 'right' }}><span>Efectivo Esperado en Gaveta:</span><h3>${(currentShift.opening_float_usd + shiftCashUSD + (currentStoreCountry === 'venezuela' ? (shiftCashBs / (bcvRate || 1)) : 0)).toFixed(2)}</h3></div>
+                      </div>
 
-                    <div className="invoice-payment-breakdown" style={{ marginTop: '20px' }}>
-                      <h4>Desglose de Ingresos en Turno Actual</h4>
-                      <p><span>Efectivo USD:</span> <strong>${shiftCashUSD.toFixed(2)}</strong></p>
-                      
-                      <p>
-                        <span>{currentStoreCountry === 'panama' ? 'Yappy:' : currentStoreCountry === 'el_salvador' ? 'Transferencia / Chivo:' : 'Zelle:'}</span> 
-                        <strong>${shiftZelle.toFixed(2)}</strong>
-                      </p>
-                      
-                      <p>
-                        <span>Punto / Débito {currentStoreCountry === 'venezuela' ? '(Bs)' : '($ USD)'}:</span> 
-                        <strong>{currentStoreCountry === 'venezuela' ? `Bs. ${shiftDebitBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `$${shiftDebitBs.toFixed(2)}`}</strong>
-                      </p>
+                      <div className="invoice-payment-breakdown" style={{ marginTop: '20px' }}>
+                        <h4>Desglose de Ingresos en Turno Actual</h4>
+                        <p><span>Efectivo USD:</span> <strong>${shiftCashUSD.toFixed(2)}</strong></p>
+                        
+                        <p>
+                          <span>{currentStoreCountry === 'panama' ? 'Yappy:' : currentStoreCountry === 'el_salvador' ? 'Transferencia / Chivo:' : 'Zelle:'}</span> 
+                          <strong>${shiftZelle.toFixed(2)}</strong>
+                        </p>
+                        
+                        <p>
+                          <span>Punto / Débito {currentStoreCountry === 'venezuela' ? '(Bs)' : '($ USD)'}:</span> 
+                          <strong>{currentStoreCountry === 'venezuela' ? `Bs. ${shiftDebitBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `$${shiftDebitBs.toFixed(2)}`}</strong>
+                        </p>
 
-                      {currentStoreCountry === 'venezuela' && (
-                        <>
-                          <p><span>Efectivo Bs:</span> <strong>Bs. {shiftCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                          <p><span>Pago Móvil:</span> <strong>Bs. {shiftPagoMovilBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                        </>
-                      )}
+                        {currentStoreCountry === 'venezuela' && (
+                          <>
+                            <p><span>Efectivo Bs:</span> <strong>Bs. {shiftCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                            <p><span>Pago Móvil:</span> <strong>Bs. {shiftPagoMovilBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                    <Lock size={48} color="#6c757d" style={{ marginBottom: '16px' }} />
+                    <h4>No hay ningún turno de caja abierto</h4>
+                    <p style={{ color: '#6c757d', fontSize: '14px', margin: '8px 0 24px 0' }}>Selecciona una de tu cajas físicas registradas para iniciar operaciones.</p>
+                    <button className="btn-primary" onClick={() => setShowOpenShiftModal(true)} style={{ margin: '0 auto' }}>Abrir Nueva Caja / Turno</button>
+                  </div>
+                )}
+              </div>
+
+              <div className="product-list-card" style={{ width: '100%' }}>
+                <h3>Historial de Cierres de Caja (Reportes Z)</h3>
+                <div className="table-responsive">
+                  <table className="fiskal-table">
+                    <thead>
+                      <tr>
+                        <th>Apertura</th>
+                        <th>Cierre</th>
+                        <th>Caja</th>
+                        <th>Responsable</th>
+                        <th>Esperado</th>
+                        <th>Físico Contado</th>
+                        <th>Diferencia</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pastShifts.length === 0 ? (
+                        <tr><td colSpan="7" className="empty-text">No hay cierres de caja registrados o estás offline.</td></tr>
+                      ) : (
+                        pastShifts.map(s => {
+                          const reg = registers.find(r => r.id === s.register_id);
+                          const emp = employees.find(e => e.id === s.user_id);
+                          return (
+                            <tr key={s.id}>
+                              <td>{new Date(s.opened_at).toLocaleString()}</td>
+                              <td>{s.closed_at ? new Date(s.closed_at).toLocaleString() : '---'}</td>
+                              <td><strong>{reg ? reg.name : `Caja #${s.register_id}`}</strong></td>
+                              <td>{emp ? emp.full_name : 'Cajero'}</td>
+                              <td>${(s.expected_cash_usd || 0).toFixed(2)}</td>
+                              <td>${(s.actual_cash_usd || 0).toFixed(2)}</td>
+                              <td>
+                                <strong style={{ color: (s.difference_usd || 0) < 0 ? '#fa5252' : '#2b8a3e' }}>
+                                  ${(s.difference_usd || 0).toFixed(2)}
+                                </strong>
+                              </td>
+                            </tr>
+                          )
+                        })
+                      )}
+                    </tbody>
+                  </table>
                 </div>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                  <Lock size={48} color="#6c757d" style={{ marginBottom: '16px' }} />
-                  <h4>No hay ningún turno de caja abierto</h4>
-                  <p style={{ color: '#6c757d', fontSize: '14px', margin: '8px 0 24px 0' }}>Selecciona una de tu cajas físicas registradas para iniciar operaciones.</p>
-                  <button className="btn-primary" onClick={() => setShowOpenShiftModal(true)} style={{ margin: '0 auto' }}>Abrir Nueva Caja / Turno</button>
-                </div>
-              )}
+              </div>
             </div>
           )}
 
@@ -4405,9 +4467,11 @@ return (
                                 <button className="btn-icon-primary" onClick={() => handleOpenClientDetail(cli)} title="Ver Historial y Notas">
                                   <Eye size={16} />
                                 </button>
-                                <button className="btn-icon-danger" onClick={() => handleDeleteClient(cli.id)} title="Eliminar">
-                                  <Trash2 size={16} />
-                                </button>
+                                {(currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
+                                  <button className="btn-icon-danger" onClick={() => handleDeleteClient(cli.id)} title="Eliminar">
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -4625,7 +4689,9 @@ return (
               <div className="action-buttons">
                 <button className="btn-icon-primary" onClick={() => handleOpenLabel(prod)} title="QR"><QrCode size={16} /></button>
                 <button className="btn-icon-edit" onClick={() => handleStartEditProduct(prod)} title="Editar"><Edit2 size={16} /></button>
-                <button className="btn-icon-danger" onClick={() => handleDeleteProduct(prod.id)} title="Eliminar"><Trash2 size={16} /></button>
+                {(currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
+                  <button className="btn-icon-danger" onClick={() => handleDeleteProduct(prod.id)} title="Eliminar"><Trash2 size={16} /></button>
+                )}
               </div>
             </td>
           </tr>
