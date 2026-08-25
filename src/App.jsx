@@ -146,9 +146,37 @@ function App() {
   const [globalPromoDiscount, setGlobalPromoDiscount] = useState(0);
   const [savingSettings, setSavingSettings] = useState(false);
 
-  // Configuraciones de Factura SaaS
+// Configuraciones de Factura SaaS
   const [saasInvoiceHeader, setSaasInvoiceHeader] = useState('');
   const [saasInvoiceFooter, setSaasInvoiceFooter] = useState('');
+
+  // NUEVOS ESTADOS: Datos Fiscales del Comercio
+  const [currentStoreRif, setCurrentStoreRif] = useState('');
+  const [currentStoreAddress, setCurrentStoreAddress] = useState('');
+  const [currentStoreTaxEnabled, setCurrentStoreTaxEnabled] = useState(false);
+  const [currentStoreTaxRate, setCurrentStoreTaxRate] = useState(16);
+  const [currentStoreTaxInclusive, setCurrentStoreTaxInclusive] = useState(false);
+  const [savingFiscal, setSavingFiscal] = useState(false);
+
+  const handleSaveFiscalSettings = async (e) => {
+    e.preventDefault();
+    setSavingFiscal(true);
+    try {
+      const { error } = await supabase.from('stores').update({
+        rif: currentStoreRif,
+        address: currentStoreAddress,
+        tax_enabled: currentStoreTaxEnabled,
+        tax_rate: currentStoreTaxRate,
+        tax_inclusive: currentStoreTaxInclusive
+      }).eq('id', currentStoreId);
+      if (error) throw error;
+      alert("¡Datos del comercio y configuración de impuestos guardados con éxito!");
+    } catch(e) {
+      alert("Error al guardar: " + e.message);
+    } finally {
+      setSavingFiscal(false);
+    }
+  };
 
 // ⬇️ NUEVO ESTADO: Notificación global de pedidos listos ⬇️
   const [readyNotification, setReadyNotification] = useState(null);
@@ -657,11 +685,10 @@ const fetchUserProfileAndStore = async (user) => {
 
       if (activeStoreId && activeStoreId !== 'null' && activeStoreId !== 'undefined') {
         if (navigator.onLine) {
-          // 👈 SOLUCIÓN: Aseguramos pedir 'store_type' explícitamente en la consulta
-          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active, store_type, country').eq('id', activeStoreId).single();
+          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active, store_type, country, rif, document, address, tax_enabled, tax_rate, tax_inclusive').eq('id', activeStoreId).single();
           
           if (storeInfo) {
-            console.log("🚨 DATOS CRUDOS DE SUPABASE PARA ESTA TIENDA:", storeInfo); // Esto te dirá la verdad absoluta en la consola
+            console.log("🚨 DATOS CRUDOS DE SUPABASE PARA ESTA TIENDA:", storeInfo); 
 
             if (storeInfo.is_active === false) {
               alert("⚠️ Este comercio se encuentra suspendido por la administración. Acceso denegado.");
@@ -669,7 +696,6 @@ const fetchUserProfileAndStore = async (user) => {
               return;
             }
             if (storeInfo.name) {
-              // 👈 SOLUCIÓN SEGURA: Verificamos si existe la propiedad antes de hacer String()
               let rawType = storeInfo.store_type ? String(storeInfo.store_type).trim().toLowerCase() : 'standard';
               const safeType = rawType === 'restaurant' ? 'restaurant' : 'standard';
               const safeCountry = storeInfo.country || 'venezuela';
@@ -677,6 +703,11 @@ const fetchUserProfileAndStore = async (user) => {
               setCurrentStoreName(storeInfo.name);
               setCurrentStoreType(safeType);
               setCurrentStoreCountry(safeCountry);
+              setCurrentStoreRif(storeInfo.rif || storeInfo.document || '');
+              setCurrentStoreAddress(storeInfo.address || '');
+              setCurrentStoreTaxEnabled(storeInfo.tax_enabled || false);
+              setCurrentStoreTaxRate(storeInfo.tax_rate !== null && storeInfo.tax_rate !== undefined ? storeInfo.tax_rate : (safeCountry === 'panama' ? 7 : safeCountry === 'el_salvador' ? 13 : 16));
+              setCurrentStoreTaxInclusive(storeInfo.tax_inclusive || false);
               
               localStorage.setItem(`fiskal_cache_store_name_${activeStoreId}`, storeInfo.name);
               localStorage.setItem(`fiskal_cache_store_type_${activeStoreId}`, safeType);
@@ -2531,14 +2562,36 @@ const updateCalculations = () => {
     });
   };
 
-  const totalUSD = settlingSale ? (settlingSale.balance_due_usd || settlingSale.total_usd) : cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const rawCartSum = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+  let cartSubtotalUSD = 0;
+  let calculatedTaxUSD = 0;
+  let calculatedTotalUSD = 0;
+
+  if (currentStoreTaxEnabled) {
+    if (currentStoreTaxInclusive) {
+      calculatedTotalUSD = rawCartSum;
+      cartSubtotalUSD = parseFloat((calculatedTotalUSD / (1 + (currentStoreTaxRate / 100))).toFixed(2));
+      calculatedTaxUSD = parseFloat((calculatedTotalUSD - cartSubtotalUSD).toFixed(2));
+    } else {
+      cartSubtotalUSD = rawCartSum;
+      calculatedTaxUSD = parseFloat((cartSubtotalUSD * (currentStoreTaxRate / 100)).toFixed(2));
+      calculatedTotalUSD = cartSubtotalUSD + calculatedTaxUSD;
+    }
+  } else {
+    cartSubtotalUSD = rawCartSum;
+    calculatedTaxUSD = 0;
+    calculatedTotalUSD = rawCartSum;
+  }
+
+  const totalUSD = settlingSale ? (settlingSale.balance_due_usd || settlingSale.total_usd) : calculatedTotalUSD;
   const totalBs = totalUSD * bcvRate;
 
   const paidUSDFromCashUSD = calcPayments.cashUSD;
   const paidUSDFromCashBs = currentStoreCountry === 'venezuela' ? (calcPayments.cashBs / (bcvRate || 1)) : 0;
   const paidUSDFromPagoMovil = currentStoreCountry === 'venezuela' ? (calcPayments.pagoMovil / (bcvRate || 1)) : 0;
   const paidUSDFromZelle = calcPayments.zelle;
-  const paidUSDFromDebit = currentStoreCountry === 'venezuela' ? (calcPayments.debit / (bcvRate || 1)) : calcPayments.debit; // 👈 Si es Panamá/El Salvador, cobra débito directo en USD
+  const paidUSDFromDebit = currentStoreCountry === 'venezuela' ? (calcPayments.debit / (bcvRate || 1)) : calcPayments.debit;
 
   const totalPaidUSD = paidUSDFromCashUSD + paidUSDFromCashBs + paidUSDFromPagoMovil + paidUSDFromZelle + paidUSDFromDebit;
   const remainingUSD = Math.max(0, parseFloat((totalUSD - totalPaidUSD).toFixed(2)));
@@ -2557,7 +2610,7 @@ const updateCalculations = () => {
     await fetchProducts(currentStoreId);
   };
 
-const handleHoldOrder = async () => {
+  const handleHoldOrder = async () => {
     if (cart.length === 0 || !currentShift || !currentStoreId) return;
 
     setProcessing(true);
@@ -2567,6 +2620,8 @@ const handleHoldOrder = async () => {
     const saleData = {
       total_usd: totalUSD,
       total_bs: totalBs,
+      subtotal_usd: cartSubtotalUSD,
+      tax_usd: calculatedTaxUSD,
       items: cart,
       client_name: selectedClient,
       status: 'pending',
@@ -2590,7 +2645,6 @@ const handleHoldOrder = async () => {
       setSelectedClient('Cliente General');
       checkPendingSales();
       
-      // ⬇️ ALERTA DINÁMICA OFFLINE ⬇️
       alert(currentStoreType === 'restaurant' 
         ? "¡Estás Offline! Comanda guardada localmente y en cola para cocina." 
         : "¡Estás Offline! Cuenta guardada en espera localmente."
@@ -2608,7 +2662,6 @@ const handleHoldOrder = async () => {
       setSelectedClient('Cliente General');
       fetchSales(currentStoreId);
       
-      // ⬇️ ALERTA DINÁMICA ONLINE ⬇️
       alert(currentStoreType === 'restaurant' 
         ? "¡Comanda enviada a la cocina exitosamente!" 
         : "¡Venta guardada en espera exitosamente!"
@@ -2683,7 +2736,9 @@ const handleHoldOrder = async () => {
 
     const saleData = {
       invoice_number: invoiceNumber,
-      total_usd: totalUSD, total_bs: totalBs, items: cart,
+      total_usd: totalUSD, total_bs: totalBs, 
+      subtotal_usd: cartSubtotalUSD, tax_usd: calculatedTaxUSD,
+      items: cart,
       client_name: selectedClient, status: 'credit', balance_due_usd: totalUSD,
       shift_id: currentShift.id, store_id: currentStoreId, payment_details: paymentDetails
     };
@@ -2858,13 +2913,14 @@ const handleHoldOrder = async () => {
         return;
       }
 
-      // 👈 GENERAMOS EL NÚMERO CORRELATIVO PROPIO DE ESTE COMERCIO
       const invoiceNumber = await getNextInvoiceNumber(currentStoreId);
 
       const saleData = {
         invoice_number: invoiceNumber,
         total_usd: totalUSD, 
         total_bs: totalBs, 
+        subtotal_usd: cartSubtotalUSD, 
+        tax_usd: calculatedTaxUSD,
         items: cart,
         client_name: selectedClient, 
         status: finalStatus, 
@@ -3678,6 +3734,18 @@ return (
                 </div>
 
                 <div className="cart-totals-container">
+                  {currentStoreTaxEnabled && (
+                    <>
+                      <div className="cart-total-row" style={{ fontSize: '14px', color: '#495057', marginBottom: '4px' }}>
+                        <span>Subtotal:</span>
+                        <strong>${cartSubtotalUSD.toFixed(2)}</strong>
+                      </div>
+                      <div className="cart-total-row" style={{ fontSize: '14px', color: '#495057', marginBottom: '8px' }}>
+                        <span>Impuesto ({currentStoreTaxRate}%):</span>
+                        <strong>${calculatedTaxUSD.toFixed(2)}</strong>
+                      </div>
+                    </>
+                  )}
                   <div className="cart-total-row">
                     <span>Total USD:</span>
                     <h2>${totalUSD.toFixed(2)}</h2>
@@ -4965,6 +5033,56 @@ return (
               )}
 
               <div className="products-layout" style={{ gap: '20px' }}>
+                
+                <div className="product-form-card" style={{ maxWidth: '100%', marginBottom: '20px' }}>
+                  <div style={{ marginBottom: '16px' }}>
+                    <h3><Store size={18} style={{ display: 'inline', marginRight: '6px' }}/> Configuración Fiscal y Datos del Recibo</h3>
+                    <p style={{ fontSize: '13px', color: '#6c757d' }}>Estos datos aparecerán en la cabecera de las facturas que imprimas a tus clientes.</p>
+                  </div>
+                  <form onSubmit={handleSaveFiscalSettings} className="fiskal-form">
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div className="form-group">
+                        <label>RIF / Documento del Local</label>
+                        <input type="text" value={currentStoreRif} onChange={e => setCurrentStoreRif(e.target.value)} placeholder="Ej. J-12345678-9" />
+                      </div>
+                      <div className="form-group">
+                        <label>Dirección Fiscal</label>
+                        <input type="text" value={currentStoreAddress} onChange={e => setCurrentStoreAddress(e.target.value)} placeholder="Ej. Av. Principal, Local 4" />
+                      </div>
+                    </div>
+                    
+                    <div style={{ background: '#e7f5ff', padding: '16px', borderRadius: '6px', border: '1px solid #74c0fc', marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: currentStoreTaxEnabled ? '12px' : '0' }}>
+                        <input type="checkbox" id="taxToggle" checked={currentStoreTaxEnabled} onChange={e => setCurrentStoreTaxEnabled(e.target.checked)} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
+                        <label htmlFor="taxToggle" style={{ fontWeight: 'bold', color: '#1971c2', cursor: 'pointer', margin: 0 }}>Habilitar Cálculo de Impuestos (IVA / ITBMS)</label>
+                      </div>
+                      {currentStoreTaxEnabled && (
+                        <div style={{ display: 'flex', gap: '16px', marginTop: '12px' }}>
+                          <div className="form-group" style={{ marginBottom: 0, width: '50%' }}>
+                            <label style={{ color: '#1971c2' }}>Porcentaje de Impuesto (%)</label>
+                            <input type="number" step="0.1" value={currentStoreTaxRate} onChange={e => setCurrentStoreTaxRate(e.target.value)} placeholder="Ej. 16" required />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0, width: '50%' }}>
+                            <label style={{ color: '#1971c2' }}>Aplicación del Impuesto</label>
+                            <select 
+                              value={currentStoreTaxInclusive ? 'inclusive' : 'exclusive'} 
+                              onChange={e => setCurrentStoreTaxInclusive(e.target.value === 'inclusive')}
+                              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', background: '#fff', fontSize: '14px' }}
+                            >
+                              <option value="exclusive">Sumar al precio (Precio + IVA)</option>
+                              <option value="inclusive">Incluido en el precio (Precio Final)</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <button type="submit" className="btn-primary" disabled={savingFiscal}>
+                      {savingFiscal ? 'Guardando...' : 'Guardar Configuración Fiscal'}
+                    </button>
+                  </form>
+                </div>
+
                 <div className="product-form-card">
                   <div style={{ marginBottom: '16px' }}>
                     <h3><UserPlus size={18} style={{ display: 'inline', marginRight: '6px' }}/> Registrar Cajero</h3>
@@ -5079,57 +5197,157 @@ return (
         <div className="modal-overlay" style={{ zIndex: 10005 }}>
           <div className="modal-content" style={{ width: '500px' }}>
             <div className="modal-header">
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={20} /> Preparar Factura SaaS</h3>
-              <button className="btn-close-modal" onClick={() => setShowPreInvoiceModal(false)}><X size={20} /></button>
+              <h3>Factura #{String(selectedInvoice.id).startsWith('local') ? 'Pendiente' : selectedInvoice.invoice_number || `A-${String(selectedInvoice.id).padStart(3, '0')}`}</h3>
+              <button className="btn-close-modal" onClick={() => setShowInvoiceModal(false)}><X size={20} /></button>
             </div>
-            <div className="modal-body fiskal-form">
-              <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '16px' }}>
-                Generando recibo para <strong>{preInvoiceStore.name}</strong>. Puedes añadir cargos adicionales o descuentos puntuales antes de crear el PDF.
-              </p>
+            
+            <div className="modal-body fiskal-form" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
               
-              <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '13px', fontWeight: 'bold' }}>Suscripción Mensual Base:</span>
-                <span style={{ fontSize: '15px', color: '#2b8a3e', fontWeight: 'bold' }}>
-                  ${getCalculatedMonthlyPrice(preInvoiceStore.custom_discount, preInvoiceStore.monthly_price_agreed).toFixed(2)}
-                </span>
+              {/* Cabecera Fiscal del Comercio */}
+              <div style={{ textAlign: 'center', marginBottom: '16px', borderBottom: '1px dashed #dee2e6', paddingBottom: '12px' }}>
+                <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#212529' }}>{currentStoreName}</h2>
+                {currentStoreRif && <div style={{ fontSize: '12px', color: '#495057' }}>{currentStoreCountry === 'venezuela' ? 'RIF' : 'RUC/Documento'}: {currentStoreRif}</div>}
+                {currentStoreAddress && <div style={{ fontSize: '12px', color: '#495057', marginTop: '2px' }}>{currentStoreAddress}</div>}
               </div>
 
-              <div className="form-group">
-                <label style={{ color: '#1c7ed6' }}>Concepto Adicional (Opcional)</label>
-                <input 
-                  type="text" 
-                  value={preInvoiceExtraDesc} 
-                  onChange={(e) => setPreInvoiceExtraDesc(e.target.value)} 
-                  placeholder="Ej. Servicio de Capacitación de Empleados" 
-                />
+              {/* Datos del Cliente y Factura */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '13px', color: '#495057' }}>
+                <span><strong>Cliente:</strong> {selectedInvoice.client_name || 'Cliente General'}</span>
+                <span><strong>{currentStoreCountry === 'venezuela' ? 'Cédula/RIF' : 'Cédula/RUC'}:</strong> {selectedInvoice.payment_details?.client_document || 'N/A'}</span>
               </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div className="form-group">
-                  <label style={{ color: '#1c7ed6' }}>Monto Adicional ($)</label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={preInvoiceExtraAmount} 
-                    onChange={(e) => setPreInvoiceExtraAmount(e.target.value)} 
-                    placeholder="0.00" 
-                  />
-                </div>
-                <div className="form-group">
-                  <label style={{ color: '#fa5252' }}>Descuento Especial ($)</label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={preInvoiceDiscount} 
-                    onChange={(e) => setPreInvoiceDiscount(e.target.value)} 
-                    placeholder="0.00" 
-                  />
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '13px', color: '#495057' }}>
+                <span><strong>Fecha:</strong> {new Date(selectedInvoice.created_at).toLocaleString()}</span>
+                <span><strong>Estatus:</strong> {selectedInvoice.status.toUpperCase()}</span>
               </div>
+
+              {/* Inyección de lógica dinámica para Monedas e Impuestos */}
+              {(() => {
+                const isVzla = currentStoreCountry === 'venezuela';
+                // Usamos la tasa BCV guardada al momento de la venta, o la actual si no hay
+                const saleBcvRate = selectedInvoice.payment_details?.applied_bcv_rate || bcvRate || 1;
+                const showTaxes = selectedInvoice.tax_usd > 0;
+                
+                const formatMoney = (usdVal) => {
+                  if (isVzla) {
+                    return `Bs. ${(usdVal * saleBcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                  }
+                  return `$${usdVal.toFixed(2)}`;
+                };
+
+                const formatRef = (usdVal) => {
+                  if (isVzla) {
+                    return `(Ref: $${usdVal.toFixed(2)})`;
+                  }
+                  return '';
+                };
+
+                return (
+                  <>
+                    {isVzla && (
+                      <div style={{ textAlign: 'right', fontSize: '11px', color: '#868e96', marginBottom: '8px' }}>
+                        Tasa BCV Aplicada: Bs. {saleBcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    )}
+
+                    <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Artículos Facturados</h4>
+                    <div className="table-responsive" style={{ marginBottom: '16px' }}>
+                      <table className="receipt-table">
+                        <thead>
+                          <tr>
+                            <th>Cant</th>
+                            <th>Producto</th>
+                            <th>Precio Unit</th>
+                            <th>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedInvoice.items?.map((item, idx) => {
+                            const itemTotalUsd = item.price * item.quantity;
+                            return (
+                              <tr key={idx}>
+                                <td>{item.quantity}</td>
+                                <td>{item.name}</td>
+                                <td>
+                                  <div>{formatMoney(item.price)}</div>
+                                  <div style={{ fontSize: '10px', color: '#868e96' }}>{formatRef(item.price)}</div>
+                                </td>
+                                <td>
+                                  <strong>{formatMoney(itemTotalUsd)}</strong>
+                                  <div style={{ fontSize: '10px', color: '#868e96', fontWeight: 'normal' }}>{formatRef(itemTotalUsd)}</div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
+                      {showTaxes && (
+                        <>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px', color: '#495057' }}>
+                            <span>Subtotal:</span>
+                            <div style={{ textAlign: 'right' }}>
+                              <strong>{formatMoney(selectedInvoice.subtotal_usd || (selectedInvoice.total_usd - selectedInvoice.tax_usd))}</strong>
+                              <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.subtotal_usd || (selectedInvoice.total_usd - selectedInvoice.tax_usd))}</div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px', color: '#495057' }}>
+                            <span>Impuesto ({currentStoreTaxRate}%):</span>
+                            <div style={{ textAlign: 'right' }}>
+                              <strong>{formatMoney(selectedInvoice.tax_usd)}</strong>
+                              <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.tax_usd)}</div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', marginBottom: '6px', alignItems: 'center' }}>
+                        <span>Total Facturado:</span>
+                        <div style={{ textAlign: 'right' }}>
+                          <strong>{formatMoney(selectedInvoice.total_usd)}</strong>
+                          <div style={{ fontSize: '12px', fontWeight: 'normal', color: '#495057' }}>{formatRef(selectedInvoice.total_usd)}</div>
+                        </div>
+                      </div>
+
+                      {selectedInvoice.balance_due_usd > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#fa5252', marginTop: '6px', borderTop: '1px solid #dee2e6', paddingTop: '6px' }}>
+                          <span>Saldo Pendiente:</span>
+                          <div style={{ textAlign: 'right' }}>
+                            <strong>{formatMoney(selectedInvoice.balance_due_usd)}</strong>
+                            <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.balance_due_usd)}</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+
+              {invoiceHistory.length > 0 && (
+                <div style={{ marginTop: '16px' }}>
+                  <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Historial de Abonos / Pagos</h4>
+                  {invoiceHistory.map((h, i) => {
+                    const histBcvRate = h.payment_details?.applied_bcv_rate || (selectedInvoice.payment_details?.applied_bcv_rate) || bcvRate || 1;
+                    const isVzlaHist = currentStoreCountry === 'venezuela';
+                    const abonoText = isVzlaHist 
+                      ? `Bs. ${(h.amount_usd * histBcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Ref: $${h.amount_usd.toFixed(2)})`
+                      : `$${h.amount_usd.toFixed(2)}`;
+                      
+                    return (
+                      <div key={i} style={{ fontSize: '12px', padding: '6px', background: '#e7f5ff', borderRadius: '4px', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{new Date(h.created_at).toLocaleString()}</span>
+                        <strong>Abono: {abonoText}</strong>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
+            
             <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowPreInvoiceModal(false)}>Cancelar</button>
-              <button type="button" className="btn-primary" onClick={generateCustomSaaSInvoice} style={{ background: '#4c6ef5' }}>Generar PDF Final</button>
+              <button type="button" className="btn-secondary" onClick={() => setShowInvoiceModal(false)}>Cerrar</button>
+              <button type="button" className="btn-primary" onClick={() => window.print()}>Imprimir Recibo</button>
             </div>
           </div>
         </div>
@@ -5398,63 +5616,154 @@ return (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
           <div className="modal-content" style={{ width: '500px' }}>
             <div className="modal-header">
-              <h3>Factura #{String(selectedInvoice.id).startsWith('local') ? 'Pendiente' : selectedInvoice.id}</h3>
+              <h3>Factura #{String(selectedInvoice.id).startsWith('local') ? 'Pendiente' : selectedInvoice.invoice_number || `A-${String(selectedInvoice.id).padStart(3, '0')}`}</h3>
               <button className="btn-close-modal" onClick={() => setShowInvoiceModal(false)}><X size={20} /></button>
             </div>
+            
             <div className="modal-body fiskal-form" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+              
+              {/* Cabecera Fiscal del Comercio */}
+              <div style={{ textAlign: 'center', marginBottom: '16px', borderBottom: '1px dashed #dee2e6', paddingBottom: '12px' }}>
+                <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#212529' }}>{currentStoreName}</h2>
+                {currentStoreRif && <div style={{ fontSize: '12px', color: '#495057' }}>{currentStoreCountry === 'venezuela' ? 'RIF' : 'RUC/Documento'}: {currentStoreRif}</div>}
+                {currentStoreAddress && <div style={{ fontSize: '12px', color: '#495057', marginTop: '2px' }}>{currentStoreAddress}</div>}
+              </div>
+
+              {/* Datos del Cliente y Factura */}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '13px', color: '#495057' }}>
                 <span><strong>Cliente:</strong> {selectedInvoice.client_name || 'Cliente General'}</span>
-                <span><strong>Cédula:</strong> {getInvoiceClientDocument(selectedInvoice)}</span>
+                <span><strong>{currentStoreCountry === 'venezuela' ? 'Cédula/RIF' : 'Cédula/RUC'}:</strong> {selectedInvoice.payment_details?.client_document || 'N/A'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '13px', color: '#495057' }}>
                 <span><strong>Fecha:</strong> {new Date(selectedInvoice.created_at).toLocaleString()}</span>
                 <span><strong>Estatus:</strong> {selectedInvoice.status.toUpperCase()}</span>
               </div>
 
-              <hr style={{ border: '0', borderTop: '1px solid #dee2e6', margin: '12px 0' }} />
+              {/* Inyección de lógica dinámica para Monedas e Impuestos */}
+              {(() => {
+                const isVzla = currentStoreCountry === 'venezuela';
+                // Usamos la tasa BCV guardada al momento de la venta, o la actual si no hay
+                const saleBcvRate = selectedInvoice.payment_details?.applied_bcv_rate || bcvRate || 1;
+                const showTaxes = selectedInvoice.tax_usd > 0;
+                
+                const formatMoney = (usdVal) => {
+                  if (isVzla) {
+                    return `Bs. ${(usdVal * saleBcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                  }
+                  return `$${usdVal.toFixed(2)}`;
+                };
 
-              <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Artículos Facturados</h4>
-              <div className="table-responsive" style={{ marginBottom: '16px' }}>
-                <table className="receipt-table">
-                  <thead>
-                    <tr><th>Cant</th><th>Producto</th><th>Precio Unit</th><th>Subtotal</th></tr>
-                  </thead>
-                  <tbody>
-                    {selectedInvoice.items?.map((item, idx) => (
-                      <tr key={idx}>
-                        <td>{item.quantity}</td>
-                        <td>{item.name}</td>
-                        <td>${item.price.toFixed(2)}</td>
-                        <td><strong>${(item.price * item.quantity).toFixed(2)}</strong></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                const formatRef = (usdVal) => {
+                  if (isVzla) {
+                    return `(Ref: $${usdVal.toFixed(2)})`;
+                  }
+                  return '';
+                };
 
-              <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '6px' }}>
-                  <span>Total Facturado:</span><strong>${selectedInvoice.total_usd.toFixed(2)}</strong>
-                </div>
-                {selectedInvoice.balance_due_usd > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#fa5252' }}>
-                    <span>Saldo Pendiente:</span><strong>${selectedInvoice.balance_due_usd.toFixed(2)}</strong>
-                  </div>
-                )}
-              </div>
+                return (
+                  <>
+                    {isVzla && (
+                      <div style={{ textAlign: 'right', fontSize: '11px', color: '#868e96', marginBottom: '8px' }}>
+                        Tasa BCV Aplicada: Bs. {saleBcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    )}
+
+                    <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Artículos Facturados</h4>
+                    <div className="table-responsive" style={{ marginBottom: '16px' }}>
+                      <table className="receipt-table">
+                        <thead>
+                          <tr>
+                            <th>Cant</th>
+                            <th>Producto</th>
+                            <th>Precio Unit</th>
+                            <th>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedInvoice.items?.map((item, idx) => {
+                            const itemTotalUsd = item.price * item.quantity;
+                            return (
+                              <tr key={idx}>
+                                <td>{item.quantity}</td>
+                                <td>{item.name}</td>
+                                <td>
+                                  <div>{formatMoney(item.price)}</div>
+                                  <div style={{ fontSize: '10px', color: '#868e96' }}>{formatRef(item.price)}</div>
+                                </td>
+                                <td>
+                                  <strong>{formatMoney(itemTotalUsd)}</strong>
+                                  <div style={{ fontSize: '10px', color: '#868e96', fontWeight: 'normal' }}>{formatRef(itemTotalUsd)}</div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
+                      {showTaxes && (
+                        <>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px', color: '#495057' }}>
+                            <span>Subtotal:</span>
+                            <div style={{ textAlign: 'right' }}>
+                              <strong>{formatMoney(selectedInvoice.subtotal_usd || (selectedInvoice.total_usd - selectedInvoice.tax_usd))}</strong>
+                              <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.subtotal_usd || (selectedInvoice.total_usd - selectedInvoice.tax_usd))}</div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px', color: '#495057' }}>
+                            <span>Impuesto ({currentStoreTaxRate}%):</span>
+                            <div style={{ textAlign: 'right' }}>
+                              <strong>{formatMoney(selectedInvoice.tax_usd)}</strong>
+                              <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.tax_usd)}</div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', marginBottom: '6px', alignItems: 'center' }}>
+                        <span>Total Facturado:</span>
+                        <div style={{ textAlign: 'right' }}>
+                          <strong>{formatMoney(selectedInvoice.total_usd)}</strong>
+                          <div style={{ fontSize: '12px', fontWeight: 'normal', color: '#495057' }}>{formatRef(selectedInvoice.total_usd)}</div>
+                        </div>
+                      </div>
+
+                      {selectedInvoice.balance_due_usd > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#fa5252', marginTop: '6px', borderTop: '1px solid #dee2e6', paddingTop: '6px' }}>
+                          <span>Saldo Pendiente:</span>
+                          <div style={{ textAlign: 'right' }}>
+                            <strong>{formatMoney(selectedInvoice.balance_due_usd)}</strong>
+                            <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.balance_due_usd)}</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
 
               {invoiceHistory.length > 0 && (
                 <div style={{ marginTop: '16px' }}>
                   <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Historial de Abonos / Pagos</h4>
-                  {invoiceHistory.map((h, i) => (
-                    <div key={i} style={{ fontSize: '12px', padding: '6px', background: '#e7f5ff', borderRadius: '4px', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>{new Date(h.created_at).toLocaleString()}</span>
-                      <strong>Abono: ${h.amount_usd.toFixed(2)}</strong>
-                    </div>
-                  ))}
+                  {invoiceHistory.map((h, i) => {
+                    const histBcvRate = h.payment_details?.applied_bcv_rate || (selectedInvoice.payment_details?.applied_bcv_rate) || bcvRate || 1;
+                    const isVzlaHist = currentStoreCountry === 'venezuela';
+                    const abonoText = isVzlaHist 
+                      ? `Bs. ${(h.amount_usd * histBcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Ref: $${h.amount_usd.toFixed(2)})`
+                      : `$${h.amount_usd.toFixed(2)}`;
+                      
+                    return (
+                      <div key={i} style={{ fontSize: '12px', padding: '6px', background: '#e7f5ff', borderRadius: '4px', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{new Date(h.created_at).toLocaleString()}</span>
+                        <strong>Abono: {abonoText}</strong>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
+            
             <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button type="button" className="btn-secondary" onClick={() => setShowInvoiceModal(false)}>Cerrar</button>
               <button type="button" className="btn-primary" onClick={() => window.print()}>Imprimir Recibo</button>
