@@ -146,7 +146,7 @@ function App() {
   const [globalPromoDiscount, setGlobalPromoDiscount] = useState(0);
   const [savingSettings, setSavingSettings] = useState(false);
 
-// Configuraciones de Factura SaaS
+  // Configuraciones de Factura SaaS
   const [saasInvoiceHeader, setSaasInvoiceHeader] = useState('');
   const [saasInvoiceFooter, setSaasInvoiceFooter] = useState('');
 
@@ -1469,6 +1469,69 @@ const handleSaveStore = async (e) => {
     }
   };
 
+  const handleSaasWhatsApp = (store) => {
+    if (!store) return;
+    const storeName = store.name || 'Comercio';
+    const ownerName = store.owner_name || store.full_name || 'Nombres';
+    const fee = Number(store.monthly_fee || 13.40).toFixed(2);
+    
+    const message = `Hola *${ownerName}* de *${storeName}*, le escribimos de Fiskal para enviarle su recibo de servicios SaaS.
+
+📋 *Detalle:* Suscripción Mensual Sistema Fiskal
+💰 *Total Facturado:* $${fee}
+
+¡Gracias por confiar en Fiskal para la gestión de su negocio!`;
+
+    const phone = store.phone || store.whatsapp || '';
+    const whatsappUrl = phone 
+      ? `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+    
+    window.open(whatsappUrl, '_blank');
+  };
+
+  const handlePrintSaasPdf = (store) => {
+    if (!store) return;
+    const printAreaElement = document.getElementById('saas-invoice-print-area');
+    if (!printAreaElement) return;
+
+    const printContents = printAreaElement.innerHTML;
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Recibo_Fiskal_${store.name}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #000; }
+            h1 { margin: 0 0 5px 0; font-size: 24px; color: #000; }
+            .subtitle { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 30px; }
+            .info-grid { margin-bottom: 30px; font-size: 14px; color: #000; line-height: 1.6; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 14px; }
+            th, td { padding: 10px 5px; text-align: left; }
+            th { border-bottom: 1px solid #000; font-weight: bold; }
+            td { border-bottom: 1px solid #eee; }
+            .text-right { text-align: right; }
+            .text-center { text-align: center; }
+            .total-container { display: flex; justify-content: flex-end; margin-bottom: 40px; font-size: 16px; font-weight: bold; }
+            .footer { text-align: left; font-size: 14px; color: #000; }
+            img { height: 45px; object-fit: contain; margin-bottom: 8px; }
+          </style>
+        </head>
+        <body>
+          ${printContents}
+        </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 350);
+  };
+
   const handleOpenPreInvoice = (store) => {
     setPreInvoiceStore(store);
     setPreInvoiceExtraDesc('');
@@ -1495,13 +1558,22 @@ const handleSaveStore = async (e) => {
     let currentY = 20;
 
     try {
-      const imgWidth = logoDark.width || 1590; 
-      const imgHeight = logoDark.height || 461; 
+      // CORRECCIÓN: Crear la imagen y esperar a que cargue correctamente
+      const img = new Image();
+      img.src = logoDark;
+      
+      await new Promise((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("No se pudo cargar la imagen del logo"));
+      });
+
+      const imgWidth = img.width || 1590; 
+      const imgHeight = img.height || 461; 
       
       const pdfImageWidth = 35;
       const pdfImageHeight = (imgHeight * pdfImageWidth) / imgWidth;
 
-      doc.addImage(logoDark, 'PNG', 14, currentY, pdfImageWidth, pdfImageHeight);
+      doc.addImage(img, 'PNG', 14, currentY, pdfImageWidth, pdfImageHeight);
       currentY += pdfImageHeight + 6; 
     } catch (e) {
       console.warn("No se pudo renderizar el logo en el PDF.", e);
@@ -5195,73 +5267,129 @@ return (
 
       {showPreInvoiceModal && preInvoiceStore && (
         <div className="modal-overlay" style={{ zIndex: 10005 }}>
-          <div className="modal-content" style={{ width: '550px' }}>
-            <div className="modal-header">
-              <h3>Recibo de Servicios SaaS - {preInvoiceStore.name}</h3>
-              <button className="btn-close-modal" onClick={() => setShowPreInvoiceModal(false)}><X size={20} /></button>
+          <div className="modal-content" style={{ width: '650px', padding: '0' }}>
+            
+            <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid #dee2e6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}>Generar Recibo SaaS</h3>
+              <button className="btn-close-modal" onClick={() => setShowPreInvoiceModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
             </div>
             
-            <div className="modal-body fiskal-form" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
+            <div className="modal-body" style={{ maxHeight: '65vh', overflowY: 'auto', background: '#f8f9fa' }}>
               
-              {/* Cabecera del Recibo */}
-              <div style={{ textAlign: 'center', marginBottom: '20px', borderBottom: '1px dashed #dee2e6', paddingBottom: '15px' }}>
-                <h2 style={{ margin: '0 0 4px 0', fontSize: '20px', color: '#212529' }}>Fiskal.</h2>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#495057' }}>Recibo de Servicios SaaS</div>
-              </div>
-
-              {/* Datos del Comercio */}
-              <div style={{ marginBottom: '16px', fontSize: '13px', color: '#495057', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div><strong>Comercio:</strong> {preInvoiceStore.name}</div>
-                <div><strong>Propietario:</strong> {preInvoiceStore.owner_name || preInvoiceStore.full_name || 'Nombres'}</div>
-                <div><strong>{preInvoiceStore.country === 'venezuela' ? 'RIF' : 'RIF/Documento'}:</strong> {preInvoiceStore.rif || preInvoiceStore.document || '123456789-2'}</div>
-                <div><strong>Fecha de Emisión:</strong> {new Date().toLocaleDateString()}</div>
-              </div>
-
-              {/* Tabla de Conceptos (Precio Base, Descuentos, Subtotal) */}
-              <div className="table-responsive" style={{ marginBottom: '20px' }}>
-                <table className="receipt-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #dee2e6', textAlign: 'left' }}>
-                      <th style={{ padding: '8px' }}>Descripción</th>
-                      <th style={{ padding: '8px', textAlign: 'center' }}>Precio Base</th>
-                      <th style={{ padding: '8px', textAlign: 'center' }}>Descuentos</th>
-                      <th style={{ padding: '8px', textAlign: 'right' }}>Subtotal</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr style={{ borderBottom: '1px solid #dee2e6' }}>
-                      <td style={{ padding: '8px' }}>Suscripción Mensual Sistema Fiskal</td>
-                      <td style={{ padding: '8px', textAlign: 'center' }}>${Number(preInvoiceStore.base_fee || preInvoiceStore.monthly_fee || 20).toFixed(2)}</td>
-                      <td style={{ padding: '8px', textAlign: 'center' }}>{preInvoiceStore.discount_text || '33%'}</td>
-                      <td style={{ padding: '8px', textAlign: 'right' }}><strong>${Number(preInvoiceStore.monthly_fee || 13.40).toFixed(2)}</strong></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Total Facturado */}
-              <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#212529' }}>Total Facturado:</span>
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#2b8a3e' }}>${Number(preInvoiceStore.monthly_fee || 13.40).toFixed(2)}</span>
-                  {preInvoiceStore.country === 'venezuela' && (
-                    <div style={{ fontSize: '12px', color: '#495057' }}>
-                      (Bs. {((Number(preInvoiceStore.monthly_fee || 13.40)) * (bcvRate || 1)).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+              {/* Contenedor exacto que se captura para el PDF y se usa para la impresión */}
+              <div id="saas-invoice-print-area" style={{ padding: '40px', background: '#fff', margin: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                
+                <div style={{ marginBottom: '30px', textAlign: 'center' }}>
+                  <img src={logoDark} alt="Fiskal" style={{ height: '45px', objectFit: 'contain', marginBottom: '8px' }} />
+                  <div className="subtitle" style={{ fontSize: '16px', fontWeight: 'bold', color: '#333' }}>Recibo de Servicios SaaS</div>
+                  
+                  {saasInvoiceHeader && (
+                    <div style={{ marginTop: '10px', fontSize: '12px', color: '#666', whiteSpace: 'pre-line' }}>
+                      {saasInvoiceHeader}
                     </div>
                   )}
                 </div>
-              </div>
 
-              <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '12px', color: '#868e96', fontStyle: 'italic' }}>
-                ¡Gracias por confiar en Fiskal para la gestión de su negocio!
-              </div>
+                <div className="info-grid" style={{ marginBottom: '30px', fontSize: '14px', color: '#000', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div><strong>Comercio:</strong> {preInvoiceStore.name}</div>
+                  <div><strong>Propietario:</strong> {preInvoiceStore.owner_name || preInvoiceStore.full_name || 'Nombres'}</div>
+                  <div><strong>{preInvoiceStore.country === 'venezuela' ? 'RIF' : 'RIF/Documento'}:</strong> {preInvoiceStore.rif || preInvoiceStore.document || 'N/A'}</div>
+                  <div><strong>Fecha de Emisión:</strong> {new Date().toLocaleDateString('es-ES')}</div>
+                </div>
 
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '30px', fontSize: '14px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #000', textAlign: 'left' }}>
+                      <th style={{ padding: '10px 5px', fontWeight: 'bold' }}>Descripción</th>
+                      <th className="text-center" style={{ padding: '10px 5px', fontWeight: 'bold', textAlign: 'center' }}>Precio Base</th>
+                      <th className="text-center" style={{ padding: '10px 5px', fontWeight: 'bold', textAlign: 'center' }}>Descuentos</th>
+                      <th className="text-right" style={{ padding: '10px 5px', fontWeight: 'bold', textAlign: 'right' }}>Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '15px 5px' }}>Suscripción Mensual Sistema Fiskal</td>
+                      <td className="text-center" style={{ padding: '15px 5px', textAlign: 'center' }}>
+                        ${(preInvoiceStore.monthly_price_agreed !== null && preInvoiceStore.monthly_price_agreed !== undefined ? preInvoiceStore.monthly_price_agreed : baseMonthlyPrice).toFixed(2)}
+                      </td>
+                      <td className="text-center" style={{ padding: '15px 5px', textAlign: 'center' }}>
+                        {preInvoiceStore.custom_discount > 0 ? `${preInvoiceStore.custom_discount}%` : '0%'}
+                      </td>
+                      <td className="text-right" style={{ padding: '15px 5px', textAlign: 'right' }}>
+                        ${(getCalculatedMonthlyPrice(preInvoiceStore.custom_discount, preInvoiceStore.monthly_price_agreed)).toFixed(2)}
+                      </td>
+                    </tr>
+
+                    {/* Fila dinámica para cargo adicional si existe */}
+                    {parseFloat(preInvoiceExtraAmount) > 0 && (
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '15px 5px' }}>{preInvoiceExtraDesc || "Cargo Adicional"}</td>
+                        <td className="text-center" style={{ padding: '15px 5px', textAlign: 'center' }}>
+                          ${parseFloat(preInvoiceExtraAmount).toFixed(2)}
+                        </td>
+                        <td className="text-center" style={{ padding: '15px 5px', textAlign: 'center' }}>0%</td>
+                        <td className="text-right" style={{ padding: '15px 5px', textAlign: 'right' }}>
+                          ${parseFloat(preInvoiceExtraAmount).toFixed(2)}
+                        </td>
+                      </tr>
+                    )}
+
+                    {/* Fila dinámica para descuento específico si existe */}
+                    {parseFloat(preInvoiceDiscount) > 0 && (
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '15px 5px' }}>Descuento Especial Aplicado</td>
+                        <td className="text-center" style={{ padding: '15px 5px', textAlign: 'center' }}>
+                          -${parseFloat(preInvoiceDiscount).toFixed(2)}
+                        </td>
+                        <td className="text-center" style={{ padding: '15px 5px', textAlign: 'center' }}>N/A</td>
+                        <td className="text-right" style={{ padding: '15px 5px', textAlign: 'right' }}>
+                          -${parseFloat(preInvoiceDiscount).toFixed(2)}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+
+                <div className="total-container" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '40px' }}>
+                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#000' }}>
+                    Total Facturado: ${(getCalculatedMonthlyPrice(preInvoiceStore.custom_discount, preInvoiceStore.monthly_price_agreed) + (parseFloat(preInvoiceExtraAmount) || 0) - (parseFloat(preInvoiceDiscount) || 0)).toFixed(2)}
+                  </div>
+                </div>
+
+                <div className="footer" style={{ textAlign: 'center', fontSize: '12px', color: '#666', whiteSpace: 'pre-line' }}>
+                  {saasInvoiceFooter ? saasInvoiceFooter : '¡Gracias por confiar en Fiskal para la gestión de su negocio!'}
+                </div>
+
+              </div>
             </div>
             
-            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowPreInvoiceModal(false)}>Cerrar</button>
-              <button type="button" className="btn-primary" onClick={() => window.print()}>Imprimir Recibo</button>
+            <div className="modal-footer" style={{ padding: '16px 20px', borderTop: '1px solid #dee2e6', display: 'flex', gap: '10px', justifyContent: 'flex-end', background: '#fff' }}>
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                style={{ background: '#25D366', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px' }} 
+                onClick={() => handleSaasWhatsApp(preInvoiceStore)}
+              >
+                Enviar por WhatsApp
+              </button>
+              <button 
+  type="button" 
+  className="btn-primary" 
+  style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px', background: '#000', color: '#fff', border: 'none' }}
+  onClick={() => generateCustomSaaSInvoice()} 
+>
+  Generar PDF
+</button>
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                style={{ cursor: 'pointer', padding: '8px 16px', borderRadius: '4px', border: '1px solid #ccc', background: '#fff' }}
+                onClick={() => setShowPreInvoiceModal(false)}
+              >
+                Cerrar
+              </button>
             </div>
+            
           </div>
         </div>
       )}
@@ -5592,23 +5720,33 @@ return (
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedInvoice.items?.map((item, idx) => {
-                            const itemTotalUsd = item.price * item.quantity;
-                            return (
-                              <tr key={idx}>
-                                <td>{item.quantity}</td>
-                                <td>{item.name}</td>
-                                <td>
-                                  <div>{formatMoney(item.price)}</div>
-                                  <div style={{ fontSize: '10px', color: '#868e96' }}>{formatRef(item.price)}</div>
-                                </td>
-                                <td>
-                                  <strong>{formatMoney(itemTotalUsd)}</strong>
-                                  <div style={{ fontSize: '10px', color: '#868e96', fontWeight: 'normal' }}>{formatRef(itemTotalUsd)}</div>
-                                </td>
-                              </tr>
-                            );
-                          })}
+                          {(() => {
+                            // PROTECCIÓN: Verificamos y parseamos si viene como string desde Supabase
+                            let parsedItems = [];
+                            if (Array.isArray(selectedInvoice.items)) {
+                              parsedItems = selectedInvoice.items;
+                            } else if (typeof selectedInvoice.items === 'string') {
+                              try { parsedItems = JSON.parse(selectedInvoice.items); } catch(e){}
+                            }
+
+                            return parsedItems.map((item, idx) => {
+                              const itemTotalUsd = (item.price || 0) * (item.quantity || 1);
+                              return (
+                                <tr key={idx}>
+                                  <td>{item.quantity}</td>
+                                  <td>{item.name}</td>
+                                  <td>
+                                    <div>{formatMoney(item.price)}</div>
+                                    <div style={{ fontSize: '10px', color: '#868e96' }}>{formatRef(item.price)}</div>
+                                  </td>
+                                  <td>
+                                    <strong>{formatMoney(itemTotalUsd)}</strong>
+                                    <div style={{ fontSize: '10px', color: '#868e96', fontWeight: 'normal' }}>{formatRef(itemTotalUsd)}</div>
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
                         </tbody>
                       </table>
                     </div>
