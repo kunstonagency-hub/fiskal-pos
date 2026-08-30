@@ -387,6 +387,10 @@ const confirmAddToCartWithWeight = () => {
   const [shiftNotes, setShiftNotes] = useState('');
   const [pastShifts, setPastShifts] = useState([]);
 
+  // NUEVOS ESTADOS: Modal de Detalles de Reporte Z
+  const [showShiftReportModal, setShowShiftReportModal] = useState(false);
+  const [selectedShiftReport, setSelectedShiftReport] = useState(null);
+
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payCashUSD, setPayCashUSD] = useState('');
   const [payCashBs, setPayCashBs] = useState('');
@@ -556,10 +560,14 @@ const confirmAddToCartWithWeight = () => {
     };
   }, []);
 
-  useEffect(() => {
+useEffect(() => {
+    let timeout;
     if (isOnline) {
-      syncOfflineData();
+      timeout = setTimeout(() => {
+        syncOfflineData();
+      }, 2500);
     }
+    return () => clearTimeout(timeout);
   }, [isOnline]);
 
 // =================== FIN DEL BLOQUE 1 ===================
@@ -1106,6 +1114,9 @@ const handleVendorRegisterStoreSubmit = async (e) => {
       setCreatingEmployee(false);
     }
   };
+
+const [showInKrono, setShowInKrono] = useState(false);
+  const [kronoPrice, setKronoPrice] = useState('');
 
   const fetchEmployees = async (storeId) => {
     if (!storeId) return;
@@ -1675,45 +1686,47 @@ const handleSaveStore = async (e) => {
     setPendingSalesCount(actions.length + legacySales.length);
   };
 
-  const syncOfflineData = async () => {
-    const oldOfflineSales = await getOfflineSales();
-    if (oldOfflineSales && oldOfflineSales.length > 0) {
-      for (const record of oldOfflineSales) {
-        try {
-          const { data: newSale, error } = await supabase.from('sales').insert([record.saleData]).select().single();
-          if (error) throw error;
-          if (newSale && record.historyData) {
-            const { error: histErr } = await supabase.from('payment_history').insert([{
-              sale_id: newSale.id, amount_usd: record.historyData.amount_usd, payment_details: record.historyData.payment_details, store_id: currentStoreId
-            }]);
-            if (histErr) throw histErr;
-          }
-
-          if (record.saleData.status !== 'pending' && record.saleData.items && record.saleData.items.length > 0) {
-            for (const item of record.saleData.items) {
-              const { data: prodDb } = await supabase.from('products').select('stock').eq('id', item.id).eq('store_id', currentStoreId).single();
-              if (prodDb) {
-                const newStock = Math.max(0, (prodDb.stock || 0) - item.quantity);
-                await supabase.from('products').update({ stock: newStock }).eq('id', item.id).eq('store_id', currentStoreId);
-              }
-            }
-          }
-
-          await clearOfflineSale(record.id);
-        } catch (e) {
-          console.error("Error legacy sale:", e);
-        }
-      }
-    }
-
-    const actions = await getOfflineActions();
-    if (actions.length === 0 && oldOfflineSales.length === 0) return;
-
+const syncOfflineData = async () => {
+    if (isSyncing || !currentStoreId) return;
     setIsSyncing(true);
-    let generalErrorOccurred = false;
-    const idMap = {}; 
 
     try {
+      const oldOfflineSales = await getOfflineSales();
+      if (oldOfflineSales && oldOfflineSales.length > 0) {
+        for (const record of oldOfflineSales) {
+          try {
+            const { data: newSale, error } = await supabase.from('sales').insert([record.saleData]).select().single();
+            if (error) throw error;
+            if (newSale && record.historyData) {
+              const { error: histErr } = await supabase.from('payment_history').insert([{
+                sale_id: newSale.id, amount_usd: record.historyData.amount_usd, payment_details: record.historyData.payment_details, store_id: currentStoreId
+              }]);
+              if (histErr) throw histErr;
+            }
+
+            if (record.saleData.status !== 'pending' && record.saleData.items && record.saleData.items.length > 0) {
+              for (const item of record.saleData.items) {
+                const { data: prodDb } = await supabase.from('products').select('stock').eq('id', item.id).eq('store_id', currentStoreId).single();
+                if (prodDb) {
+                  const newStock = Math.max(0, (prodDb.stock || 0) - item.quantity);
+                  await supabase.from('products').update({ stock: newStock }).eq('id', item.id).eq('store_id', currentStoreId);
+                }
+              }
+            }
+
+            await clearOfflineSale(record.id);
+          } catch (e) {
+            console.error("Error legacy sale:", e);
+          }
+        }
+      }
+
+      const actions = await getOfflineActions();
+      if (actions.length === 0 && oldOfflineSales.length === 0) return;
+
+      let generalErrorOccurred = false;
+      const idMap = {}; 
+
       actions.sort((a, b) => a.timestamp - b.timestamp);
 
       for (const action of actions) {
@@ -2194,55 +2207,48 @@ const handleSaveStore = async (e) => {
     return urlData.publicUrl;
   };
 
-  const handleAddProduct = async (e) => {
-    e.preventDefault();
-    if (!name || !price || !currentStoreId) return;
 
-    setLoading(true);
-    try {
-      let imageUrl = null;
-      if (imageFile) {
-        if (isOnline) {
-          imageUrl = await uploadImageToSupabase();
-        } else {
-          alert("Aviso: Como estás Offline, la imagen no se subirá temporalmente.");
-        }
-      }
 
-      const newProduct = { 
-        name, 
-        price: parseFloat(price), 
-        cost: parseFloat(cost) || 0, 
-        stock: parseInt(stock) || 0, 
-        category: category || 'General',
-        barcode: barcode.trim() || null,
-        image_url: imageUrl,
-        modifiers: productModifiers.join(', '),
-        store_id: currentStoreId
-      };
 
-      if (!isOnline) {
-        const tempId = `local_prod_${Date.now()}`;
-        await queueOfflineAction({ type: 'INSERT_PRODUCT', productData: newProduct, tempId });
-        setProducts([{ ...newProduct, id: tempId }, ...products]);
-        resetProductForm();
-        setLoading(false);
-        checkPendingSales();
-        alert("¡Estás Offline! Producto guardado localmente.");
-        return;
-      }
 
-      const { error } = await supabase.from('products').insert([newProduct]);
-      if (error) throw error;
+  const handleStartEditProduct = (prod) => {
+    setEditingProduct(prod);
+    setName(prod.name);
+    setPrice(prod.price.toString());
+    setCost(prod.cost !== undefined ? prod.cost.toString() : '');
+    setStock(prod.stock !== undefined ? prod.stock.toString() : '');
+    setCategory(prod.category || 'General');
+    setBarcode(prod.barcode || '');
+    setImagePreview(prod.image_url || null);
+    setImageFile(null);
+    
+    setShowInKrono(prod.show_in_krono || false);
+    setKronoPrice(prod.krono_preferential_price !== null && prod.krono_preferential_price !== undefined ? prod.krono_preferential_price.toString() : '');
 
-      resetProductForm();
-      fetchProducts(currentStoreId);
-    } catch (error) {
-      console.error('Error al guardar producto:', error.message);
-      alert("Error al guardar producto: " + error.message);
-    } finally {
-      setLoading(false);
+    if (prod.modifiers) {
+      const arr = typeof prod.modifiers === 'string' 
+        ? prod.modifiers.split(',').map(s => s.trim()).filter(Boolean) 
+        : prod.modifiers;
+      setProductModifiers(arr);
+    } else {
+      setProductModifiers(['Cebolla', 'Papa', 'Queso', 'Salsas']);
     }
+  };
+
+  const resetProductForm = () => {
+    setEditingProduct(null);
+    setName('');
+    setPrice('');
+    setCost('');
+    setStock('');
+    setCategory('General');
+    setBarcode('');
+    setImageFile(null);
+    setImagePreview(null);
+    setProductModifiers(['Cebolla', 'Papa', 'Queso', 'Salsas']);
+    setNewModifierText('');
+    setShowInKrono(false);
+    setKronoPrice('');
   };
 
   const handleUpdateProduct = async (e) => {
@@ -2295,41 +2301,9 @@ const handleSaveStore = async (e) => {
     }
   };
 
-  const handleStartEditProduct = (prod) => {
-    setEditingProduct(prod);
-    setName(prod.name);
-    setPrice(prod.price.toString());
-    setCost(prod.cost !== undefined ? prod.cost.toString() : '');
-    setStock(prod.stock !== undefined ? prod.stock.toString() : '');
-    setCategory(prod.category || 'General');
-    setBarcode(prod.barcode || '');
-    setImagePreview(prod.image_url || null);
-    setImageFile(null);
 
-    // NUEVO: Cargar las etiquetas de este platillo específico al editar
-    if (prod.modifiers) {
-      const arr = typeof prod.modifiers === 'string' 
-        ? prod.modifiers.split(',').map(s => s.trim()).filter(Boolean) 
-        : prod.modifiers;
-      setProductModifiers(arr);
-    } else {
-      setProductModifiers(['Cebolla', 'Papa', 'Queso', 'Salsas']);
-    }
-  };
 
-  const resetProductForm = () => {
-    setEditingProduct(null);
-    setName('');
-    setPrice('');
-    setCost('');
-    setStock('');
-    setCategory('General');
-    setBarcode('');
-    setImageFile(null);
-    setImagePreview(null);
-    setProductModifiers(['Cebolla', 'Papa', 'Queso', 'Salsas']); // <--- Añade esta línea
-    setNewModifierText(''); // <--- Añade esta línea
-  };
+
 
   const handleDeleteProduct = async (id) => {
     if (!isOnline) {
@@ -4306,7 +4280,13 @@ return (
                       <div className="payment-summary-box" style={{ marginTop: '16px' }}>
                         <div><span>Fondo Inicial:</span><h2>${currentShift.opening_float_usd.toFixed(2)}</h2></div>
                         <div><span>Ventas del Turno:</span><h2 style={{ color: '#2b8a3e' }}>${shiftTotalUSD.toFixed(2)}</h2></div>
-                        <div style={{ textAlign: 'right' }}><span>Efectivo Esperado en Gaveta:</span><h3>${(currentShift.opening_float_usd + shiftCashUSD + (currentStoreCountry === 'venezuela' ? (shiftCashBs / (bcvRate || 1)) : 0)).toFixed(2)}</h3></div>
+                        <div style={{ textAlign: 'right' }}>
+                          <span>Efectivo Esperado en Gaveta:</span>
+                          <h3>${(currentShift.opening_float_usd + shiftCashUSD).toFixed(2)} USD</h3>
+                          {currentStoreCountry === 'venezuela' && (
+                            <h4 style={{ color: '#2b8a3e', marginTop: '4px', margin: '0' }}>+ Bs. {shiftCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h4>
+                          )}
+                        </div>
                       </div>
 
                       <div className="invoice-payment-breakdown" style={{ marginTop: '20px' }}>
@@ -4355,27 +4335,56 @@ return (
                         <th>Esperado</th>
                         <th>Físico Contado</th>
                         <th>Diferencia</th>
+                        <th style={{ textAlign: 'center' }}>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {pastShifts.length === 0 ? (
-                        <tr><td colSpan="7" className="empty-text">No hay cierres de caja registrados o estás offline.</td></tr>
+                        <tr><td colSpan="8" className="empty-text">No hay cierres de caja registrados o estás offline.</td></tr>
                       ) : (
                         pastShifts.map(s => {
                           const reg = registers.find(r => r.id === s.register_id);
                           const emp = employees.find(e => e.id === s.user_id);
+                          
+                          const hSales = sales.filter(sale => sale.shift_id === s.id && sale.status === 'completed');
+                          const hCashUsd = hSales.reduce((sum, sale) => sum + (sale.payment_details?.cash_usd || 0), 0);
+                          const hCashBs = hSales.reduce((sum, sale) => sum + (sale.payment_details?.cash_bs || 0), 0);
+                          
+                          const expectedUsdDisplay = (s.opening_float_usd || 0) + hCashUsd;
+
+                          let fisicoContadoDisplay = `$${(s.actual_cash_usd || 0).toFixed(2)}`;
+                          if (s.notes && s.notes.includes('Contado:')) {
+                            fisicoContadoDisplay = s.notes.split('|').pop().trim().replace('Contado: ', '');
+                          }
+
                           return (
                             <tr key={s.id}>
                               <td>{new Date(s.opened_at).toLocaleString()}</td>
                               <td>{s.closed_at ? new Date(s.closed_at).toLocaleString() : '---'}</td>
                               <td><strong>{reg ? reg.name : `Caja #${s.register_id}`}</strong></td>
                               <td>{emp ? emp.full_name : 'Cajero'}</td>
-                              <td>${(s.expected_cash_usd || 0).toFixed(2)}</td>
-                              <td>${(s.actual_cash_usd || 0).toFixed(2)}</td>
+                              <td>
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <strong>${expectedUsdDisplay.toFixed(2)}</strong>
+                                  {currentStoreCountry === 'venezuela' && hCashBs > 0 && (
+                                    <span style={{ fontSize: '11px', color: '#6c757d' }}>+ Bs. {hCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td>
+                                <strong>{fisicoContadoDisplay}</strong>
+                              </td>
                               <td>
                                 <strong style={{ color: (s.difference_usd || 0) < 0 ? '#fa5252' : '#2b8a3e' }}>
                                   ${(s.difference_usd || 0).toFixed(2)}
                                 </strong>
+                              </td>
+                              <td className="action-cell">
+                                <div className="action-buttons" style={{ justifyContent: 'center' }}>
+                                  <button className="btn-icon-primary" onClick={() => { setSelectedShiftReport(s); setShowShiftReportModal(true); }} title="Ver Reporte Z Detallado">
+                                    <Eye size={18} />
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           )
@@ -4659,7 +4668,6 @@ return (
                     <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required placeholder="0.00" />
                   </div>
                   <div className="form-group">
-
                     <label>Stock (Unidades)</label>
                     <input type="number" value={stock} onChange={(e) => setStock(e.target.value)} required placeholder="0" />
                   </div>
@@ -4760,6 +4768,39 @@ return (
                     </div>
                   )}
 
+                  {/* NUEVO MÓDULO: INTEGRACIÓN KRONO MARKET */}
+                  <div className="form-group" style={{ background: showInKrono ? '#ecfdf5' : '#f8fafc', padding: '16px', borderRadius: '8px', border: showInKrono ? '2px solid #10b981' : '1px solid #e2e8f0', marginBottom: '24px', transition: 'all 0.3s ease' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '900', color: '#0f172a', cursor: 'pointer', margin: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={showInKrono}
+                        onChange={(e) => setShowInKrono(e.target.checked)}
+                        style={{ width: '20px', height: '20px', accentColor: '#10b981', cursor: 'pointer' }}
+                      />
+                      🛒 Publicar en Krono Market
+                    </label>
+
+                    {showInKrono && (
+                      <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #d1fae5' }}>
+                        <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#047857', marginBottom: '8px', display: 'block' }}>
+                          Precio Preferencial Krono ($ USD)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={kronoPrice}
+                          onChange={(e) => setKronoPrice(e.target.value)}
+                          placeholder="Dejar vacío si aplica el mismo precio de arriba"
+                          style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #a7f3d0', fontSize: '14px', outline: 'none' }}
+                        />
+                        <span style={{ fontSize: '12px', color: '#059669', display: 'block', marginTop: '8px', lineHeight: '1.4' }}>
+                          💡 <strong>Tip:</strong> Si colocas un precio aquí, en la App aparecerá tu precio normal tachado y este resaltado en verde.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {/* FIN MÓDULO KRONO */}
+
                   <div style={{ display: 'flex', gap: '8px' }}>
                     {editingProduct && (
                       <button type="button" className="btn-secondary" onClick={resetProductForm} style={{ flex: 1 }}>Cancelar</button>
@@ -4771,76 +4812,90 @@ return (
                 </form>
               </div>
 
-<div className="product-list-card">
-  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-    <h3 style={{ margin: 0 }}>
-      Inventario Actual ({products.filter(p => {
-        const fastFoodCats = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas', 'pepitos'];
-        const cat = (p.category || '').trim().toLowerCase();
-        if (currentStoreType === 'restaurant') {
-          return cat !== 'general' && cat !== 'por peso';
-        } else {
-          return !fastFoodCats.includes(cat);
-        }
-      }).length})
-    </h3>
-    <button className="btn-secondary" onClick={() => setShowPrintCatalog(true)} style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center' }}>
-      <QrCode size={14} style={{ marginRight: '6px' }}/> Imprimir Códigos QR (Carta)
-    </button>
-  </div>
-  
-  <div className="table-responsive">
-    <table className="fiskal-table">
-      <thead>
-        <tr>
-          <th>Foto</th>
-          <th>Nombre</th>
-          <th>SKU</th>
-          <th>Precio</th>
-          <th>Stock</th>
-          <th style={{ textAlign: 'center' }}>Acciones</th>
-        </tr>
-      </thead>
-      <tbody>
-        {products.filter(p => {
-          const fastFoodCats = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas', 'pepitos'];
-          const cat = (p.category || '').trim().toLowerCase();
-          if (currentStoreType === 'restaurant') {
-            return cat !== 'general' && cat !== 'por peso';
-          } else {
-            return !fastFoodCats.includes(cat);
-          }
-        }).map((prod) => (
-          <tr key={prod.id}>
-            <td>
-              {prod.image_url ? (
-                <img src={prod.image_url} alt="" style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
-              ) : (
-                <div style={{ width: '40px', height: '40px', background: '#f1f3f5', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#adb5bd' }}>
-                  <Package size={20} strokeWidth={1.5} />
+              <div className="product-list-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                  <h3 style={{ margin: 0 }}>
+                    Inventario Actual ({products.filter(p => {
+                      const fastFoodCats = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas', 'pepitos'];
+                      const cat = (p.category || '').trim().toLowerCase();
+                      if (currentStoreType === 'restaurant') {
+                        return cat !== 'general' && cat !== 'por peso';
+                      } else {
+                        return !fastFoodCats.includes(cat);
+                      }
+                    }).length})
+                  </h3>
+                  <button className="btn-secondary" onClick={() => setShowPrintCatalog(true)} style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center' }}>
+                    <QrCode size={14} style={{ marginRight: '6px' }}/> Imprimir Códigos QR (Carta)
+                  </button>
                 </div>
-              )}
-            </td>
-            <td><strong>{prod.name}</strong></td>
-            <td>{prod.barcode || '---'}</td>
-            <td>${prod.price.toFixed(2)}</td>
-            <td><strong>{prod.stock}</strong></td>
-            <td className="action-cell">
-              <div className="action-buttons">
-                <button className="btn-icon-primary" onClick={() => handleOpenLabel(prod)} title="QR"><QrCode size={16} /></button>
-                <button className="btn-icon-edit" onClick={() => handleStartEditProduct(prod)} title="Editar"><Edit2 size={16} /></button>
-                {(currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
-                  <button className="btn-icon-danger" onClick={() => handleDeleteProduct(prod.id)} title="Eliminar"><Trash2 size={16} /></button>
-                )}
+                
+                <div className="table-responsive">
+                  <table className="fiskal-table">
+                    <thead>
+                      <tr>
+                        <th>Foto</th>
+                        <th>Nombre</th>
+                        <th>SKU</th>
+                        <th>Precio</th>
+                        <th>Stock</th>
+                        <th style={{ textAlign: 'center' }}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {products.filter(p => {
+                        const fastFoodCats = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas', 'pepitos'];
+                        const cat = (p.category || '').trim().toLowerCase();
+                        if (currentStoreType === 'restaurant') {
+                          return cat !== 'general' && cat !== 'por peso';
+                        } else {
+                          return !fastFoodCats.includes(cat);
+                        }
+                      }).map((prod) => (
+                        <tr key={prod.id}>
+                          <td>
+                            {prod.image_url ? (
+                              <img src={prod.image_url} alt="" style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
+                            ) : (
+                              <div style={{ width: '40px', height: '40px', background: '#f1f3f5', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#adb5bd' }}>
+                                <Package size={20} strokeWidth={1.5} />
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            <strong>{prod.name}</strong>
+                            {prod.show_in_krono && (
+                              <span style={{ display: 'inline-block', background: '#10b981', color: 'white', fontSize: '9px', padding: '2px 6px', borderRadius: '4px', marginLeft: '8px', verticalAlign: 'middle' }}>
+                                KRONO
+                              </span>
+                            )}
+                          </td>
+                          <td>{prod.barcode || '---'}</td>
+                          <td>
+                            ${Number(prod.price).toFixed(2)}
+                            {prod.krono_preferential_price && (
+                              <div style={{ fontSize: '10px', color: '#10b981', fontWeight: 'bold' }}>
+                                🛍️ ${Number(prod.krono_preferential_price).toFixed(2)}
+                              </div>
+                            )}
+                          </td>
+                          <td><strong>{prod.stock}</strong></td>
+                          <td className="action-cell">
+                            <div className="action-buttons">
+                              <button className="btn-icon-primary" onClick={() => handleOpenLabel(prod)} title="QR"><QrCode size={16} /></button>
+                              <button className="btn-icon-edit" onClick={() => handleStartEditProduct(prod)} title="Editar"><Edit2 size={16} /></button>
+                              {(currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
+                                <button className="btn-icon-danger" onClick={() => handleDeleteProduct(prod.id)} title="Eliminar"><Trash2 size={16} /></button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-</div>
-</div>
+            </div>
           )}
 
 {activeTab === 'kds' && (
@@ -6141,6 +6196,177 @@ return (
               <button type="button" className="btn-primary" onClick={confirmAddToCartWithWeight} style={{ background: '#2b8a3e' }}>
                 Añadir al Carrito
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showShiftReportModal && selectedShiftReport && (
+        <div className="modal-overlay" style={{ zIndex: 10010 }}>
+          <div className="modal-content" style={{ width: '700px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h3>Reporte Z Detallado - Turno {selectedShiftReport.id}</h3>
+              <button className="btn-close-modal" onClick={() => { setShowShiftReportModal(false); setSelectedShiftReport(null); }}><X size={20} /></button>
+            </div>
+            <div className="modal-body fiskal-form">
+              {(() => {
+                const repSales = sales.filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
+                const repTotalUSD = repSales.reduce((sum, s) => sum + s.total_usd, 0);
+                const repCashUSD = repSales.reduce((sum, s) => sum + (s.payment_details?.cash_usd || 0), 0);
+                const repZelle = repSales.reduce((sum, s) => sum + (s.payment_details?.zelle || 0), 0);
+                const repPagoMovilBs = repSales.reduce((sum, s) => sum + (s.payment_details?.pago_movil || 0), 0);
+                const repDebitBs = repSales.reduce((sum, s) => sum + (s.payment_details?.debit || 0), 0);
+                const repCashBs = repSales.reduce((sum, s) => sum + (s.payment_details?.cash_bs || 0), 0);
+                const reg = registers.find(r => r.id === selectedShiftReport.register_id);
+                const emp = employees.find(e => e.id === selectedShiftReport.user_id);
+                
+                let fisicoContadoDisplay = `$${(selectedShiftReport.actual_cash_usd || 0).toFixed(2)}`;
+                if (selectedShiftReport.notes && selectedShiftReport.notes.includes('Contado:')) {
+                  fisicoContadoDisplay = selectedShiftReport.notes.split('|').pop().trim().replace('Contado: ', '');
+                }
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', background: '#f8f9fa', padding: '16px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
+                      <div>
+                        <span style={{ fontSize: '12px', color: '#6c757d' }}>Apertura:</span><br/>
+                        <strong>{new Date(selectedShiftReport.opened_at).toLocaleString()}</strong>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '12px', color: '#6c757d' }}>Cierre:</span><br/>
+                        <strong>{selectedShiftReport.closed_at ? new Date(selectedShiftReport.closed_at).toLocaleString() : 'Turno Activo'}</strong>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '12px', color: '#6c757d' }}>Caja / Punto:</span><br/>
+                        <strong>{reg ? reg.name : `Caja #${selectedShiftReport.register_id}`}</strong>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '12px', color: '#6c757d' }}>Cajero Responsable:</span><br/>
+                        <strong>{emp ? emp.full_name : 'No identificado'}</strong>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div style={{ background: '#e7f5ff', padding: '16px', borderRadius: '8px', border: '1px solid #74c0fc' }}>
+                        <h4 style={{ color: '#1971c2', margin: '0 0 12px 0', fontSize: '14px' }}>Desglose de Ingresos (Ventas)</h4>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                          <span>Ventas Totales (USD):</span>
+                          <strong>${repTotalUSD.toFixed(2)}</strong>
+                        </div>
+                        <hr style={{ border: 'none', borderTop: '1px dashed #a5d8ff', margin: '8px 0' }}/>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                          <span>Efectivo USD:</span>
+                          <strong>${repCashUSD.toFixed(2)}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                          <span>{currentStoreCountry === 'panama' ? 'Yappy' : currentStoreCountry === 'el_salvador' ? 'Transferencia / Chivo' : 'Zelle'}:</span>
+                          <strong>${repZelle.toFixed(2)}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                          <span>Punto / Débito:</span>
+                          <strong>{currentStoreCountry === 'venezuela' ? `Bs. ${repDebitBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `$${repDebitBs.toFixed(2)}`}</strong>
+                        </div>
+                        {currentStoreCountry === 'venezuela' && (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                              <span>Efectivo Bs:</span>
+                              <strong>Bs. {repCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                              <span>Pago Móvil:</span>
+                              <strong>Bs. {repPagoMovilBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '8px', border: '1px solid #ced4da' }}>
+                        <h4 style={{ color: '#212529', margin: '0 0 12px 0', fontSize: '14px' }}>Arqueo Físico de Gaveta</h4>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                          <span>Fondo Inicial:</span>
+                          <strong>${(selectedShiftReport.opening_float_usd || 0).toFixed(2)}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                          <span>Efectivo Total Esperado:</span>
+                          <div style={{ textAlign: 'right' }}>
+                            <strong>${((selectedShiftReport.opening_float_usd || 0) + repCashUSD).toFixed(2)} USD</strong>
+                            {currentStoreCountry === 'venezuela' && repCashBs > 0 && (
+                              <div style={{ color: '#2b8a3e', marginTop: '2px', fontWeight: 'bold' }}>+ Bs. {repCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                            )}
+                          </div>
+                        </div>
+                        <hr style={{ border: 'none', borderTop: '1px dashed #ced4da', margin: '8px 0' }}/>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                          <span>Físico Contado:</span>
+                          <strong style={{ color: '#0f52ba' }}>{fisicoContadoDisplay}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                          <span>Diferencia (Sobrante/Faltante):</span>
+                          <strong style={{ color: (selectedShiftReport.difference_usd || 0) < 0 ? '#fa5252' : '#2b8a3e' }}>
+                            ${(selectedShiftReport.difference_usd || 0).toFixed(2)}
+                          </strong>
+                        </div>
+                        {selectedShiftReport.notes && !selectedShiftReport.notes.startsWith('Contado:') && (
+                          <div style={{ marginTop: '12px', fontSize: '12px', color: '#6c757d', fontStyle: 'italic', background: '#fff', padding: '8px', borderRadius: '4px', border: '1px solid #e9ecef' }}>
+                            <strong>Nota:</strong> {selectedShiftReport.notes.split('|')[0]}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 style={{ fontSize: '15px', color: '#212529', margin: '16px 0 12px 0', borderBottom: '2px solid #e9ecef', paddingBottom: '6px' }}>Listado de Transacciones Procesadas ({repSales.length})</h4>
+                      <div className="table-responsive" style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #dee2e6', borderRadius: '6px' }}>
+                        <table className="fiskal-table" style={{ fontSize: '12px', margin: 0 }}>
+                          <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                            <tr>
+                              <th>Hora</th>
+                              <th>Factura #</th>
+                              <th>Cliente</th>
+                              <th>Total USD</th>
+                              <th>Método Principal</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {repSales.length === 0 ? (
+                              <tr><td colSpan="5" className="empty-text">No hay ventas en este turno.</td></tr>
+                            ) : (
+                              repSales.map(sale => {
+                                let mainMethod = 'Múltiple';
+                                const pd = sale.payment_details || {};
+                                const paidTotal = (pd.cash_usd || 0) + (pd.zelle || 0) + ((pd.cash_bs || 0) + (pd.pago_movil || 0) + (pd.debit || 0)) / (pd.applied_bcv_rate || bcvRate || 1);
+                                if (pd.cash_usd >= sale.total_usd * 0.9) mainMethod = 'Efectivo USD';
+                                else if (pd.zelle >= sale.total_usd * 0.9) mainMethod = currentStoreCountry === 'panama' ? 'Yappy' : currentStoreCountry === 'el_salvador' ? 'Transferencia' : 'Zelle';
+                                else if (currentStoreCountry === 'venezuela') {
+                                  if (pd.cash_bs / (pd.applied_bcv_rate || 1) >= sale.total_usd * 0.9) mainMethod = 'Efectivo Bs';
+                                  else if (pd.pago_movil / (pd.applied_bcv_rate || 1) >= sale.total_usd * 0.9) mainMethod = 'Pago Móvil';
+                                  else if (pd.debit / (pd.applied_bcv_rate || 1) >= sale.total_usd * 0.9) mainMethod = 'Punto de Venta';
+                                } else {
+                                  if (pd.debit >= sale.total_usd * 0.9) mainMethod = 'Tarjeta / Débito';
+                                }
+
+                                return (
+                                  <tr key={sale.id}>
+                                    <td>{new Date(sale.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                                    <td><strong>{sale.invoice_number || `A-${String(sale.id).padStart(3, '0')}`}</strong></td>
+                                    <td>{sale.client_name || 'Cliente General'}</td>
+                                    <td><strong>${sale.total_usd.toFixed(2)}</strong></td>
+                                    <td><span style={{ background: '#f1f3f5', padding: '2px 6px', borderRadius: '4px' }}>{mainMethod}</span></td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => { setShowShiftReportModal(false); setSelectedShiftReport(null); }}>Cerrar</button>
+              <button className="btn-primary" onClick={() => window.print()}>Imprimir Reporte Z</button>
             </div>
           </div>
         </div>
