@@ -1115,7 +1115,7 @@ const handleVendorRegisterStoreSubmit = async (e) => {
     }
   };
 
-const [showInKrono, setShowInKrono] = useState(false);
+  const [showInKrono, setShowInKrono] = useState(false);
   const [kronoPrice, setKronoPrice] = useState('');
 
   const fetchEmployees = async (storeId) => {
@@ -2142,7 +2142,7 @@ const syncOfflineData = async () => {
     }
   };
 
-  const syncBcvRate = async (storeId) => {
+const syncBcvRate = async (storeId) => {
     setLoadingRate(true);
     try {
       if (navigator.onLine) {
@@ -2207,9 +2207,111 @@ const syncOfflineData = async () => {
     return urlData.publicUrl;
   };
 
+  const handleAddProduct = async (e) => {
+    e.preventDefault();
+    if (!name || !price || !currentStoreId) return;
 
+    setLoading(true);
+    try {
+      let imageUrl = null;
+      if (imageFile) {
+        if (isOnline) {
+          imageUrl = await uploadImageToSupabase();
+        } else {
+          alert("Aviso: Como estás Offline, la imagen no se subirá temporalmente.");
+        }
+      }
 
+      const newProduct = { 
+        name, 
+        price: parseFloat(price), 
+        cost: parseFloat(cost) || 0, 
+        stock: parseInt(stock) || 0, 
+        category: category || 'General',
+        barcode: barcode.trim() || null,
+        image_url: imageUrl,
+        modifiers: productModifiers.join(', '),
+        store_id: currentStoreId,
+        show_in_krono: showInKrono,
+        krono_preferential_price: kronoPrice ? parseFloat(kronoPrice) : null
+      };
 
+      if (!isOnline) {
+        const tempId = `local_prod_${Date.now()}`;
+        await queueOfflineAction({ type: 'INSERT_PRODUCT', productData: newProduct, tempId });
+        setProducts([{ ...newProduct, id: tempId }, ...products]);
+        resetProductForm();
+        setLoading(false);
+        checkPendingSales();
+        alert("¡Estás Offline! Producto guardado localmente.");
+        return;
+      }
+
+      const { error } = await supabase.from('products').insert([newProduct]);
+      if (error) throw error;
+
+      resetProductForm();
+      fetchProducts(currentStoreId);
+      alert("¡Producto guardado exitosamente!");
+    } catch (error) {
+      console.error('Error al guardar producto:', error.message);
+      alert("Error al guardar producto: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateProduct = async (e) => {
+    e.preventDefault();
+    if (!editingProduct || !name || !price || !currentStoreId) return;
+
+    setLoading(true);
+    try {
+      let imageUrl = editingProduct.image_url;
+      if (imageFile) {
+        if (isOnline) {
+          imageUrl = await uploadImageToSupabase();
+        } else {
+          alert("Aviso: Como estás Offline, la nueva imagen no se subirá.");
+        }
+      }
+
+      const updatedProductData = { 
+        name, 
+        price: parseFloat(price), 
+        cost: parseFloat(cost) || 0, 
+        stock: parseInt(stock) || 0, 
+        category: category || 'General',
+        barcode: barcode.trim() || null,
+        image_url: imageUrl,
+        modifiers: productModifiers.join(', '),
+        show_in_krono: showInKrono,
+        krono_preferential_price: kronoPrice ? parseFloat(kronoPrice) : null
+      };
+
+      if (!isOnline) {
+        await queueOfflineAction({ type: 'UPDATE_PRODUCT', productId: editingProduct.id, productData: updatedProductData });
+        const currentProducts = products.map(p => p.id === editingProduct.id ? { ...p, ...updatedProductData } : p);
+        setProducts(currentProducts);
+        resetProductForm();
+        setLoading(false);
+        checkPendingSales();
+        alert("¡Estás Offline! Producto actualizado localmente.");
+        return;
+      }
+
+      const { error } = await supabase.from('products').update(updatedProductData).eq('id', editingProduct.id).eq('store_id', currentStoreId);
+      if (error) throw error;
+
+      resetProductForm();
+      fetchProducts(currentStoreId);
+    } catch (error) {
+      console.error('Error al actualizar producto:', error.message);
+      alert("Error al actualizar producto: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleStartEditProduct = (prod) => {
     setEditingProduct(prod);
@@ -2250,60 +2352,6 @@ const syncOfflineData = async () => {
     setShowInKrono(false);
     setKronoPrice('');
   };
-
-  const handleUpdateProduct = async (e) => {
-    e.preventDefault();
-    if (!editingProduct || !name || !price || !currentStoreId) return;
-
-    setLoading(true);
-    try {
-      let imageUrl = editingProduct.image_url;
-      if (imageFile) {
-        if (isOnline) {
-          imageUrl = await uploadImageToSupabase();
-        } else {
-          alert("Aviso: Como estás Offline, la nueva imagen no se subirá.");
-        }
-      }
-
-      const updatedProductData = { 
-        name, 
-        price: parseFloat(price), 
-        cost: parseFloat(cost) || 0, 
-        stock: parseInt(stock) || 0, 
-        category: category || 'General',
-        barcode: barcode.trim() || null,
-        image_url: imageUrl,
-        modifiers: productModifiers.join(', ')
-      };
-
-      if (!isOnline) {
-        await queueOfflineAction({ type: 'UPDATE_PRODUCT', productId: editingProduct.id, productData: updatedProductData });
-        const currentProducts = products.map(p => p.id === editingProduct.id ? { ...p, ...updatedProductData } : p);
-        setProducts(currentProducts);
-        resetProductForm();
-        setLoading(false);
-        checkPendingSales();
-        alert("¡Estás Offline! Producto actualizado localmente.");
-        return;
-      }
-
-      const { error } = await supabase.from('products').update(updatedProductData).eq('id', editingProduct.id).eq('store_id', currentStoreId);
-      if (error) throw error;
-
-      resetProductForm();
-      fetchProducts(currentStoreId);
-    } catch (error) {
-      console.error('Error al actualizar producto:', error.message);
-      alert("Error al actualizar producto: " + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-
-
 
   const handleDeleteProduct = async (id) => {
     if (!isOnline) {
