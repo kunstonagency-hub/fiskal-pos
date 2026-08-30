@@ -158,6 +158,20 @@ function App() {
   const [currentStoreTaxInclusive, setCurrentStoreTaxInclusive] = useState(false);
   const [savingFiscal, setSavingFiscal] = useState(false);
 
+  // NUEVO: Estado de permiso de Krono
+  const [currentStoreKronoEnabled, setCurrentStoreKronoEnabled] = useState(false);
+
+  // NUEVO: Función para encender/apagar Krono desde el Panel Maestro
+  const handleToggleKrono = async (storeId, currentStatus) => {
+    try {
+      const { error } = await supabase.from('stores').update({ krono_enabled: !currentStatus }).eq('id', storeId);
+      if (error) throw error;
+      fetchAdminStores(); 
+    } catch (error) {
+      alert("Error al cambiar permisos de Krono: " + error.message);
+    }
+  };
+
   const handleSaveFiscalSettings = async (e) => {
     e.preventDefault();
     setSavingFiscal(true);
@@ -693,7 +707,7 @@ const fetchUserProfileAndStore = async (user) => {
 
       if (activeStoreId && activeStoreId !== 'null' && activeStoreId !== 'undefined') {
         if (navigator.onLine) {
-          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active, store_type, country, rif, document, address, tax_enabled, tax_rate, tax_inclusive').eq('id', activeStoreId).single();
+          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active, store_type, country, rif, document, address, tax_enabled, tax_rate, tax_inclusive, krono_enabled').eq('id', activeStoreId).single();
           
           if (storeInfo) {
             console.log("🚨 DATOS CRUDOS DE SUPABASE PARA ESTA TIENDA:", storeInfo); 
@@ -716,10 +730,12 @@ const fetchUserProfileAndStore = async (user) => {
               setCurrentStoreTaxEnabled(storeInfo.tax_enabled || false);
               setCurrentStoreTaxRate(storeInfo.tax_rate !== null && storeInfo.tax_rate !== undefined ? storeInfo.tax_rate : (safeCountry === 'panama' ? 7 : safeCountry === 'el_salvador' ? 13 : 16));
               setCurrentStoreTaxInclusive(storeInfo.tax_inclusive || false);
+              setCurrentStoreKronoEnabled(storeInfo.krono_enabled || false);
               
               localStorage.setItem(`fiskal_cache_store_name_${activeStoreId}`, storeInfo.name);
               localStorage.setItem(`fiskal_cache_store_type_${activeStoreId}`, safeType);
               localStorage.setItem(`fiskal_cache_store_country_${activeStoreId}`, safeCountry);
+              localStorage.setItem(`fiskal_cache_krono_enabled_${activeStoreId}`, storeInfo.krono_enabled || false);
             }
           }
         } else {
@@ -729,6 +745,8 @@ const fetchUserProfileAndStore = async (user) => {
           if (cachedType) setCurrentStoreType(cachedType);
           const cachedCountry = localStorage.getItem(`fiskal_cache_store_country_${activeStoreId}`);
           if (cachedCountry) setCurrentStoreCountry(cachedCountry);
+          const cachedKrono = localStorage.getItem(`fiskal_cache_krono_enabled_${activeStoreId}`);
+          if (cachedKrono) setCurrentStoreKronoEnabled(cachedKrono === 'true');
         }
       }
 
@@ -4288,6 +4306,21 @@ return (
                                     <Key size={13} /> Acceso
                                   </button>
                                   <button className="btn-icon-edit" onClick={() => handleStartEditStore(store)} title="Editar Datos y Promociones"><Edit2 size={16} /></button>
+                                  
+                                  <button 
+                                    className="btn-secondary" 
+                                    onClick={() => handleToggleKrono(store.id, store.krono_enabled)} 
+                                    style={{ 
+                                      borderColor: store.krono_enabled ? '#10b981' : '#ced4da', 
+                                      color: store.krono_enabled ? '#10b981' : '#6c757d', 
+                                      background: store.krono_enabled ? '#ecfdf5' : '#f8f9fa',
+                                      fontSize: '11px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px' 
+                                    }}
+                                    title={store.krono_enabled ? "Krono Market está ACTIVO para este comercio" : "Activar Krono Market para este comercio"}
+                                  >
+                                    🛒 {store.krono_enabled ? 'Krono ON' : 'Krono OFF'}
+                                  </button>
+
                                   <button className="btn-secondary" onClick={() => handleToggleStoreStatus(store.id, store.is_active)} style={{ borderColor: store.is_active ? '#fa5252' : '#2b8a3e', color: store.is_active ? '#fa5252' : '#2b8a3e', fontSize: '11px', padding: '4px 8px' }}>
                                     {store.is_active ? 'Suspender' : 'Activar'}
                                   </button>
@@ -4817,38 +4850,40 @@ return (
                   )}
 
                   {/* NUEVO MÓDULO: INTEGRACIÓN KRONO MARKET */}
-                  <div className="form-group" style={{ background: showInKrono ? '#ecfdf5' : '#f8fafc', padding: '16px', borderRadius: '8px', border: showInKrono ? '2px solid #10b981' : '1px solid #e2e8f0', marginBottom: '24px', transition: 'all 0.3s ease' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '900', color: '#0f172a', cursor: 'pointer', margin: 0 }}>
-                      <input
-                        type="checkbox"
-                        checked={showInKrono}
-                        onChange={(e) => setShowInKrono(e.target.checked)}
-                        style={{ width: '20px', height: '20px', accentColor: '#10b981', cursor: 'pointer' }}
-                      />
-                      🛒 Publicar en Krono Market
-                    </label>
-
-                    {showInKrono && (
-                      <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #d1fae5' }}>
-                        <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#047857', marginBottom: '8px', display: 'block' }}>
-                          Precio Preferencial Krono ($ USD)
-                        </label>
+                  {currentStoreKronoEnabled && (
+                    <div className="form-group" style={{ background: showInKrono ? '#ecfdf5' : '#f8fafc', padding: '16px', borderRadius: '8px', border: showInKrono ? '2px solid #10b981' : '1px solid #e2e8f0', marginBottom: '24px', transition: 'all 0.3s ease' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '900', color: '#0f172a', cursor: 'pointer', margin: 0 }}>
                         <input
-                          type="number"
-                          step="0.01"
-                          value={kronoPrice}
-                          onChange={(e) => setKronoPrice(e.target.value)}
-                          placeholder="Dejar vacío si aplica el mismo precio de arriba"
-                          style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #a7f3d0', fontSize: '14px', outline: 'none' }}
+                          type="checkbox"
+                          checked={showInKrono}
+                          onChange={(e) => setShowInKrono(e.target.checked)}
+                          style={{ width: '20px', height: '20px', accentColor: '#10b981', cursor: 'pointer' }}
                         />
-                        <span style={{ fontSize: '12px', color: '#059669', display: 'block', marginTop: '8px', lineHeight: '1.4' }}>
-                          💡 <strong>Tip:</strong> Si colocas un precio aquí, en la App aparecerá tu precio normal tachado y este resaltado en verde.
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  {/* FIN MÓDULO KRONO */}
+                        🛒 Publicar en Krono Market
+                      </label>
 
+                      {showInKrono && (
+                        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #d1fae5' }}>
+                          <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#047857', marginBottom: '8px', display: 'block' }}>
+                            Precio Preferencial Krono ($ USD)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={kronoPrice}
+                            onChange={(e) => setKronoPrice(e.target.value)}
+                            placeholder="Dejar vacío si aplica el mismo precio de arriba"
+                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #a7f3d0', fontSize: '14px', outline: 'none' }}
+                          />
+                          <span style={{ fontSize: '12px', color: '#059669', display: 'block', marginTop: '8px', lineHeight: '1.4' }}>
+                            💡 <strong>Tip:</strong> Si colocas un precio aquí, en la App aparecerá tu precio normal tachado y este resaltado en verde.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* FIN MÓDULO KRONO */}
+                  
                   <div style={{ display: 'flex', gap: '8px' }}>
                     {editingProduct && (
                       <button type="button" className="btn-secondary" onClick={resetProductForm} style={{ flex: 1 }}>Cancelar</button>
