@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, Settings, Package, Users, PlusCircle, Trash2, Minus, Plus, RefreshCw, History, UserCheck, CreditCard, X, FileText, Eye, Clock, AlertCircle, CheckCircle, Play, DollarSign, AlertTriangle, Edit2, QrCode, Lock, Unlock, ShieldAlert, Barcode, Image as ImageIcon, Wifi, WifiOff, UploadCloud, Search, Store, MapPin, Phone, Mail, LogOut, Key, User, MessageCircle, Award, HardDrive, UserPlus, Camera, DollarSign as DollarIcon, Percent, TrendingUp, Activity, PieChart, Check, FileCheck } from 'lucide-react';
+import { ShoppingCart, Settings, Package, Users, PlusCircle, Trash2, Minus, Plus, RefreshCw, History, UserCheck, CreditCard, X, FileText, Eye, Clock, AlertCircle, CheckCircle, Play, DollarSign, AlertTriangle, Edit2, QrCode, Lock, Unlock, ShieldAlert, Barcode, Image as ImageIcon, Wifi, WifiOff, UploadCloud, Search, Store, MapPin, Phone, Mail, LogOut, Key, User, MessageCircle, Award, HardDrive, UserPlus, Camera, DollarSign as DollarIcon, Percent, TrendingUp, Activity, PieChart, Check, FileCheck, Truck } from 'lucide-react';
 import { supabase } from './supabase';
+import DeliveryDashboard from './components/DeliveryDashboard';
 import { initDB, queueOfflineAction, getOfflineActions, clearOfflineAction, getOfflineSales, clearOfflineSale } from './db';
 import { Html5Qrcode } from 'html5-qrcode';
 import jsPDF from 'jspdf';
@@ -3456,6 +3457,17 @@ return (
           <button className={activeTab === 'clients' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('clients'); setIsSidebarExpanded(false); }}>
             <Users size={20} /> <span>Clientes</span>
           </button>
+          {currentStoreKronoEnabled && (
+            <button className={activeTab === 'krono' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('krono'); setIsSidebarExpanded(false); }} style={{ color: '#10b981', fontWeight: 'bold' }}>
+              <Truck size={20} /> <span>KRONO</span>
+            </button>
+          )}
+
+          {(currentUserRole === 'owner' || currentUserRole === 'super_admin' || currentUserRole === 'system_vendor') && (
+            <button className={activeTab === 'settings' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('settings'); setIsSidebarExpanded(false); }}>
+              <Settings size={20} /> <span>Configuración</span>
+            </button>
+          )}
           
           {currentStoreType === 'restaurant' && (
            <button 
@@ -3502,6 +3514,7 @@ return (
              activeTab === 'vendor_portal' ? 'Portal de Vendedor de Sistema (Alta de Comercios)' :
              activeTab === 'admin' ? 'Panel Maestro SaaS (Administración)' :
              activeTab === 'settings' ? 'Configuración del Sistema y Empleados' :
+             activeTab === 'krono' ? 'Krono Delivery - Pedidos Web' :
              activeTab.toUpperCase()}
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -5400,6 +5413,10 @@ return (
               </div>
             </div>
           )}
+
+            {activeTab === 'krono' && currentStoreKronoEnabled && (
+            <DeliveryDashboard currentStoreId={currentStoreId} />
+            )}
         </section>
       </main>
 
