@@ -151,7 +151,21 @@ export default function DeliveryDashboard({ currentStoreId }) {
       return;
     }
 
-    const phone = order.customer_info.telefono.replace(/\D/g, ''); // Limpia caracteres especiales
+    // 1. Limpieza de caracteres: dejamos solo los números
+    let phone = order.customer_info.telefono.replace(/\D/g, ''); 
+
+    // 2. Corrección inteligente de prefijos (Formato Venezuela)
+    if (phone.startsWith('0')) {
+      // De '04141234567' a '584141234567'
+      phone = '58' + phone.substring(1);
+    } else if (phone.startsWith('580')) {
+      // De '5804141234567' a '584141234567'
+      phone = '58' + phone.substring(3);
+    } else if (phone.length === 10 && !phone.startsWith('58')) {
+      // De '4141234567' a '584141234567'
+      phone = '58' + phone;
+    }
+
     const customerName = `${order.customer_info.nombre} ${order.customer_info.apellido}`;
 
     let parsedItems = [];
