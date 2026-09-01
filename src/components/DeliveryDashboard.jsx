@@ -8,12 +8,10 @@ export default function DeliveryDashboard({ currentStoreId }) {
   const [newOrderNotification, setNewOrderNotification] = useState(null);
 
   useEffect(() => {
-    // Evitamos ejecutar la suscripción si el ID del comercio aún no ha cargado
     if (!currentStoreId) return;
 
     fetchActiveOrders();
 
-    // Nombramos el canal de forma dinámica para que no colisione con otros comercios
     const channel = supabase
       .channel(`krono-orders-${currentStoreId}`)
       .on(
@@ -25,23 +23,19 @@ export default function DeliveryDashboard({ currentStoreId }) {
           filter: `store_id=eq.${currentStoreId}` 
         },
         (payload) => {
-          // 1. Reproducir sonido de alerta del KDS
           try {
             const bell = new Audio('https://upload.wikimedia.org/wikipedia/commons/3/34/Sound_Effect_-_Door_Bell.ogg');
             bell.play().catch(err => console.log("Audio bloqueado por el navegador:", err));
           } catch(e) {}
 
-          // 2. Mostrar alerta flotante
           const orderIdStr = String(payload.new.id);
           const orderNumber = orderIdStr.slice(-4).toUpperCase();
           setNewOrderNotification(`¡Nuevo pedido web Krono #${orderNumber}!`);
 
-          // 3. Ocultar la alerta tras 6 segundos
           setTimeout(() => {
             setNewOrderNotification(null);
           }, 6000);
 
-          // 4. Agregar pedido a la vista
           setOrders((prev) => [payload.new, ...prev]);
         }
       )
@@ -72,7 +66,7 @@ export default function DeliveryDashboard({ currentStoreId }) {
     const { data, error } = await supabase
       .from('orders')
       .select('*')
-      .eq('store_id', currentStoreId) // Filtro estricto de seguridad
+      .eq('store_id', currentStoreId)
       .not('status', 'in', '("Entregado","Rechazado")')
       .order('created_at', { ascending: false });
     
@@ -82,19 +76,102 @@ export default function DeliveryDashboard({ currentStoreId }) {
   };
 
   const updateOrderStatus = async (id, newStatus) => {
-    // Actualización optimista local para una interfaz más rápida (el WebSocket lo confirmará después)
+    const currentOrder = orders.find(o => o.id === id);
+    
     setOrders((prev) => prev.map((order) => (order.id === id ? { ...order, status: newStatus } : order)));
 
-    const { error } = await supabase
-      .from('orders')
-      .update({ status: newStatus })
-      .eq('id', id)
-      .eq('store_id', currentStoreId);
-    
-    if (error) {
+    try {
+      if (newStatus === 'Preparando' && currentOrder) {
+        let clientDisplayName = "Cliente Krono";
+
+        if (currentOrder.customer_info) {
+          const { nombre, apellido } = currentOrder.customer_info;
+          clientDisplayName = `${nombre} ${apellido} (Krono)`.trim();
+        }
+
+        let parsedItems = [];
+        if (typeof currentOrder.items === 'string') {
+          try { parsedItems = JSON.parse(currentOrder.items); } catch(e) { parsedItems = []; }
+        } else if (Array.isArray(currentOrder.items)) {
+          parsedItems = currentOrder.items;
+        }
+
+        const formattedSalesItems = parsedItems.map(item => ({
+          id: item.id || 0,
+          name: item.name,
+          price: Number(item.price),
+          quantity: item.quantity || 1,
+          cost: item.cost || 0
+        }));
+
+        const payMethod = currentOrder.payment_method || 'efectivo';
+        const paymentDetailsObj = {
+          cash_usd: payMethod === 'efectivo' ? Number(currentOrder.total_amount) : 0,
+          cash_bs: 0,
+          zelle: payMethod === 'zelle' ? Number(currentOrder.total_amount) : 0,
+          debit: payMethod === 'pago_movil' ? Number(currentOrder.total_amount) : 0,
+          reference: currentOrder.payment_reference || ''
+        };
+
+        const { error: saleError } = await supabase
+          .from('sales')
+          .insert([{
+            store_id: currentStoreId,
+            client_name: clientDisplayName,
+            items: formattedSalesItems,
+            total_usd: Number(currentOrder.total_amount),
+            total_bs: Number(currentOrder.total_amount) * 35,
+            payment_details: paymentDetailsObj,
+            status: 'completed'
+          }]);
+
+        if (saleError) {
+          console.error("Error registrando la venta en Fiskal:", saleError);
+          alert("El pedido se actualizó, pero hubo un detalle al insertar en 'sales': " + saleError.message);
+        }
+      }
+
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: newStatus })
+        .eq('id', id)
+        .eq('store_id', currentStoreId);
+      
+      if (error) throw error;
+
+    } catch (error) {
       alert('Error al actualizar el pedido: ' + error.message);
-      fetchActiveOrders(); // Revertimos el estado visual si falla la base de datos
+      fetchActiveOrders();
     }
+  };
+
+  const handleWhatsAppContact = (order) => {
+    if (!order.customer_info?.telefono) {
+      alert("El cliente no ha proporcionado un número de teléfono.");
+      return;
+    }
+
+    const phone = order.customer_info.telefono.replace(/\D/g, ''); // Limpia caracteres especiales
+    const customerName = `${order.customer_info.nombre} ${order.customer_info.apellido}`;
+
+    let parsedItems = [];
+    if (typeof order.items === 'string') {
+      try { parsedItems = JSON.parse(order.items); } catch(e) { parsedItems = []; }
+    } else if (Array.isArray(order.items)) {
+      parsedItems = order.items;
+    }
+
+    const itemsSummary = parsedItems
+      .map(item => `• ${item.quantity || 1}x ${item.name} ($${Number(item.price).toFixed(2)})`)
+      .join('\n');
+
+    const paymentText = order.payment_method?.replace('_', ' ').toUpperCase() || 'No definido';
+    const refText = order.payment_reference ? ` (Ref: ${order.payment_reference})` : '';
+
+    const message = `¡Hola ${customerName}! 👋 Te escribimos desde el comercio para confirmar los detalles de tu pedido en Krono:\n\n${itemsSummary}\n\n💰 *Total a pagar:* $${Number(order.total_amount).toFixed(2)}\n💳 *Método de pago:* ${paymentText}${refText}\n\n¿Nos confirmas si todo está correcto para proceder? ¡Gracias!`;
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
   };
 
   const getStatusColor = (status) => {
@@ -113,7 +190,6 @@ export default function DeliveryDashboard({ currentStoreId }) {
   return (
     <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'system-ui, sans-serif', position: 'relative' }}>
       
-      {/* Alerta Flotante (Toast) idéntica a la lógica del KDS */}
       {newOrderNotification && (
         <div style={{
           position: 'fixed',
@@ -176,6 +252,40 @@ export default function DeliveryDashboard({ currentStoreId }) {
                 </div>
 
                 <div style={{ padding: '16px', minHeight: '120px' }}>
+                  {order.customer_info && (
+                    <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px dashed #cbd5e1', fontSize: '13px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ fontWeight: 'bold', color: '#0f172a', marginBottom: '4px' }}>
+                            {order.customer_info.nombre} {order.customer_info.apellido} (Krono)
+                          </div>
+                          <div style={{ color: '#64748b' }}>C.I: {order.customer_info.cedula}</div>
+                          <div style={{ color: '#64748b' }}>Tel: {order.customer_info.telefono}</div>
+                        </div>
+                        <button 
+                          onClick={() => handleWhatsAppContact(order)}
+                          style={{
+                            background: '#25D366',
+                            color: '#fff',
+                            border: 'none',
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                          }}
+                          title="Enviar resumen por WhatsApp"
+                        >
+                          💬 WhatsApp
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {parsedItems.map((item, idx) => (
                     <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
                       <div style={{ display: 'flex', gap: '8px' }}>
@@ -207,7 +317,7 @@ export default function DeliveryDashboard({ currentStoreId }) {
                   {order.status === 'Pendiente' && (
                     <>
                       <button onClick={() => updateOrderStatus(order.id, 'Preparando')} style={{ flex: 1, background: '#10b981', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
-                        <Check size={16} /> Aceptar
+                        <Check size={16} /> Aceptar Venta
                       </button>
                       <button onClick={() => updateOrderStatus(order.id, 'Rechazado')} style={{ flex: 1, background: '#fee2e2', color: '#ef4444', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
                         <XCircle size={16} /> Rechazar
