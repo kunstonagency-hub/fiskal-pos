@@ -2,25 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase'; 
 import { Bell, Clock, ChefHat, Truck, Check, XCircle, CreditCard, FileText } from 'lucide-react';
 
-export default function DeliveryDashboard({ currentStoreId }) {
+export default function DeliveryDashboard({ storeId }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newOrderNotification, setNewOrderNotification] = useState(null);
 
   useEffect(() => {
-    if (!currentStoreId) return;
+    if (!storeId) return;
 
     fetchActiveOrders();
 
     const channel = supabase
-      .channel(`krono-orders-${currentStoreId}`)
+      .channel(`krono-orders-${storeId}`)
       .on(
         'postgres_changes',
         { 
           event: 'INSERT', 
           schema: 'public', 
           table: 'orders',
-          filter: `store_id=eq.${currentStoreId}` 
+          filter: `store_id=eq.${storeId}` 
         },
         (payload) => {
           try {
@@ -45,7 +45,7 @@ export default function DeliveryDashboard({ currentStoreId }) {
           event: 'UPDATE', 
           schema: 'public', 
           table: 'orders',
-          filter: `store_id=eq.${currentStoreId}` 
+          filter: `store_id=eq.${storeId}` 
         },
         (payload) => {
           setOrders((prev) =>
@@ -58,15 +58,15 @@ export default function DeliveryDashboard({ currentStoreId }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentStoreId]);
+  }, [storeId]);
 
   const fetchActiveOrders = async () => {
-    if (!currentStoreId) return;
+    if (!storeId) return;
 
     const { data, error } = await supabase
       .from('orders')
       .select('*')
-      .eq('store_id', currentStoreId)
+      .eq('store_id', storeId)
       .not('status', 'in', '("Entregado","Rechazado")')
       .order('created_at', { ascending: false });
     
@@ -116,7 +116,7 @@ export default function DeliveryDashboard({ currentStoreId }) {
         const { error: saleError } = await supabase
           .from('sales')
           .insert([{
-            store_id: currentStoreId,
+            store_id: storeId,
             client_name: clientDisplayName,
             items: formattedSalesItems,
             total_usd: Number(currentOrder.total_amount),
@@ -127,15 +127,56 @@ export default function DeliveryDashboard({ currentStoreId }) {
 
         if (saleError) {
           console.error("Error registrando la venta en Fiskal:", saleError);
-          alert("El pedido se actualizó, pero hubo un detalle al insertar en 'sales': " + saleError.message);
         }
       }
+
+      // --- EMISIÓN AL MOTORIZADO CON COORDENADAS REALES DEL COMERCIO ---
+      if (newStatus === 'En camino' && currentOrder) {
+        console.log("Intentando enviar alerta al motorizado con coordenadas reales...");
+        
+        // Consultar las coordenadas actualizadas de la tienda en Supabase
+        const { data: storeData } = await supabase
+          .from('stores')
+          .select('lat, lng')
+          .eq('id', storeId)
+          .single();
+
+        const pickupLat = storeData?.lat || 10.3755;
+        const pickupLng = storeData?.lng || -66.9587;
+
+        const dropoff = currentOrder.customer_info?.coordenadas || { lat: 10.4850, lng: -66.5900 }; 
+        const customerName = currentOrder.customer_info ? `${currentOrder.customer_info.nombre} ${currentOrder.customer_info.apellido}` : 'Cliente Web';
+        const customerAddress = currentOrder.customer_info?.direccion || 'Dirección no especificada';
+
+        const payloadRider = {
+          customer_name: customerName,
+          customer_address: customerAddress,
+          pickup_lat: pickupLat,
+          pickup_lng: pickupLng,
+          dropoff_lat: dropoff.lat,
+          dropoff_lng: dropoff.lng,
+          delivery_fee: 3.00,
+          status: 'buscando_motorizado'
+        };
+
+        const { error: deliveryError } = await supabase
+          .from('krono_deliveries')
+          .insert([payloadRider]);
+
+        if (deliveryError) {
+          console.error("Error de Supabase al insertar en krono_deliveries:", deliveryError);
+          alert("Error al alertar al motorizado: " + deliveryError.message);
+        } else {
+          console.log("¡Viaje inyectado exitosamente con las coordenadas reales del comercio!");
+        }
+      }
+      // ---------------------------------------------
 
       const { error } = await supabase
         .from('orders')
         .update({ status: newStatus })
         .eq('id', id)
-        .eq('store_id', currentStoreId);
+        .eq('store_id', storeId);
       
       if (error) throw error;
 
@@ -151,18 +192,13 @@ export default function DeliveryDashboard({ currentStoreId }) {
       return;
     }
 
-    // 1. Limpieza de caracteres: dejamos solo los números
     let phone = order.customer_info.telefono.replace(/\D/g, ''); 
 
-    // 2. Corrección inteligente de prefijos (Formato Venezuela)
     if (phone.startsWith('0')) {
-      // De '04141234567' a '584141234567'
       phone = '58' + phone.substring(1);
     } else if (phone.startsWith('580')) {
-      // De '5804141234567' a '584141234567'
       phone = '58' + phone.substring(3);
     } else if (phone.length === 10 && !phone.startsWith('58')) {
-      // De '4141234567' a '584141234567'
       phone = '58' + phone;
     }
 
