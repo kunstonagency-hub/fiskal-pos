@@ -463,6 +463,7 @@ const confirmAddToCartWithWeight = () => {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [invoiceHistory, setInvoiceHistory] = useState([]);
+  
 
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [labelProduct, setLabelProduct] = useState(null);
@@ -3149,6 +3150,82 @@ const updateCalculations = () => {
     setShowInvoiceModal(true);
   };
 
+  
+
+  const handlePrintZReport = () => {
+  if (!selectedShiftReport) return;
+  const printWindow = window.open('', '_blank', 'width=400,height=600');
+  if (!printWindow) return;
+
+  const shiftSales = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
+  const emp = (typeof employees !== 'undefined' ? employees : []).find(e => e.id === selectedShiftReport.user_id) || { full_name: 'Cajero' };
+  const reg = (typeof registers !== 'undefined' ? registers : []).find(r => r.id === selectedShiftReport.register_id) || { name: 'Caja Principal' };
+
+  let tUsd = 0, tBs = 0, tZelle = 0, tDebit = 0, tPm = 0;
+  shiftSales.forEach(s => {
+    tUsd += (s.payment_details?.cash_usd || 0);
+    tBs += (s.payment_details?.cash_bs || 0);
+    tZelle += (s.payment_details?.zelle || 0);
+    tDebit += (s.payment_details?.debit_bs || 0);
+    tPm += (s.payment_details?.pago_movil_bs || 0);
+  });
+
+  const salesHtml = shiftSales.map(sale => `
+    <tr>
+      <td>${sale.invoice_number || `A-${String(sale.id).padStart(3, '0')}`}</td>
+      <td>$${Number(sale.total_usd).toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  const html = `
+    <html>
+      <head>
+        <title>Reporte Z - ${new Date(selectedShiftReport.opened_at).toLocaleDateString()}</title>
+        <style>
+          body { font-family: 'Courier New', monospace; padding: 15px; color: #000; width: 280px; margin: 0 auto; background: #fff; }
+          h3, p { text-align: center; margin: 4px 0; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+          th, td { padding: 4px 0; border-bottom: 1px dashed #ccc; text-align: left; }
+          th:last-child, td:last-child { text-align: right; }
+          .section-title { font-weight: bold; margin-top: 15px; border-bottom: 1px dashed #000; padding-bottom: 3px; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <h3>REPORTE Z (Cierre)</h3>
+        <p>Caja: ${reg.name}</p>
+        <p>Cajero: ${emp.full_name}</p>
+        <p>Apertura: ${new Date(selectedShiftReport.opened_at).toLocaleString()}</p>
+        <p>Cierre: ${selectedShiftReport.closed_at ? new Date(selectedShiftReport.closed_at).toLocaleString() : 'En curso'}</p>
+        
+        <div class="section-title">DESGLOSE DE INGRESOS</div>
+        <table>
+          <tr><td>Fondo Inicial:</td><td>$${Number(selectedShiftReport.opening_float_usd || 0).toFixed(2)}</td></tr>
+          <tr><td>Efectivo USD:</td><td>$${tUsd.toFixed(2)}</td></tr>
+          <tr><td>Zelle:</td><td>$${tZelle.toFixed(2)}</td></tr>
+          <tr><td>Punto Venta:</td><td>Bs. ${tDebit.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td></tr>
+          <tr><td>Pago Móvil:</td><td>Bs. ${tPm.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td></tr>
+          <tr><td>Efectivo Bs:</td><td>Bs. ${tBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td></tr>
+        </table>
+
+        <div class="section-title">VENTAS DEL TURNO (${shiftSales.length})</div>
+        <table>
+          <thead><tr><th>Factura</th><th>Total USD</th></tr></thead>
+          <tbody>${salesHtml || '<tr><td colspan="2">Sin ventas registradas</td></tr>'}</tbody>
+        </table>
+        
+        <p style="text-align: center; margin-top: 30px; font-size: 10px;">________________________</p>
+        <p style="text-align: center; margin-top: 5px; font-size: 10px;">Firma del Cajero</p>
+        
+        <script>
+          window.onload = function() { window.print(); window.close(); }
+        </script>
+      </body>
+    </html>
+  `;
+  printWindow.document.write(html);
+  printWindow.document.close();
+};
+
   const getNextInvoiceNumber = async (storeId) => {
     if (!storeId) return 'A-001';
     try {
@@ -4527,128 +4604,274 @@ return (
             </div>
           )}
 
-          {activeTab === 'history' && (
-            <div className="product-list-card" style={{ width: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                <h3 style={{ margin: 0 }}>Registro de Ventas y Cuentas ({filteredSales.length})</h3>
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <button 
-                    onClick={() => { setHistoryFilterType('all'); setHistoryCustomDate(''); }} 
-                    style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: historyFilterType === 'all' ? '#1c7ed6' : '#fff', color: historyFilterType === 'all' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    Todos
-                  </button>
-                  <button 
-                    onClick={() => { setHistoryFilterType('yesterday'); setHistoryCustomDate(''); }} 
-                    style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: historyFilterType === 'yesterday' ? '#1c7ed6' : '#fff', color: historyFilterType === 'yesterday' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    Ayer
-                  </button>
-                  <button 
-                    onClick={() => { setHistoryFilterType('last_week'); setHistoryCustomDate(''); }} 
-                    style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: historyFilterType === 'last_week' ? '#1c7ed6' : '#fff', color: historyFilterType === 'last_week' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    Semana Pasada
-                  </button>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fff', border: '1px solid #ced4da', borderRadius: '4px', padding: '2px 6px' }}>
-                    <span style={{ fontSize: '11px', color: '#6c757d' }}>Fecha:</span>
-                    <input 
-                      type="date" 
-                      value={historyCustomDate} 
-                      onChange={(e) => { setHistoryCustomDate(e.target.value); setHistoryFilterType('custom'); }} 
-                      style={{ border: 'none', fontSize: '12px', outline: 'none', background: 'transparent' }}
-                    />
-                  </div>
-                </div>
-              </div>
+{activeTab === 'history' && (
+  <div className="product-list-card" style={{ width: '100%' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+      <h3 style={{ margin: 0 }}>Registro de Ventas y Cuentas ({filteredSales.length})</h3>
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <button 
+          onClick={() => { setHistoryFilterType('all'); setHistoryCustomDate(''); }} 
+          style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: historyFilterType === 'all' ? '#1c7ed6' : '#fff', color: historyFilterType === 'all' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+        >
+          Todos
+        </button>
+        <button 
+          onClick={() => { setHistoryFilterType('yesterday'); setHistoryCustomDate(''); }} 
+          style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: historyFilterType === 'yesterday' ? '#1c7ed6' : '#fff', color: historyFilterType === 'yesterday' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+        >
+          Ayer
+        </button>
+        <button 
+          onClick={() => { setHistoryFilterType('last_week'); setHistoryCustomDate(''); }} 
+          style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: historyFilterType === 'last_week' ? '#1c7ed6' : '#fff', color: historyFilterType === 'last_week' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+        >
+          Semana Pasada
+        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fff', border: '1px solid #ced4da', borderRadius: '4px', padding: '2px 6px' }}>
+          <span style={{ fontSize: '11px', color: '#6c757d' }}>Fecha:</span>
+          <input 
+            type="date" 
+            value={historyCustomDate} 
+            onChange={(e) => { setHistoryCustomDate(e.target.value); setHistoryFilterType('custom'); }} 
+            style={{ border: 'none', fontSize: '12px', outline: 'none', background: 'transparent' }}
+          />
+        </div>
+      </div>
+    </div>
 
-              <div className="table-responsive">
-                <table className="fiskal-table">
-                  <thead>
-                    <tr>
-                      <th>Factura #</th>
-                      <th>Fecha y Hora</th>
-                      <th>Cliente</th>
-                      <th>Total USD</th>
-                      <th>Saldo Pendiente</th>
-                      <th>Estatus</th>
-                      <th style={{ textAlign: 'center' }}>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredSales.length === 0 ? (
-                      <tr><td colSpan="7" className="empty-text">No hay ventas registradas para este filtro.</td></tr>
-                    ) : (
-                      filteredSales.map((sale) => (
-                        <tr key={sale.id}>
-                          <td>
-                            <strong>
-                              {sale.invoice_number || (String(sale.id).startsWith('local') ? 'Pendiente' : `A-${String(sale.id).padStart(3, '0')}`)}
-                            </strong>
-                          </td>
-                          <td>{new Date(sale.created_at).toLocaleString()}</td>
-                          <td>{sale.client_name || 'Cliente General'}</td>
-                          <td><strong>${sale.total_usd.toFixed(2)}</strong></td>
-                          <td>
-                            {sale.status === 'credit' ? (
-                              <span className="badge-credit"><AlertCircle size={12}/> Crédito</span>
-                            ) : ['pending', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'].includes(String(sale.status).toLowerCase()) ? (
-                              <span className="badge-pending"><Clock size={12}/> En Espera</span>
-                            ) : (
-                              <span className="badge-completed"><CheckCircle size={12}/> Pagada</span>
-                            )}
-                          </td>
-                          <td className="action-cell">
-                            <div className="action-buttons">
-                              {['pending', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'].includes(String(sale.status).toLowerCase()) && (
-                                <button className="btn-icon-success" onClick={() => handleResumeOrder(sale)} title="Retomar cuenta"><Play size={16} /></button>
-                              )}
-                              {sale.status === 'credit' && (
-                                <button className="btn-icon-success" onClick={() => handleStartSettleCredit(sale)} title="Abonar"><DollarSign size={16} /></button>
-                              )}
-                              {sale.status === 'credit' && (
-                                <button className="btn-icon-whatsapp" onClick={() => sendWhatsAppReminder(sale)} title="WhatsApp"><MessageCircle size={16} /></button>
-                              )}
-                              <button className="btn-icon-primary" onClick={() => handleViewInvoice(sale)} title="Ver Factura"><Eye size={18} /></button>
-
-                              {(currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
-                                <button 
-                                  style={{ background: '#fa5252', color: 'white', border: 'none', borderRadius: '4px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                  onClick={async (e) => {
-                                    e.stopPropagation(); 
-                                    const confirmDelete = window.confirm(`⚠️ ¿ESTÁS SEGURO? Estás a punto de ELIMINAR permanentemente la Factura/Pedido #${sale.invoice_number || sale.id}. Esta acción no se puede deshacer.`);
-                                    if (confirmDelete) {
-                                      try {
-                                        if (typeof supabase !== 'undefined') {
-                                          const { error: pErr } = await supabase.from('payment_history').delete().eq('sale_id', sale.id);
-                                          if (pErr) throw pErr;
-                                          const { error: sErr } = await supabase.from('sales').delete().eq('id', sale.id);
-                                          if (sErr) throw sErr;
-                                        }
-                                        if (typeof setSales === 'function') {
-                                          setSales(prevSales => prevSales.filter(s => s.id !== sale.id));
-                                        }
-                                      } catch (err) {
-                                        console.error("Error al eliminar la factura:", err);
-                                        alert("Hubo un error al eliminar el pedido: " + err.message);
-                                      }
-                                    }
-                                  }} 
-                                  title="Eliminar Pedido (Solo Dueño)"
-                                >
-                                  <Trash2 size={16} /> 
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+    <div className="table-responsive">
+      <table className="fiskal-table">
+        <thead>
+          <tr>
+            <th>Factura #</th>
+            <th>Fecha y Hora</th>
+            <th>Cliente</th>
+            <th>Total USD</th>
+            <th>Saldo Pendiente</th>
+            <th>Estatus</th>
+            <th style={{ textAlign: 'center' }}>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredSales.length === 0 ? (
+            <tr><td colSpan="7" className="empty-text">No hay ventas registradas para este filtro.</td></tr>
+          ) : (
+            filteredSales.map((sale) => (
+              <tr key={sale.id}>
+                <td>
+                  <strong>
+                    {sale.invoice_number || (String(sale.id).startsWith('local') ? 'Pendiente' : `A-${String(sale.id).padStart(3, '0')}`)}
+                  </strong>
+                </td>
+                <td>{new Date(sale.created_at).toLocaleString()}</td>
+                <td>{sale.client_name || 'Cliente General'}</td>
+                <td><strong>${sale.total_usd.toFixed(2)}</strong></td>
+                <td>
+                  {sale.status === 'credit' ? (
+                    <span className="badge-credit"><AlertCircle size={12}/> Crédito</span>
+                  ) : ['pending', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'].includes(String(sale.status).toLowerCase()) ? (
+                    <span className="badge-pending"><Clock size={12}/> En Espera</span>
+                  ) : (
+                    <span className="badge-completed"><CheckCircle size={12}/> Pagada</span>
+                  )}
+                </td>
+                <td className="action-cell">
+                  <div className="action-buttons">
+                    {['pending', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'].includes(String(sale.status).toLowerCase()) && (
+                      <button className="btn-icon-success" onClick={() => handleResumeOrder(sale)} title="Retomar cuenta"><Play size={16} /></button>
                     )}
-                  </tbody>
-                </table>
-              </div>
+                    {sale.status === 'credit' && (
+                      <button className="btn-icon-success" onClick={() => handleStartSettleCredit(sale)} title="Abonar"><DollarSign size={16} /></button>
+                    )}
+                    {sale.status === 'credit' && (
+                      <button className="btn-icon-whatsapp" onClick={() => sendWhatsAppReminder(sale)} title="WhatsApp"><MessageCircle size={16} /></button>
+                    )}
+                    <button className="btn-icon-primary" onClick={() => handleViewInvoice(sale)} title="Ver Factura"><Eye size={18} /></button>
+
+                    {(currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
+                      <button 
+                        style={{ background: '#fa5252', color: 'white', border: 'none', borderRadius: '4px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        onClick={async (e) => {
+                          e.stopPropagation(); 
+                          const confirmDelete = window.confirm(`⚠️ ¿ESTÁS SEGURO? Estás a punto de ELIMINAR permanentemente la Factura/Pedido #${sale.invoice_number || sale.id}. Esta acción no se puede deshacer.`);
+                          if (confirmDelete) {
+                            try {
+                              if (typeof supabase !== 'undefined') {
+                                const { error: pErr } = await supabase.from('payment_history').delete().eq('sale_id', sale.id);
+                                if (pErr) throw pErr;
+                                const { error: sErr } = await supabase.from('sales').delete().eq('id', sale.id);
+                                if (sErr) throw sErr;
+                              }
+                              if (typeof setSales === 'function') {
+                                setSales(prevSales => prevSales.filter(s => s.id !== sale.id));
+                              }
+                            } catch (err) {
+                              console.error("Error al eliminar la factura:", err);
+                              alert("Hubo un error al eliminar el pedido: " + err.message);
+                            }
+                          }
+                        }} 
+                        title="Eliminar Pedido (Solo Dueño)"
+                      >
+                        <Trash2 size={16} /> 
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+
+    {/* MODAL DE FACTURA INTEGRADO */}
+    {showInvoiceModal && selectedInvoice && (
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+        <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+          
+          {/* Cabecera de la Factura */}
+          <div style={{ textAlign: 'center', borderBottom: '1px dashed #ccc', paddingBottom: '16px', marginBottom: '16px' }}>
+            <h2 style={{ margin: '0 0 4px 0', fontSize: '20px' }}>Factura #{selectedInvoice.invoice_number || `A-${String(selectedInvoice.id).padStart(3, '0')}`}</h2>
+            <p style={{ margin: 0, color: '#6c757d', fontSize: '13px' }}>{new Date(selectedInvoice.created_at).toLocaleString()}</p>
+            <p style={{ margin: '4px 0 0 0', fontWeight: 'bold' }}>Cliente: {selectedInvoice.client_name || 'General'}</p>
+          </div>
+
+          {/* Tabla de Productos */}
+          <div style={{ marginBottom: '16px' }}>
+            <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #eee' }}>
+                  <th style={{ textAlign: 'left', paddingBottom: '6px' }}>Cant</th>
+                  <th style={{ textAlign: 'left', paddingBottom: '6px' }}>Producto</th>
+                  <th style={{ textAlign: 'right', paddingBottom: '6px' }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(selectedInvoice.items || []).map((item, index) => (
+                  <tr key={index}>
+                    <td style={{ padding: '6px 0', borderBottom: '1px solid #f8f9fa' }}>{item.quantity || 1}</td>
+                    <td style={{ padding: '6px 0', borderBottom: '1px solid #f8f9fa' }}>{item.name}</td>
+                    <td style={{ padding: '6px 0', textAlign: 'right', borderBottom: '1px solid #f8f9fa' }}>${Number(item.price * (item.quantity || 1)).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Impuestos / IVA si aplica */}
+          {selectedInvoice.tax_amount > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#495057', marginBottom: '6px' }}>
+              <span>Impuesto / IVA:</span>
+              <span>${Number(selectedInvoice.tax_amount).toFixed(2)}</span>
             </div>
           )}
+
+          {/* Historial de Abonos / Pagos Parciales */}
+          {invoiceHistory && invoiceHistory.length > 0 && (
+            <div style={{ margin: '16px 0', padding: '12px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#343a40' }}>Historial de Abonos / Pagos:</h4>
+              {invoiceHistory.map((pay, idx) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', borderBottom: '1px dashed #dee2e6', paddingBottom: '4px' }}>
+                  <span>{new Date(pay.created_at || pay.date).toLocaleDateString()} - Ref: {pay.reference || 'N/A'}</span>
+                  <span style={{ fontWeight: 'bold', color: '#10b981' }}>${Number(pay.amount || pay.monto || pay.valor || pay.pago || 0).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Total General */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: 'bold', borderTop: '1px dashed #ccc', paddingTop: '12px', marginBottom: '20px' }}>
+            <span>TOTAL USD:</span>
+            <span style={{ color: '#10b981' }}>${Number(selectedInvoice.total_usd).toFixed(2)}</span>
+          </div>
+
+          {/* Botones de Acción: Imprimir y WhatsApp */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+            <button 
+              onClick={() => {
+                const printWindow = window.open('', '_blank', 'width=400,height=600');
+                if (!printWindow) return;
+                
+                const itemsHtml = (selectedInvoice.items || []).map(item => `
+                  <tr>
+                    <td>${item.quantity || 1}</td>
+                    <td>${item.name}</td>
+                    <td>$${Number(item.price * (item.quantity || 1)).toFixed(2)}</td>
+                  </tr>
+                `).join('');
+
+                const invoiceHTML = `
+                  <html>
+                    <head>
+                      <title>Factura #${selectedInvoice.invoice_number || selectedInvoice.id}</title>
+                      <style>
+                        body { font-family: 'Courier New', monospace; padding: 15px; color: #000; width: 280px; margin: 0 auto; background: #fff; }
+                        h3, p { text-align: center; margin: 4px 0; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+                        th, td { padding: 4px 0; border-bottom: 1px dashed #ccc; text-align: left; }
+                        th:last-child, td:last-child { text-align: right; }
+                        .total-box { display: flex; justify-content: space-between; font-weight: bold; margin-top: 10px; font-size: 14px; border-top: 2px dashed #000; padding-top: 6px; }
+                      </style>
+                    </head>
+                    <body>
+                      <h3>FISKAL POS</h3>
+                      <p>Factura #${selectedInvoice.invoice_number || `A-${String(selectedInvoice.id).padStart(3, '0')}`}</p>
+                      <p style="font-size: 10px; color: #555;">${new Date(selectedInvoice.created_at).toLocaleString()}</p>
+                      <p style="font-size: 11px; margin-top: 4px;"><strong>Cliente:</strong> ${selectedInvoice.client_name || 'General'}</p>
+                      <hr style="border: 0; border-top: 1px dashed #ccc; margin: 8px 0;" />
+                      <table>
+                        <thead>
+                          <tr><th>Cant</th><th>Prod</th><th>Total</th></tr>
+                        </thead>
+                        <tbody>
+                          ${itemsHtml}
+                        </tbody>
+                      </table>
+                      <div class="total-box">
+                        <span>TOTAL:</span>
+                        <span>$${Number(selectedInvoice.total_usd).toFixed(2)}</span>
+                      </div>
+                      <p style="text-align: center; margin-top: 15px; font-size: 10px;">¡Gracias por su compra!</p>
+                      <script>
+                        window.onload = function() { window.print(); window.close(); }
+                      </script>
+                    </body>
+                  </html>
+                `;
+                printWindow.document.write(invoiceHTML);
+                printWindow.document.close();
+              }}
+              style={{ flex: 1, padding: '10px', background: '#1c7ed6', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
+            >
+              Imprimir
+            </button>
+            <button 
+              onClick={() => {
+                const itemsList = (selectedInvoice.items || []).map(i => `• ${i.quantity || 1}x ${i.name} ($${Number(i.price * (i.quantity || 1)).toFixed(2)})`).join('%0A');
+                const text = encodeURIComponent(`🧾 *FACTURA #${selectedInvoice.invoice_number || selectedInvoice.id}*%0A📅 Fecha: ${new Date(selectedInvoice.created_at).toLocaleString()}%0A👤 Cliente: ${selectedInvoice.client_name || 'General'}%0A%0A*Productos:*%0A${itemsList}%0A%0A💰 *TOTAL: $${Number(selectedInvoice.total_usd).toFixed(2)}*%0A%0A¡Gracias por preferirnos! 🚀`);
+                window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+              }}
+              style={{ flex: 1, padding: '10px', background: '#2b8a3e', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
+            >
+              WhatsApp
+            </button>
+          </div>
+
+          {/* Botón Cerrar */}
+          <button 
+            onClick={() => setShowInvoiceModal(false)}
+            style={{ width: '100%', padding: '10px', background: '#f1f3f5', border: 'none', borderRadius: '8px', color: '#495057', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
+          >
+            Cerrar Factura
+          </button>
+          
+        </div>
+      </div>
+    )}
+
+  </div>
+)}
 
           {activeTab === 'clients' && (
             <div className="products-layout">
@@ -4966,7 +5189,7 @@ return (
                             </td>
                             <td className="action-cell">
                               <div className="action-buttons" style={{ justifyContent: 'center' }}>
-                                <button className="btn-icon-primary" onClick={() => handleOpenLabel(prod)} title="Imprimir Etiqueta"><Barcode size={16} /></button>
+                                <button className="btn-icon-primary" onClick={() => handleOpenLabel(prod)} title="Ver Etiqueta QR"><QrCode size={16} /></button>
                                 <button className="btn-icon-edit" onClick={() => handleStartEditProduct(prod)} title="Editar"><Edit2 size={16} /></button>
                                 <button className="btn-icon-danger" onClick={() => handleDeleteProduct(prod.id)} title="Eliminar"><Trash2 size={16} /></button>
                               </div>
@@ -5303,46 +5526,72 @@ return (
 
       {/* Modal Cierre de Caja / Reporte Z */}
       {showCloseShiftModal && currentShift && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '450px' }}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fa5252' }}>
-              <Lock size={20} /> Cierre de Turno y Arqueo (Reporte Z)
-            </h3>
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+          <div className="modal-content" style={{ width: '450px' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                <Lock size={18} /> Cierre de Turno y Arqueo (Reporte Z)
+              </h3>
+              <button className="btn-close-modal" onClick={() => setShowCloseShiftModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
             
-            <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '6px', marginBottom: '20px', border: '1px solid #dee2e6' }}>
-              <p style={{ fontSize: '13px', color: '#495057', marginBottom: '8px', textAlign: 'center' }}>Total Esperado en Sistema</p>
-              <h2 style={{ textAlign: 'center', color: '#212529', margin: 0 }}>
-                ${(currentShift.opening_float_usd + shiftCashUSD + (currentStoreCountry === 'venezuela' ? (shiftCashBs / (bcvRate || 1)) : 0)).toFixed(2)} USD
-              </h2>
-            </div>
-
-            <div className="form-group">
-              <label>Efectivo Físico Contado ($ USD)</label>
-              <div style={{ position: 'relative' }}>
-                <DollarSign size={16} style={{ position: 'absolute', left: '10px', top: '12px', color: '#6c757d' }} />
-                <input type="number" step="0.01" value={actualCashUSD} onChange={(e) => setActualCashUSD(e.target.value)} style={{ paddingLeft: '32px', fontSize: '16px' }} placeholder="0.00" />
+            <div className="modal-body fiskal-form">
+              <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '6px', marginBottom: '16px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Esperado en Sistema</p>
+                <h2 style={{ color: '#212529', margin: 0, fontSize: '22px' }}>
+                  ${(currentShift.opening_float_usd + shiftCashUSD + (currentStoreCountry === 'venezuela' ? (shiftCashBs / (bcvRate || 1)) : 0)).toFixed(2)} USD
+                </h2>
               </div>
-            </div>
 
-            {currentStoreCountry === 'venezuela' && (
               <div className="form-group">
-                <label>Efectivo Físico Contado (Bs. Físico)</label>
+                <label>Efectivo Físico Contado ($ USD)</label>
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '10px', color: '#6c757d', fontWeight: 'bold' }}>Bs</span>
-                  <input type="number" step="0.01" value={actualCashBs} onChange={(e) => setActualCashBs(e.target.value)} style={{ paddingLeft: '32px', fontSize: '16px' }} placeholder="0.00" />
+                  <DollarSign size={16} style={{ position: 'absolute', left: '10px', top: '12px', color: '#6c757d' }} />
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={actualCashUSD} 
+                    onChange={(e) => setActualCashUSD(e.target.value)} 
+                    style={{ paddingLeft: '32px' }} 
+                    placeholder="0.00" 
+                  />
                 </div>
               </div>
-            )}
 
-            <div className="form-group">
-              <label>Notas de Cierre (Opcional)</label>
-              <textarea value={shiftNotes} onChange={(e) => setShiftNotes(e.target.value)} placeholder="Ej. Faltaron $2 por error de vuelto..." rows="2" style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px' }}></textarea>
+              {currentStoreCountry === 'venezuela' && (
+                <div className="form-group">
+                  <label>Efectivo Físico Contado (Bs. Físico)</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '10px', top: '10px', color: '#6c757d', fontWeight: 'bold', fontSize: '13px' }}>Bs</span>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      value={actualCashBs} 
+                      onChange={(e) => setActualCashBs(e.target.value)} 
+                      style={{ paddingLeft: '32px' }} 
+                      placeholder="0.00" 
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label>Notas de Cierre (Opcional)</label>
+                <textarea 
+                  value={shiftNotes} 
+                  onChange={(e) => setShiftNotes(e.target.value)} 
+                  placeholder="Ej. Faltaron $2 por error de vuelto..." 
+                  rows="2"
+                ></textarea>
+              </div>
             </div>
 
-            <div className="modal-actions" style={{ marginTop: '24px' }}>
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button className="btn-secondary" onClick={() => setShowCloseShiftModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleCloseShift} style={{ background: '#fa5252' }}>
-                <Check size={18} /> Confirmar Cierre Definitivo
+              <button className="btn-primary" onClick={handleCloseShift}>
+                <Check size={16} /> Confirmar Cierre Definitivo
               </button>
             </div>
           </div>
@@ -5396,140 +5645,828 @@ return (
 
       {/* Modal Pagos */}
       {showPaymentModal && (
-        <div className="modal-overlay">
-          <div className="modal-content payment-modal" style={{ maxWidth: '800px', width: '90%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #dee2e6', paddingBottom: '12px' }}>
-              <h2>{settlingSale ? `Abonar a Crédito #${settlingSale.invoice_number || settlingSale.id}` : 'Procesar Pago'}</h2>
-              <button onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} color="#adb5bd" /></button>
+        <div className="modal-overlay" style={{ zIndex: 10000, padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-content" style={{ width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
+            
+            {/* Header */}
+            <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid #e9ecef', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', color: '#212529' }}>
+                {settlingSale ? 'Abonar / Pagar Crédito' : 'Pasarela de Pagos'}
+              </h3>
+              <button 
+                className="btn-close-modal" 
+                onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={20} color="#6c757d" />
+              </button>
             </div>
 
-            <div className="payment-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-              {/* Lado Izquierdo: Resumen */}
-              <div className="payment-summary" style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
-                <h3 style={{ marginBottom: '16px', color: '#495057', fontSize: '16px' }}>Resumen de Cuenta</h3>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '14px' }}>
-                  <span>Subtotal:</span>
-                  <span>${cartSubtotalUSD.toFixed(2)}</span>
-                </div>
-                {currentStoreTaxEnabled && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '14px' }}>
-                    <span>Impuesto ({currentStoreTaxRate}%):</span>
-                    <span>${calculatedTaxUSD.toFixed(2)}</span>
-                  </div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '20px', fontWeight: 'bold', color: '#212529', borderTop: '1px dashed #ced4da', paddingTop: '12px' }}>
-                  <span>Total a Pagar:</span>
-                  <span>${totalUSD.toFixed(2)}</span>
-                </div>
-                
+            {/* Body */}
+            <div className="modal-body fiskal-form" style={{ padding: '20px' }}>
+              
+              {/* Total a Pagar Principal */}
+              <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '8px', marginBottom: '16px', textAlign: 'center', border: '1px solid #dee2e6' }}>
+                <span style={{ fontSize: '12px', color: '#6c757d', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 'bold' }}>Total a Pagar</span>
+                <h2 style={{ margin: '6px 0 2px 0', fontSize: '28px', color: '#212529' }}>${totalUSD.toFixed(2)}</h2>
                 {currentStoreCountry === 'venezuela' && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px', fontSize: '16px', color: '#6c757d' }}>
-                    <span>En Bolívares:</span>
-                    <span>Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-
-                <div style={{ borderTop: '2px solid #dee2e6', paddingTop: '16px', marginTop: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
-                    <span>Total Ingresado (USD):</span>
-                    <span style={{ fontWeight: 'bold', color: '#1c7ed6' }}>${totalPaidUSD.toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>
-                    <span>Resta por pagar:</span>
-                    <span style={{ color: remainingUSD > 0 ? '#fa5252' : '#2b8a3e' }}>${remainingUSD.toFixed(2)}</span>
-                  </div>
-                  
-                  {changeUSD > 0 && (
-                    <div style={{ background: '#e7f5ff', padding: '12px', borderRadius: '6px', marginTop: '16px', border: '1px solid #74c0fc' }}>
-                      <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: '#1971c2', fontWeight: 'bold' }}>Vuelto / Cambio a entregar:</p>
-                      <h3 style={{ margin: 0, color: '#1864ab' }}>${changeUSD.toFixed(2)}</h3>
-                      {currentStoreCountry === 'venezuela' && (
-                        <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#1971c2' }}>o Bs. {changeBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {!settlingSale && (
-                  <button 
-                    className="btn-secondary" 
-                    onClick={handleCreditCheckout} 
-                    style={{ width: '100%', marginTop: '24px', borderColor: '#f59f00', color: '#f59f00', fontWeight: 'bold' }}
-                  >
-                    Dejar a Crédito Completo (No pagó nada aún)
-                  </button>
+                  <span style={{ fontSize: '14px', color: '#495057', fontWeight: '600' }}>
+                    Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
                 )}
               </div>
 
-              {/* Lado Derecho: Métodos de Pago */}
-              <div className="payment-methods">
-                <h3 style={{ marginBottom: '16px', color: '#495057', fontSize: '16px' }}>Ingresar Pagos Múltiples</h3>
-                
-                <div className="form-group">
-                  <label>Efectivo Físico ($ USD)</label>
-                  <div style={{ position: 'relative' }}>
-                    <DollarSign size={16} style={{ position: 'absolute', left: '10px', top: '12px', color: '#2b8a3e' }} />
-                    <input type="number" step="0.01" value={payCashUSD} onChange={(e) => setPayCashUSD(e.target.value)} onBlur={updateCalculations} style={{ paddingLeft: '32px', fontSize: '16px', borderColor: payCashUSD ? '#2b8a3e' : '#ced4da' }} placeholder="0.00" />
+              {/* Estado del Pago (Pagado, Restante, Cambio) */}
+              <div style={{ background: '#e7f5ff', padding: '12px 16px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #74c0fc', fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span style={{ color: '#495057' }}>Total Ingresado:</span>
+                  <strong style={{ color: '#1971c2' }}>${totalPaidUSD.toFixed(2)}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span style={{ color: '#495057' }}>Resta por pagar:</span>
+                  <strong style={{ color: remainingUSD > 0 ? '#fa5252' : '#2b8a3e' }}>
+                    ${remainingUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${remainingBs.toFixed(2)})`}
+                  </strong>
+                </div>
+                {changeUSD > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2b8a3e', marginTop: '8px', borderTop: '1px solid #a5d8ff', paddingTop: '8px', fontWeight: 'bold' }}>
+                    <span>Vuelto / Cambio:</span>
+                    <span>${changeUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${changeBs.toFixed(2)})`}</span>
                   </div>
+                )}
+              </div>
+
+              {/* Inputs de Métodos de Pago (Se adaptan automáticamente en celulares y PC) */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Efectivo ($ USD)</label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={payCashUSD} 
+                    onChange={(e) => setPayCashUSD(e.target.value)} 
+                    onBlur={updateCalculations} 
+                    placeholder="0.00" 
+                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
+                  />
                 </div>
 
-                <div className="form-group">
-                  <label>{currentStoreCountry === 'panama' ? 'Yappy' : currentStoreCountry === 'el_salvador' ? 'Transferencia (USD)' : 'Zelle ($ USD)'}</label>
-                  <div style={{ position: 'relative' }}>
-                    <DollarSign size={16} style={{ position: 'absolute', left: '10px', top: '12px', color: '#ae3ec9' }} />
-                    <input type="number" step="0.01" value={payZelle} onChange={(e) => setPayZelle(e.target.value)} onBlur={updateCalculations} style={{ paddingLeft: '32px', fontSize: '16px', borderColor: payZelle ? '#ae3ec9' : '#ced4da' }} placeholder="0.00" />
-                  </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>
+                    {currentStoreCountry === 'panama' ? 'Yappy ($)' : currentStoreCountry === 'el_salvador' ? 'Transferencia ($)' : 'Zelle ($)'}
+                  </label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={payZelle} 
+                    onChange={(e) => setPayZelle(e.target.value)} 
+                    onBlur={updateCalculations} 
+                    placeholder="0.00" 
+                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
+                  />
                 </div>
 
                 {currentStoreCountry === 'venezuela' && (
                   <>
-                    <div className="form-group">
-                      <label>Efectivo Físico (Bolívares)</label>
-                      <div style={{ position: 'relative' }}>
-                        <span style={{ position: 'absolute', left: '10px', top: '10px', color: '#1c7ed6', fontWeight: 'bold' }}>Bs</span>
-                        <input type="number" step="0.01" value={payCashBs} onChange={(e) => setPayCashBs(e.target.value)} onBlur={updateCalculations} style={{ paddingLeft: '32px', fontSize: '16px', borderColor: payCashBs ? '#1c7ed6' : '#ced4da' }} placeholder="0.00" />
-                      </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Efectivo (Bs)</label>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        value={payCashBs} 
+                        onChange={(e) => setPayCashBs(e.target.value)} 
+                        onBlur={updateCalculations} 
+                        placeholder="0.00" 
+                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
+                      />
                     </div>
 
-                    <div className="form-group">
-                      <label>Pago Móvil (Bolívares)</label>
-                      <div style={{ position: 'relative' }}>
-                        <span style={{ position: 'absolute', left: '10px', top: '10px', color: '#f59f00', fontWeight: 'bold' }}>Bs</span>
-                        <input type="number" step="0.01" value={payPagoMovil} onChange={(e) => setPayPagoMovil(e.target.value)} onBlur={updateCalculations} style={{ paddingLeft: '32px', fontSize: '16px', borderColor: payPagoMovil ? '#f59f00' : '#ced4da' }} placeholder="0.00" />
-                      </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Pago Móvil (Bs)</label>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        value={payPagoMovil} 
+                        onChange={(e) => setPayPagoMovil(e.target.value)} 
+                        onBlur={updateCalculations} 
+                        placeholder="0.00" 
+                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
+                      />
                     </div>
                   </>
                 )}
 
-                <div className="form-group">
-                  <label>Punto de Venta / Tarjeta {currentStoreCountry === 'venezuela' ? '(Bolívares)' : '($ USD)'}</label>
-                  <div style={{ position: 'relative' }}>
-                    <CreditCard size={16} style={{ position: 'absolute', left: '10px', top: '12px', color: '#495057' }} />
-                    <input type="number" step="0.01" value={payDebit} onChange={(e) => setPayDebit(e.target.value)} onBlur={updateCalculations} style={{ paddingLeft: '32px', fontSize: '16px', borderColor: payDebit ? '#495057' : '#ced4da' }} placeholder="0.00" />
-                  </div>
+                <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>
+                    Punto de Venta / Tarjeta {currentStoreCountry === 'venezuela' ? '(Bs)' : '($ USD)'}
+                  </label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={payDebit} 
+                    onChange={(e) => setPayDebit(e.target.value)} 
+                    onBlur={updateCalculations} 
+                    placeholder="0.00" 
+                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
+                  />
                 </div>
+              </div>
 
-                <div className="form-group" style={{ marginTop: '16px' }}>
-                  <label>Referencia Bancaria (Opcional)</label>
-                  <input type="text" value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)} placeholder="Ej. 1234, Zelle de Maria..." style={{ fontSize: '13px' }} />
-                </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Referencia Bancaria (Opcional)</label>
+                <input 
+                  type="text" 
+                  value={paymentRef} 
+                  onChange={(e) => setPaymentRef(e.target.value)} 
+                  placeholder="Últimos 4 dígitos o referencia" 
+                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
+                />
+              </div>
 
+            </div>
+
+            {/* Footer */}
+            <div className="modal-footer" style={{ padding: '16px 20px', borderTop: '1px solid #e9ecef', background: '#f8f9fa', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              
+              <button 
+                type="button"
+                className="btn-primary" 
+                onClick={handleCheckoutSubmit} 
+                disabled={totalPaidUSD <= 0 || processing}
+                style={{ width: '100%', padding: '12px', fontSize: '15px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: '#212529', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+              >
+                {processing ? 'Procesando...' : (remainingUSD > 0 ? 'Registrar Abono / Pago Parcial' : 'Confirmar y Procesar Factura')}
+              </button>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                {!settlingSale && (
+                  <button 
+                    type="button"
+                    className="btn-secondary" 
+                    onClick={handleCreditCheckout} 
+                    style={{ background: 'none', border: 'none', color: '#fa5252', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
+                  >
+                    Dejar a Crédito
+                  </button>
+                )}
                 <button 
-                  className="btn-primary" 
-                  onClick={handleCheckoutSubmit} 
-                  disabled={processing || currentTotalPaidUSD <= 0}
-                  style={{ width: '100%', marginTop: '16px', padding: '16px', fontSize: '16px', display: 'flex', justifyContent: 'center', gap: '8px' }}
+                  type="button"
+                  className="btn-secondary" 
+                  onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}
+                  style={{ marginLeft: 'auto', background: '#fff', border: '1px solid #ced4da', color: '#495057', padding: '6px 14px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}
                 >
-                  {processing ? 'Procesando...' : <><CheckCircle size={20} /> {remainingUSD > 0 ? 'Registrar Abono / Pago Parcial' : 'Procesar Factura Completa'}</>}
+                  Cancelar
                 </button>
               </div>
+
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ==========================================
+          MODALES RESTAURADOS (ESCÁNER, ETIQUETAS, CLIENTES, FACTURAS)
+          ========================================== */}
+
+      {showLabelModal && labelProduct && (
+        <div className="modal-overlay" style={{ zIndex: 10005 }}>
+          <div className="modal-content label-modal-content" style={{ width: '380px' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><QrCode size={18} /> Etiqueta de Producto</h3>
+              <button className="btn-close-modal" onClick={() => setShowLabelModal(false)}><X size={20} /></button>
+            </div>
+            <div className="modal-body label-print-area" style={{ textAlign: 'center', padding: '24px' }}>
+              <div className="store-tag-header">{currentStoreName.toUpperCase()}</div>
+              <h2 className="tag-product-name">{labelProduct.name}</h2>
+              <div className="tag-qr-container">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`ID:${labelProduct.id}|PROD:${labelProduct.name}|PRECIO:$${labelProduct.price.toFixed(2)}`)}`} 
+                  alt="QR Producto" style={{ width: '160px', height: '160px', margin: '12px auto', display: 'block' }}
+                />
+              </div>
+              <div className="tag-price-box">
+                <span className="tag-currency">USD</span>
+                <span className="tag-price-value">${labelProduct.price.toFixed(2)}</span>
+              </div>
+              <div style={{ fontSize: '11px', color: '#6c757d', marginTop: '6px' }}>Escanea para consultar o pagar referencialmente</div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowLabelModal(false)}>Cerrar</button>
+              <button className="btn-primary" onClick={() => window.print()}>Imprimir Etiqueta</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Otras Modales (Pre-Factura SaaS, Escáner de Cámara, Dueño de Comercio, etc. - Se omiten detalles para no sobrepasar límites, pero aseguran estar cerradas correctamente) */}
+      {showPrintCatalog && (
+        <div className="modal-overlay" style={{ zIndex: 10001 }}>
+          <div className="modal-content letter-print" style={{ width: '800px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h3>Catálogo de Etiquetas QR para Impresión (Carta / A4)</h3>
+              <button className="btn-close-modal" onClick={() => setShowPrintCatalog(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ background: '#f8f9fa' }}>
+              <div className="catalog-print-grid">
+                {products.length === 0 ? (
+                  <p style={{ gridColumn: 'span 2', textAlign: 'center', padding: '20px' }}>No hay productos registrados para imprimir.</p>
+                ) : (
+                  products.map(prod => (
+                    <div key={prod.id} className="print-label-item">
+                      <div className="store-tag-header">{currentStoreName.toUpperCase()}</div>
+                      <h4 style={{ fontSize: '14px', margin: '4px 0', color: '#212529', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                        {prod.name}
+                      </h4>
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`ID:${prod.id}|PROD:${prod.name}|PRECIO:$${prod.price.toFixed(2)}`)}`}
+                        alt="QR"
+                        style={{ width: '100px', height: '100px', margin: '8px auto' }}
+                      />
+                      <div className="tag-price-box" style={{ padding: '4px 12px', marginTop: '4px' }}>
+                        <span className="tag-currency" style={{ fontSize: '10px' }}>USD</span>
+                        <span className="tag-price-value" style={{ fontSize: '16px' }}>${prod.price.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowPrintCatalog(false)}>Cerrar</button>
+              <button className="btn-primary" onClick={() => window.print()} disabled={products.length === 0}>
+                Imprimir (Tamaño Carta / A4)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCameraScannerModal && (
+        <div className="modal-overlay" style={{ zIndex: 10005 }}>
+          <div className="modal-content" style={{ width: '380px', textAlign: 'center', padding: '20px' }}>
+            <div className="modal-header" style={{ borderBottom: 'none', paddingBottom: '0' }}>
+              <h3>Escáner en Vivo</h3>
+              <button className="btn-close-modal" onClick={stopCameraScanner}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: '12px 0' }}>
+              {/* Contenedor actualizado con ref para evitar el crash del ID */}
+              <div ref={typeof scannerContainerRef !== 'undefined' ? scannerContainerRef : null} id="fiskal-qr-reader" style={{ width: '100%', minHeight: '250px', background: '#000', borderRadius: '8px', overflow: 'hidden' }}></div>
+              {cameraScanError ? (
+                <p style={{ color: '#fa5252', fontSize: '12px', marginTop: '8px' }}>{cameraScanError}</p>
+              ) : (
+                <p style={{ color: '#6c757d', fontSize: '12px', marginTop: '8px' }}>Apunta al código para escanear automáticamente</p>
+              )}
+            </div>
+            <div className="modal-footer" style={{ borderTop: 'none', justifyContent: 'center' }}>
+              <button type="button" className="btn-secondary" onClick={stopCameraScanner} style={{ width: '100%' }}>Cancelar Escáner</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showInvoiceModal && selectedInvoice && (
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+          <div className="modal-content" style={{ width: '500px' }}>
+            <div className="modal-header">
+              <h3>Factura #{String(selectedInvoice.id).startsWith('local') ? 'Pendiente' : selectedInvoice.invoice_number || `A-${String(selectedInvoice.id).padStart(3, '0')}`}</h3>
+              <button className="btn-close-modal" onClick={() => setShowInvoiceModal(false)}><X size={20} /></button>
+            </div>
+            
+            <div className="modal-body fiskal-form" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+              <div style={{ textAlign: 'center', marginBottom: '16px', borderBottom: '1px dashed #dee2e6', paddingBottom: '12px' }}>
+                <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#212529' }}>{currentStoreName}</h2>
+                {currentStoreRif && <div style={{ fontSize: '12px', color: '#495057' }}>{currentStoreCountry === 'venezuela' ? 'RIF' : 'RUC/Documento'}: {currentStoreRif}</div>}
+                {currentStoreAddress && <div style={{ fontSize: '12px', color: '#495057', marginTop: '2px' }}>{currentStoreAddress}</div>}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '13px', color: '#495057' }}>
+                <span><strong>Cliente:</strong> {selectedInvoice.client_name || 'Cliente General'}</span>
+                <span><strong>{currentStoreCountry === 'venezuela' ? 'Cédula/RIF' : 'Cédula/RUC'}:</strong> {selectedInvoice.payment_details?.client_document || 'N/A'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '13px', color: '#495057' }}>
+                <span><strong>Fecha:</strong> {new Date(selectedInvoice.created_at).toLocaleString()}</span>
+                <span><strong>Estatus:</strong> {selectedInvoice.status.toUpperCase()}</span>
+              </div>
+
+              {(() => {
+                const isVzla = currentStoreCountry === 'venezuela';
+                const saleBcvRate = selectedInvoice.payment_details?.applied_bcv_rate || bcvRate || 1;
+                const showTaxes = selectedInvoice.tax_usd > 0;
+                
+                const formatMoney = (usdVal) => {
+                  if (isVzla) return `Bs. ${(usdVal * saleBcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                  return `$${usdVal.toFixed(2)}`;
+                };
+
+                const formatRef = (usdVal) => {
+                  if (isVzla) return `(Ref: $${usdVal.toFixed(2)})`;
+                  return '';
+                };
+
+                return (
+                  <>
+                    {isVzla && (
+                      <div style={{ textAlign: 'right', fontSize: '11px', color: '#868e96', marginBottom: '8px' }}>
+                        Tasa BCV Aplicada: Bs. {saleBcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    )}
+
+                    <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Artículos Facturados</h4>
+                    <div className="table-responsive" style={{ marginBottom: '16px' }}>
+                      <table className="receipt-table">
+                        <thead>
+                          <tr>
+                            <th>Cant</th>
+                            <th>Producto</th>
+                            <th>Precio Unit</th>
+                            <th>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(() => {
+                            let parsedItems = [];
+                            if (Array.isArray(selectedInvoice.items)) {
+                              parsedItems = selectedInvoice.items;
+                            } else if (typeof selectedInvoice.items === 'string') {
+                              try { parsedItems = JSON.parse(selectedInvoice.items); } catch(e){}
+                            }
+
+                            return parsedItems.map((item, idx) => {
+                              const itemTotalUsd = (item.price || 0) * (item.quantity || 1);
+                              return (
+                                <tr key={idx}>
+                                  <td>{item.quantity}</td>
+                                  <td>{item.name}</td>
+                                  <td>
+                                    <div>{formatMoney(item.price)}</div>
+                                    <div style={{ fontSize: '10px', color: '#868e96' }}>{formatRef(item.price)}</div>
+                                  </td>
+                                  <td>
+                                    <strong>{formatMoney(itemTotalUsd)}</strong>
+                                    <div style={{ fontSize: '10px', color: '#868e96', fontWeight: 'normal' }}>{formatRef(itemTotalUsd)}</div>
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
+                      {showTaxes && (
+                        <>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px', color: '#495057' }}>
+                            <span>Subtotal:</span>
+                            <div style={{ textAlign: 'right' }}>
+                              <strong>{formatMoney(selectedInvoice.subtotal_usd || (selectedInvoice.total_usd - selectedInvoice.tax_usd))}</strong>
+                              <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.subtotal_usd || (selectedInvoice.total_usd - selectedInvoice.tax_usd))}</div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px', color: '#495057' }}>
+                            <span>Impuesto ({currentStoreTaxRate}%):</span>
+                            <div style={{ textAlign: 'right' }}>
+                              <strong>{formatMoney(selectedInvoice.tax_usd)}</strong>
+                              <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.tax_usd)}</div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', marginBottom: '6px', alignItems: 'center' }}>
+                        <span>Total Facturado:</span>
+                        <div style={{ textAlign: 'right' }}>
+                          <strong>{formatMoney(selectedInvoice.total_usd)}</strong>
+                          <div style={{ fontSize: '12px', fontWeight: 'normal', color: '#495057' }}>{formatRef(selectedInvoice.total_usd)}</div>
+                        </div>
+                      </div>
+
+                      {selectedInvoice.balance_due_usd > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#fa5252', marginTop: '6px', borderTop: '1px solid #dee2e6', paddingTop: '6px' }}>
+                          <span>Saldo Pendiente:</span>
+                          <div style={{ textAlign: 'right' }}>
+                            <strong>{formatMoney(selectedInvoice.balance_due_usd)}</strong>
+                            <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.balance_due_usd)}</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+
+              {invoiceHistory && invoiceHistory.length > 0 && (
+                <div style={{ marginTop: '16px' }}>
+                  <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Historial de Abonos / Pagos</h4>
+                  {invoiceHistory.map((h, i) => {
+                    const histBcvRate = h.payment_details?.applied_bcv_rate || (selectedInvoice.payment_details?.applied_bcv_rate) || bcvRate || 1;
+                    const isVzlaHist = currentStoreCountry === 'venezuela';
+                    const abonoText = isVzlaHist 
+                      ? `Bs. ${(h.amount_usd * histBcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Ref: $${h.amount_usd.toFixed(2)})`
+                      : `$${h.amount_usd.toFixed(2)}`;
+                      
+                    return (
+                      <div key={i} style={{ fontSize: '12px', padding: '6px', background: '#e7f5ff', borderRadius: '4px', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{new Date(h.created_at).toLocaleString()}</span>
+                        <strong>Abono: {abonoText}</strong>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowInvoiceModal(false)}>Cerrar</button>
+              <button type="button" className="btn-primary" onClick={() => window.print()}>Imprimir Recibo</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedClientDetail && (
+        <div className="modal-overlay" style={{ zIndex: 10002 }}>
+          <div className="modal-content" style={{ width: '600px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h3>Detalle de Cliente: {selectedClientDetail.name}</h3>
+              <button className="btn-close-modal" onClick={() => setSelectedClientDetail(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body fiskal-form" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
+                <div><span>Cédula / RIF:</span><br/><strong>{selectedClientDetail.document || 'No registrada'}</strong></div>
+                <div><span>Teléfono:</span><br/><strong>{selectedClientDetail.phone || 'No registrado'}</strong></div>
+                <div><span>Total Facturado:</span><br/><strong style={{ color: '#2b8a3e' }}>${selectedClientDetail.totalBilled.toFixed(2)}</strong></div>
+                <div><span>Saldo Pendiente:</span><br/><strong style={{ color: selectedClientDetail.totalPending > 0 ? '#fa5252' : '#2b8a3e' }}>${selectedClientDetail.totalPending.toFixed(2)}</strong></div>
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}><Edit2 size={14}/> Comentario / Nota Personalizada</label>
+                <textarea 
+                  rows="3" 
+                  value={tempClientNote} 
+                  onChange={(e) => setTempClientNote(e.target.value)} 
+                  placeholder="Escribe notas sobre este cliente..."
+                  style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}
+                />
+                <button 
+                  type="button" 
+                  onClick={() => handleSaveClientNote(selectedClientDetail.id)}
+                  style={{ marginTop: '6px', background: '#1c7ed6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  Guardar Nota
+                </button>
+              </div>
+
+              <div>
+                <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Productos Más Comprados</h4>
+                <div className="table-responsive" style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                  <table className="fiskal-table" style={{ fontSize: '12px' }}>
+                    <thead>
+                      <tr><th>Producto</th><th>Cant. Total</th><th>Total USD</th></tr>
+                    </thead>
+                    <tbody>
+                      {getClientHistoryAndTopProducts(selectedClientDetail.name).topProducts.length === 0 ? (
+                        <tr><td colSpan="3" className="empty-text">Sin compras registradas aún.</td></tr>
+                      ) : (
+                        getClientHistoryAndTopProducts(selectedClientDetail.name).topProducts.map((p, idx) => (
+                          <tr key={idx}>
+                            <td><strong>{p.name}</strong></td>
+                            <td>{p.qty} ud.</td>
+                            <td>${p.total.toFixed(2)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Historial de Facturas del Cliente</h4>
+                <div className="table-responsive" style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                  <table className="fiskal-table" style={{ fontSize: '12px' }}>
+                    <thead>
+                      <tr><th>Factura</th><th>Fecha</th><th>Total</th><th>Estatus</th></tr>
+                    </thead>
+                    <tbody>
+                      {getClientHistoryAndTopProducts(selectedClientDetail.name).cliSales.length === 0 ? (
+                        <tr><td colSpan="4" className="empty-text">No hay facturas asociadas.</td></tr>
+                      ) : (
+                        getClientHistoryAndTopProducts(selectedClientDetail.name).cliSales.map(s => (
+                          <tr key={s.id}>
+                            <td>#{s.id}</td>
+                            <td>{new Date(s.created_at).toLocaleDateString()}</td>
+                            <td><strong>${s.total_usd.toFixed(2)}</strong></td>
+                            <td>{s.status.toUpperCase()}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setSelectedClientDetail(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showQuickClientModal && (
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+          <div className="modal-content" style={{ width: '400px' }}>
+            <div className="modal-header">
+              <h3>Registro Rápido de Cliente</h3>
+              <button className="btn-close-modal" onClick={() => { setShowQuickClientModal(false); setClientDoc(''); setClientName(''); }}><X size={20} /></button>
+            </div>
+            <form onSubmit={(e) => handleAddClient(e, true)}>
+              <div className="modal-body fiskal-form">
+                <div className="form-group">
+                  <label>Nombre y Apellido / Razón Social</label>
+                  <input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} required placeholder="Ej. Inversiones C.A." autoFocus />
+                </div>
+                <div className="form-group">
+                  <label>Cédula / RIF</label>
+                  <input type="text" value={clientDoc} onChange={(e) => setClientDoc(e.target.value)} required placeholder="Ej. V-12345678" />
+                </div>
+                <div className="form-group">
+                  <label>Teléfono</label>
+                  <input type="text" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder="Ej. 0414-1234567" />
+                </div>
+                <div className="form-group">
+                  <label>Correo Electrónico (Opcional)</label>
+                  <input type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="correo@ejemplo.com" />
+                </div>
+              </div>
+              <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn-secondary" onClick={() => { setShowQuickClientModal(false); setClientDoc(''); setClientName(''); }}>Cancelar</button>
+                <button type="submit" className="btn-primary" disabled={loadingClient}>
+                  {loadingClient ? 'Guardando...' : 'Guardar y Asociar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {modalWhatsAppOpen && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }}>
+          <div className="modal-content" style={{ width: '560px' }}>
+            <div className="modal-header">
+              <h3>Envío de Mensaje por WhatsApp</h3>
+              <button className="btn-close-modal" onClick={() => setModalWhatsAppOpen(false)}><X size={20} /></button>
+            </div>
+            <div className="modal-body fiskal-form" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div className="form-group">
+                <label>Mensaje Personalizado</label>
+                <textarea rows="4" value={mensajePersonalizadoTemp} onChange={(e) => setMensajePersonalizadoTemp(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da' }} />
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setModalWhatsAppOpen(false)}>Cancelar</button>
+              <button type="button" className="btn-primary" onClick={enviarMensajeWhatsAppFinal} style={{ background: '#2b8a3e' }}>Abrir WhatsApp</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPreInvoiceModal && preInvoiceStore && (
+        <div className="modal-overlay" style={{ zIndex: 10005 }}>
+          <div className="modal-content" style={{ width: '650px', padding: '0' }}>
+            <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid #dee2e6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}>Generar Recibo SaaS</h3>
+              <button className="btn-close-modal" onClick={() => setShowPreInvoiceModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+            <div className="modal-body" style={{ maxHeight: '65vh', overflowY: 'auto', background: '#f8f9fa' }}>
+              <div id="saas-invoice-print-area" style={{ padding: '40px', background: '#fff', margin: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                <div style={{ marginBottom: '30px', textAlign: 'center' }}>
+                  <img src={logoDark} alt="Fiskal" style={{ height: '45px', objectFit: 'contain', marginBottom: '8px' }} />
+                  <div className="subtitle" style={{ fontSize: '16px', fontWeight: 'bold', color: '#333' }}>Recibo de Servicios SaaS</div>
+                  {saasInvoiceHeader && (
+                    <div style={{ marginTop: '10px', fontSize: '12px', color: '#666', whiteSpace: 'pre-line' }}>{saasInvoiceHeader}</div>
+                  )}
+                </div>
+                <div className="info-grid" style={{ marginBottom: '30px', fontSize: '14px', color: '#000', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div><strong>Comercio:</strong> {preInvoiceStore.name}</div>
+                  <div><strong>Propietario:</strong> {preInvoiceStore.owner_name || preInvoiceStore.full_name || 'Nombres'}</div>
+                  <div><strong>{preInvoiceStore.country === 'venezuela' ? 'RIF' : 'RIF/Documento'}:</strong> {preInvoiceStore.rif || preInvoiceStore.document || 'N/A'}</div>
+                  <div><strong>Fecha de Emisión:</strong> {new Date().toLocaleDateString('es-ES')}</div>
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '30px', fontSize: '14px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #000', textAlign: 'left' }}>
+                      <th style={{ padding: '10px 5px', fontWeight: 'bold' }}>Descripción</th>
+                      <th className="text-center" style={{ padding: '10px 5px', fontWeight: 'bold', textAlign: 'center' }}>Precio Base</th>
+                      <th className="text-center" style={{ padding: '10px 5px', fontWeight: 'bold', textAlign: 'center' }}>Descuentos</th>
+                      <th className="text-right" style={{ padding: '10px 5px', fontWeight: 'bold', textAlign: 'right' }}>Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '15px 5px' }}>Suscripción Mensual Sistema Fiskal</td>
+                      <td className="text-center" style={{ padding: '15px 5px', textAlign: 'center' }}>
+                        ${(preInvoiceStore.monthly_price_agreed !== null && preInvoiceStore.monthly_price_agreed !== undefined ? preInvoiceStore.monthly_price_agreed : baseMonthlyPrice).toFixed(2)}
+                      </td>
+                      <td className="text-center" style={{ padding: '15px 5px', textAlign: 'center' }}>
+                        {preInvoiceStore.custom_discount > 0 ? `${preInvoiceStore.custom_discount}%` : '0%'}
+                      </td>
+                      <td className="text-right" style={{ padding: '15px 5px', textAlign: 'right' }}>
+                        ${(getCalculatedMonthlyPrice(preInvoiceStore.custom_discount, preInvoiceStore.monthly_price_agreed)).toFixed(2)}
+                      </td>
+                    </tr>
+                    {parseFloat(preInvoiceExtraAmount) > 0 && (
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '15px 5px' }}>{preInvoiceExtraDesc || "Cargo Adicional"}</td>
+                        <td className="text-center" style={{ padding: '15px 5px', textAlign: 'center' }}>${parseFloat(preInvoiceExtraAmount).toFixed(2)}</td>
+                        <td className="text-center" style={{ padding: '15px 5px', textAlign: 'center' }}>0%</td>
+                        <td className="text-right" style={{ padding: '15px 5px', textAlign: 'right' }}>${parseFloat(preInvoiceExtraAmount).toFixed(2)}</td>
+                      </tr>
+                    )}
+                    {parseFloat(preInvoiceDiscount) > 0 && (
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '15px 5px' }}>Descuento Especial Aplicado</td>
+                        <td className="text-center" style={{ padding: '15px 5px', textAlign: 'center' }}>-${parseFloat(preInvoiceDiscount).toFixed(2)}</td>
+                        <td className="text-center" style={{ padding: '15px 5px', textAlign: 'center' }}>N/A</td>
+                        <td className="text-right" style={{ padding: '15px 5px', textAlign: 'right' }}>-${parseFloat(preInvoiceDiscount).toFixed(2)}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                <div className="total-container" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '40px' }}>
+                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#000' }}>
+                    Total Facturado: ${(getCalculatedMonthlyPrice(preInvoiceStore.custom_discount, preInvoiceStore.monthly_price_agreed) + (parseFloat(preInvoiceExtraAmount) || 0) - (parseFloat(preInvoiceDiscount) || 0)).toFixed(2)}
+                  </div>
+                </div>
+                <div className="footer" style={{ textAlign: 'center', fontSize: '12px', color: '#666', whiteSpace: 'pre-line' }}>
+                  {saasInvoiceFooter ? saasInvoiceFooter : '¡Gracias por confiar en Fiskal para la gestión de su negocio!'}
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ padding: '16px 20px', borderTop: '1px solid #dee2e6', display: 'flex', gap: '10px', justifyContent: 'flex-end', background: '#fff' }}>
+              <button type="button" className="btn-secondary" style={{ background: '#25D366', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px' }} onClick={() => handleSaasWhatsApp(preInvoiceStore)}>
+                Enviar por WhatsApp
+              </button>
+              <button type="button" className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px', background: '#000', color: '#fff', border: 'none' }} onClick={() => generateCustomSaaSInvoice()}>
+                Generar PDF
+              </button>
+              <button type="button" className="btn-secondary" style={{ cursor: 'pointer', padding: '8px 16px', borderRadius: '4px', border: '1px solid #ccc', background: '#fff' }} onClick={() => setShowPreInvoiceModal(false)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showOwnerModal && targetStoreForOwner && (
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+          <div className="modal-content" style={{ width: '440px' }}>
+            <div className="modal-header">
+              <h3>Crear Acceso de Dueño</h3>
+              <button className="btn-close-modal" onClick={() => setShowOwnerModal(false)}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleCreateStoreOwnerSubmit}>
+              <div className="modal-body fiskal-form">
+                <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '12px' }}>Comercio: <strong>{targetStoreForOwner.name}</strong></p>
+                <div className="form-group">
+                  <label>Nombre del Dueño</label>
+                  <input type="text" value={ownerModalName} onChange={(e) => setOwnerModalName(e.target.value)} required />
+                </div>
+                <div className="form-group">
+                  <label>Correo Electrónico (Acceso)</label>
+                  <input type="email" value={ownerModalEmail} onChange={(e) => setOwnerModalEmail(e.target.value)} required placeholder="dueno@comercio.com" />
+                </div>
+                <div className="form-group">
+                  <label>Contraseña Temporal</label>
+                  <input type="text" value={ownerModalPass} onChange={(e) => setOwnerModalPass(e.target.value)} required minLength={6} placeholder="Mínimo 6 caracteres" />
+                </div>
+              </div>
+              <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowOwnerModal(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary" disabled={creatingOwnerLoading}>
+                  {creatingOwnerLoading ? 'Creando...' : 'Crear Cuenta y Asignar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       
+      
+        {/* MODAL DE REPORTE Z DETALLADO Y EXTENDIDO */}
+        
+{typeof showShiftReportModal !== 'undefined' && showShiftReportModal && selectedShiftReport && (
+  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+    <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '100%', maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+      
+      <div style={{ textAlign: 'center', borderBottom: '1px dashed #ccc', paddingBottom: '16px', marginBottom: '16px' }}>
+        <h2 style={{ margin: '0 0 8px 0', fontSize: '20px' }}>Detalle de Reporte Z (Auditoría)</h2>
+        <p style={{ margin: '0 0 4px 0', color: '#6c757d', fontSize: '13px' }}>
+          <strong>Apertura:</strong> {new Date(selectedShiftReport.opened_at).toLocaleString()}
+        </p>
+        <p style={{ margin: 0, color: '#6c757d', fontSize: '13px' }}>
+          <strong>Cierre:</strong> {selectedShiftReport.closed_at ? new Date(selectedShiftReport.closed_at).toLocaleString() : 'Turno Activo'}
+        </p>
+        <p style={{ margin: '8px 0 0 0', fontWeight: 'bold' }}>
+          Responsable: {(typeof employees !== 'undefined' && employees.find(e => e.id === selectedShiftReport.user_id)?.full_name) || 'Cajero'}
+        </p>
+      </div>
+
+      <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '8px', marginBottom: '20px' }}>
+        <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', borderBottom: '1px solid #dee2e6', paddingBottom: '4px' }}>Desglose de Ingresos Calculados:</h4>
+        {(() => {
+          const shiftSales = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
+          let tUsd = 0, tBs = 0, tZelle = 0, tDebit = 0, tPm = 0;
+          shiftSales.forEach(s => {
+            tUsd += (s.payment_details?.cash_usd || 0);
+            tBs += (s.payment_details?.cash_bs || 0);
+            tZelle += (s.payment_details?.zelle || 0);
+            tDebit += (s.payment_details?.debit_bs || 0);
+            tPm += (s.payment_details?.pago_movil_bs || 0);
+          });
+          
+          return (
+            <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Fondo Inicial:</span> <strong>${Number(selectedShiftReport.opening_float_usd || 0).toFixed(2)}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Efectivo USD:</span> <strong>${tUsd.toFixed(2)}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Zelle:</span> <strong>${tZelle.toFixed(2)}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Punto Venta:</span> <strong>Bs. {tDebit.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Pago Móvil:</span> <strong>Bs. {tPm.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Efectivo Bs:</span> <strong>Bs. {tBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
+            </div>
+          );
+        })()}
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', borderBottom: '1px solid #dee2e6', paddingBottom: '4px' }}>Detalle de Facturas y Productos Vendidos:</h4>
+        
+        {(() => {
+          const shiftSales = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
+          if (shiftSales.length === 0) {
+            return <p style={{ textAlign: 'center', color: '#6c757d', fontSize: '13px' }}>Sin ventas registradas en este turno</p>;
+          }
+
+          return shiftSales.map((sale, sIndex) => (
+            <div key={sale.id || sIndex} style={{ marginBottom: '16px', border: '1px solid #e9ecef', borderRadius: '8px', padding: '12px', background: '#fff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', borderBottom: '1px solid #f1f3f5', paddingBottom: '6px', marginBottom: '8px', color: '#1c7ed6' }}>
+                <span>Factura #{sale.invoice_number || `A-${String(sale.id).padStart(3, '0')}`} - {sale.client_name || 'Cliente General'}</span>
+                <span>${Number(sale.total_usd).toFixed(2)} USD</span>
+              </div>
+              <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ color: '#6c757d' }}>
+                    <th style={{ textAlign: 'left', paddingBottom: '4px' }}>Cant</th>
+                    <th style={{ textAlign: 'left', paddingBottom: '4px' }}>Producto</th>
+                    <th style={{ textAlign: 'right', paddingBottom: '4px' }}>Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(sale.items || []).map((item, iIndex) => (
+                    <tr key={iIndex} style={{ borderBottom: '1px solid #f8f9fa' }}>
+                      <td style={{ padding: '4px 0' }}>{item.quantity || 1}</td>
+                      <td style={{ padding: '4px 0' }}>{item.name}</td>
+                      <td style={{ padding: '4px 0', textAlign: 'right' }}>${Number(item.price * (item.quantity || 1)).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ fontSize: '11px', color: '#868e96', textAlign: 'right', marginTop: '4px' }}>
+                Hora: {new Date(sale.created_at).toLocaleTimeString()}
+              </div>
+            </div>
+          ));
+        })()}
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+        <button 
+          onClick={handlePrintZReport}
+          style={{ flex: 1, padding: '10px', background: '#1c7ed6', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
+        >
+          🖨️ Imprimir / Guardar PDF Detallado
+        </button>
+      </div>
+
+      <button 
+        onClick={() => { if(typeof setShowShiftReportModal !== 'undefined') setShowShiftReportModal(false); }}
+        style={{ width: '100%', padding: '10px', background: '#f1f3f5', border: 'none', borderRadius: '8px', color: '#495057', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
+      >
+        Cerrar Reporte
+      </button>
+      
+    </div>
+  </div>
+)}
+
     </div>
   );
 }
