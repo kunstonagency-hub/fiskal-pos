@@ -4473,50 +4473,101 @@ return (
                 
                 {currentShift ? (
                   <div style={{ marginTop: '20px' }}>
-                    <div className="shift-active-box">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <div>
-                          <span className="badge-completed">CAJA ABIERTA: {getCurrentRegisterName()}</span>
-                          <p style={{ fontSize: '13px', color: '#6c757d', marginTop: '4px' }}>Iniciado el: {new Date(currentShift.opened_at).toLocaleString()}</p>
-                        </div>
-                        <button className="btn-primary" onClick={() => setShowCloseShiftModal(true)} style={{ background: '#fa5252' }}>
-                          Cerrar Turno (Reporte Z)
-                        </button>
+                    
+                    {/* ENCABEZADO CON BOTÓN DE CERRAR TURNO RESTAURADO */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                      <div>
+                        <span className="badge-completed">CAJA ABIERTA: {getCurrentRegisterName()}</span>
+                        <p style={{ fontSize: '13px', color: '#6c757d', marginTop: '4px' }}>Iniciado el: {new Date(currentShift.opened_at).toLocaleString()}</p>
                       </div>
+                      <button className="btn-primary" onClick={() => setShowCloseShiftModal(true)} style={{ background: '#fa5252' }}>
+                        Cerrar Turno (Reporte Z)
+                      </button>
+                    </div>
 
-                      <div className="payment-summary-box" style={{ marginTop: '16px' }}>
-                        <div><span>Fondo Inicial:</span><h2>${currentShift.opening_float_usd.toFixed(2)}</h2></div>
-                        <div><span>Ventas del Turno:</span><h2 style={{ color: '#2b8a3e' }}>${shiftTotalUSD.toFixed(2)}</h2></div>
-                        <div style={{ textAlign: 'right' }}>
-                          <span>Efectivo Esperado en Gaveta:</span>
-                          <h3>${(currentShift.opening_float_usd + shiftCashUSD).toFixed(2)} USD</h3>
+                    <div className="payment-summary-box" style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                      
+                      {/* 1. Fondo Inicial Separado por Moneda */}
+                      <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
+                        <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Fondo Inicial:</span>
+                        <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#212529' }}>
+                            ${Number(currentShift.opening_float_usd || 0).toFixed(2)} <span style={{ fontSize: '12px', color: '#6c757d' }}>USD</span>
+                          </div>
                           {currentStoreCountry === 'venezuela' && (
-                            <h4 style={{ color: '#2b8a3e', marginTop: '4px', margin: '0' }}>+ Bs. {shiftCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h4>
+                            <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#2b8a3e' }}>
+                              Bs. {Number(currentShift.opening_float_ves || currentShift.opening_float_bs || currentShift.opening_float_bolivares || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
                           )}
                         </div>
                       </div>
 
-                      <div className="invoice-payment-breakdown" style={{ marginTop: '20px' }}>
-                        <h4>Desglose de Ingresos en Turno Actual</h4>
-                        <p><span>Efectivo USD:</span> <strong>${shiftCashUSD.toFixed(2)}</strong></p>
-                        
-                        <p>
-                          <span>{currentStoreCountry === 'panama' ? 'Yappy:' : currentStoreCountry === 'el_salvador' ? 'Transferencia / Chivo:' : 'Zelle:'}</span> 
-                          <strong>${shiftZelle.toFixed(2)}</strong>
-                        </p>
-                        
-                        <p>
-                          <span>Punto / Débito {currentStoreCountry === 'venezuela' ? '(Bs)' : '($ USD)'}:</span> 
-                          <strong>{currentStoreCountry === 'venezuela' ? `Bs. ${shiftDebitBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `$${shiftDebitBs.toFixed(2)}`}</strong>
-                        </p>
+                      {/* 2. Ventas del Turno Separadas (USD y Bs independientes) */}
+                      <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
+                        <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Ventas del Turno:</span>
+                        <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {(() => {
+                            const shiftSalesList = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === currentShift.id && sale.status === 'completed');
+                            let uSales = 0;
+                            let bSales = 0;
+                            shiftSalesList.forEach(s => {
+                              const pd = s.payment_details || {};
+                              uSales += (pd.cash_usd || 0) + (pd.zelle || 0);
+                              bSales += (pd.cash_bs || 0) + (pd.pago_movil || pd.pago_movil_bs || 0) + (pd.debit || pd.debit_bs || 0);
+                            });
 
-                        {currentStoreCountry === 'venezuela' && (
-                          <>
-                            <p><span>Efectivo Bs:</span> <strong>Bs. {shiftCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                            <p><span>Pago Móvil:</span> <strong>Bs. {shiftPagoMovilBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                          </>
-                        )}
+                            return (
+                              <>
+                                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#2b8a3e' }}>
+                                  ${uSales.toFixed(2)} <span style={{ fontSize: '12px', color: '#6c757d' }}>USD</span>
+                                </div>
+                                {currentStoreCountry === 'venezuela' && (
+                                  <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#2b8a3e' }}>
+                                    Bs. {bSales.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
                       </div>
+
+                      {/* 3. Efectivo Esperado en Gaveta Separado */}
+                      <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
+                        <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Efectivo Esperado en Gaveta:</span>
+                        <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {(() => {
+                            const shiftSalesList = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === currentShift.id && sale.status === 'completed');
+                            let shiftCashUsdCalc = 0;
+                            let shiftCashBsCalc = 0;
+                            shiftSalesList.forEach(s => {
+                              const pd = s.payment_details || {};
+                              shiftCashUsdCalc += (pd.cash_usd || 0);
+                              shiftCashBsCalc += (pd.cash_bs || 0);
+                            });
+
+                            const floatUsd = Number(currentShift.opening_float_usd || 0);
+                            const floatBs = Number(currentShift.opening_float_ves || currentShift.opening_float_bs || currentShift.opening_float_bolivares || 0);
+
+                            const expectedUsd = floatUsd + shiftCashUsdCalc;
+                            const expectedBs = floatBs + shiftCashBsCalc;
+
+                            return (
+                              <>
+                                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#212529' }}>
+                                  ${expectedUsd.toFixed(2)} <span style={{ fontSize: '12px', color: '#6c757d' }}>Efectivo USD</span>
+                                </div>
+                                {currentStoreCountry === 'venezuela' && (
+                                  <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#2b8a3e' }}>
+                                    Bs. {expectedBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: '12px', color: '#6c757d' }}>Efectivo Bs</span>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+
                     </div>
                   </div>
                 ) : (
@@ -5600,45 +5651,73 @@ return (
 
       {/* Modal Apertura de Caja */}
       {showOpenShiftModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '400px' }}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#2b8a3e' }}>
-              <Unlock size={20} /> Apertura de Turno (Reporte X)
-            </h3>
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+          <div className="modal-content" style={{ width: '400px' }}>
             
-            <div className="form-group" style={{ marginTop: '16px' }}>
-              <label>Caja Física a Operar</label>
-              <select value={selectedRegisterIdForOpen} onChange={(e) => setSelectedRegisterIdForOpen(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}>
-                {registers.map(r => (
-                  <option key={r.id} value={r.id}>{r.name} {r.is_main ? '(Principal)' : ''}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Fondo Inicial de Caja / Sencillo ($ USD)</label>
-              <div style={{ position: 'relative' }}>
-                <DollarSign size={16} style={{ position: 'absolute', left: '10px', top: '12px', color: '#6c757d' }} />
-                <input type="number" step="0.01" value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)} style={{ paddingLeft: '32px', fontSize: '16px' }} placeholder="0.00" autoFocus />
-              </div>
-            </div>
-
-            {currentStoreCountry === 'venezuela' && (
-              <div className="form-group">
-                <label>Fondo Inicial (Bs. Físico)</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '10px', color: '#6c757d', fontWeight: 'bold' }}>Bs</span>
-                  <input type="number" step="0.01" value={openingFloatVes} onChange={(e) => setOpeningFloatVes(e.target.value)} style={{ paddingLeft: '32px', fontSize: '16px' }} placeholder="0.00" />
-                </div>
-              </div>
-            )}
-
-            <div className="modal-actions" style={{ marginTop: '24px' }}>
-              <button className="btn-secondary" onClick={() => setShowOpenShiftModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleOpenShift}>
-                <Check size={18} /> Iniciar Turno
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                <Unlock size={18} /> Apertura de Turno (Reporte X)
+              </h3>
+              <button className="btn-close-modal" onClick={() => setShowOpenShiftModal(false)}>
+                <X size={20} />
               </button>
             </div>
+
+            <div className="modal-body fiskal-form">
+              <div className="form-group" style={{ marginTop: '4px' }}>
+                <label>Caja Física a Operar</label>
+                <select 
+                  value={selectedRegisterIdForOpen} 
+                  onChange={(e) => setSelectedRegisterIdForOpen(e.target.value)} 
+                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px', background: '#fff' }}
+                >
+                  {registers.map(r => (
+                    <option key={r.id} value={r.id}>{r.name} {r.is_main ? '(Principal)' : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Fondo Inicial de Caja / Sencillo ($ USD)</label>
+                <div style={{ position: 'relative' }}>
+                  <DollarSign size={16} style={{ position: 'absolute', left: '10px', top: '12px', color: '#6c757d' }} />
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={openingFloat} 
+                    onChange={(e) => setOpeningFloat(e.target.value)} 
+                    style={{ paddingLeft: '32px' }} 
+                    placeholder="0.00" 
+                    autoFocus 
+                  />
+                </div>
+              </div>
+
+              {currentStoreCountry === 'venezuela' && (
+                <div className="form-group">
+                  <label>Fondo Inicial (Bs. Físico)</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '10px', top: '10px', color: '#6c757d', fontWeight: 'bold', fontSize: '13px' }}>Bs</span>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      value={openingFloatVes} 
+                      onChange={(e) => setOpeningFloatVes(e.target.value)} 
+                      style={{ paddingLeft: '32px' }} 
+                      placeholder="0.00" 
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button className="btn-secondary" onClick={() => setShowOpenShiftModal(false)}>Cancelar</button>
+              <button className="btn-primary" onClick={handleOpenShift}>
+                <Check size={16} /> Iniciar Turno
+              </button>
+            </div>
+
           </div>
         </div>
       )}
@@ -6386,16 +6465,25 @@ return (
           const shiftSales = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
           let tUsd = 0, tBs = 0, tZelle = 0, tDebit = 0, tPm = 0;
           shiftSales.forEach(s => {
-            tUsd += (s.payment_details?.cash_usd || 0);
-            tBs += (s.payment_details?.cash_bs || 0);
-            tZelle += (s.payment_details?.zelle || 0);
-            tDebit += (s.payment_details?.debit_bs || 0);
-            tPm += (s.payment_details?.pago_movil_bs || 0);
+            const pd = s.payment_details || {};
+            tUsd += (pd.cash_usd || 0);
+            tBs += (pd.cash_bs || 0);
+            tZelle += (pd.zelle || 0);
+            tDebit += (pd.debit || pd.debit_bs || 0);
+            tPm += (pd.pago_movil || pd.pago_movil_bs || 0);
           });
           
+          // Separamos el fondo inicial en USD y Bs según lo guardado en el turno
+          const floatUsd = Number(selectedShiftReport.opening_float_usd || 0);
+          const floatBs = Number(selectedShiftReport.opening_float_ves || selectedShiftReport.opening_float_bs || 0);
+
           return (
             <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Fondo Inicial:</span> <strong>${Number(selectedShiftReport.opening_float_usd || 0).toFixed(2)}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Fondo Inicial USD:</span> <strong>${floatUsd.toFixed(2)}</strong></div>
+              {currentStoreCountry === 'venezuela' && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Fondo Inicial Bs:</span> <strong>Bs. {floatBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
+              )}
+              <hr style={{ border: 'none', borderTop: '1px dashed #dee2e6', margin: '4px 0' }} />
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Efectivo USD:</span> <strong>${tUsd.toFixed(2)}</strong></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Zelle:</span> <strong>${tZelle.toFixed(2)}</strong></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Punto Venta:</span> <strong>Bs. {tDebit.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
