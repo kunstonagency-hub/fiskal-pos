@@ -2106,7 +2106,6 @@ const syncOfflineData = async () => {
     }
     const floatValUSD = parseFloat(openingFloat) || 0;
     const floatValVES = parseFloat(openingFloatVes) || 0;
-    const totalFloatUSD = floatValUSD + (floatValVES / (bcvRate || 1));
     
     let regId = parseInt(selectedRegisterIdForOpen);
     if (isNaN(regId)) {
@@ -2135,14 +2134,18 @@ const syncOfflineData = async () => {
           return;
       }
 
+      // Guardamos el fondo en Bs dentro del campo notes para no alterar la BD
+      const shiftNotesTag = `FondoBs:${floatValVES}`;
+
       const { data, error } = await supabase.from('shifts').insert([{
           status: 'open',
           register_id: regId,
-          opening_float_usd: totalFloatUSD,
+          opening_float_usd: floatValUSD,
           total_sales_usd: 0,
-          expected_cash_usd: totalFloatUSD,
+          expected_cash_usd: floatValUSD,
           user_id: userId,
-          store_id: currentStoreId
+          store_id: currentStoreId,
+          notes: shiftNotesTag
         }]).select().single();
 
       if (error) throw error;
@@ -2155,6 +2158,12 @@ const syncOfflineData = async () => {
       alert("Error al abrir caja: " + error.message);
     }
   };
+
+  const fondoBsTag = currentShift?.notes?.includes('FondoBs:') 
+    ? currentShift.notes.match(/FondoBs:[0-9.]+/)?.[0] || '' 
+    : '';
+
+  const notasFinales = fondoBsTag + (shiftNotes ? ` | Cierre: ${shiftNotes}` : '');
 
   const handleCloseShift = async () => {
     if (!currentShift) return;
@@ -4474,7 +4483,6 @@ return (
                 {currentShift ? (
                   <div style={{ marginTop: '20px' }}>
                     
-                    {/* ENCABEZADO CON BOTÓN DE CERRAR TURNO RESTAURADO */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                       <div>
                         <span className="badge-completed">CAJA ABIERTA: {getCurrentRegisterName()}</span>
@@ -4487,31 +4495,34 @@ return (
 
                     <div className="payment-summary-box" style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
                       
-                      {/* 1. Fondo Inicial Separado por Moneda */}
+                      {/* Fondo Inicial */}
                       <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
                         <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Fondo Inicial:</span>
                         <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#212529' }}>
-                            ${Number(currentShift.opening_float_usd || 0).toFixed(2)} <span style={{ fontSize: '12px', color: '#6c757d' }}>USD</span>
+                            ${Number(currentShift?.opening_float_usd || 0).toFixed(2)} <span style={{ fontSize: '12px', color: '#6c757d' }}>USD</span>
                           </div>
-                          {currentStoreCountry === 'venezuela' && (
-                            <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#2b8a3e' }}>
-                              Bs. {Number(currentShift.opening_float_ves || currentShift.opening_float_bs || currentShift.opening_float_bolivares || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </div>
-                          )}
+                          {currentStoreCountry === 'venezuela' && (() => {
+                            const match = (currentShift?.notes || '').match(/FondoBs:([0-9.]+)/);
+                            const floatBs = match ? parseFloat(match[1]) : 0;
+                            return (
+                              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#2b8a3e' }}>
+                                Bs. {floatBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
 
-                      {/* 2. Ventas del Turno Separadas (USD y Bs independientes) */}
+                      {/* Ventas del Turno */}
                       <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
                         <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Ventas del Turno:</span>
                         <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {(() => {
-                            const shiftSalesList = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === currentShift.id && sale.status === 'completed');
-                            let uSales = 0;
-                            let bSales = 0;
+                            const shiftSalesList = (sales || []).filter(sale => sale?.shift_id === currentShift?.id && sale?.status === 'completed');
+                            let uSales = 0, bSales = 0;
                             shiftSalesList.forEach(s => {
-                              const pd = s.payment_details || {};
+                              const pd = s?.payment_details || {};
                               uSales += (pd.cash_usd || 0) + (pd.zelle || 0);
                               bSales += (pd.cash_bs || 0) + (pd.pago_movil || pd.pago_movil_bs || 0) + (pd.debit || pd.debit_bs || 0);
                             });
@@ -4532,22 +4543,22 @@ return (
                         </div>
                       </div>
 
-                      {/* 3. Efectivo Esperado en Gaveta Separado */}
+                      {/* Efectivo Esperado en Gaveta */}
                       <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
                         <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Efectivo Esperado en Gaveta:</span>
                         <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {(() => {
-                            const shiftSalesList = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === currentShift.id && sale.status === 'completed');
-                            let shiftCashUsdCalc = 0;
-                            let shiftCashBsCalc = 0;
+                            const shiftSalesList = (sales || []).filter(sale => sale?.shift_id === currentShift?.id && sale?.status === 'completed');
+                            let shiftCashUsdCalc = 0, shiftCashBsCalc = 0;
                             shiftSalesList.forEach(s => {
-                              const pd = s.payment_details || {};
+                              const pd = s?.payment_details || {};
                               shiftCashUsdCalc += (pd.cash_usd || 0);
                               shiftCashBsCalc += (pd.cash_bs || 0);
                             });
 
-                            const floatUsd = Number(currentShift.opening_float_usd || 0);
-                            const floatBs = Number(currentShift.opening_float_ves || currentShift.opening_float_bs || currentShift.opening_float_bolivares || 0);
+                            const floatUsd = Number(currentShift?.opening_float_usd || 0);
+                            const match = (currentShift?.notes || '').match(/FondoBs:([0-9.]+)/);
+                            const floatBs = match ? parseFloat(match[1]) : 0;
 
                             const expectedUsd = floatUsd + shiftCashUsdCalc;
                             const expectedBs = floatBs + shiftCashBsCalc;
@@ -4597,27 +4608,29 @@ return (
                       </tr>
                     </thead>
                     <tbody>
-                      {pastShifts.length === 0 ? (
+                      {!pastShifts || pastShifts.length === 0 ? (
                         <tr><td colSpan="8" className="empty-text">No hay cierres de caja registrados o estás offline.</td></tr>
                       ) : (
-                        pastShifts.map(s => {
-                          const reg = registers.find(r => r.id === s.register_id);
-                          const emp = employees.find(e => e.id === s.user_id);
+                        pastShifts.map((s, index) => {
+                          if (!s) return null; // Bloqueo de seguridad absoluta contra turnos nulos
+
+                          const reg = (registers || []).find(r => r?.id === s.register_id);
+                          const emp = (employees || []).find(e => e?.id === s.user_id);
                           
-                          const hSales = sales.filter(sale => sale.shift_id === s.id && sale.status === 'completed');
-                          const hCashUsd = hSales.reduce((sum, sale) => sum + (sale.payment_details?.cash_usd || 0), 0);
-                          const hCashBs = hSales.reduce((sum, sale) => sum + (sale.payment_details?.cash_bs || 0), 0);
+                          const hSales = (sales || []).filter(sale => sale?.shift_id === s.id && sale?.status === 'completed');
+                          const hCashUsd = hSales.reduce((sum, sale) => sum + (sale?.payment_details?.cash_usd || 0), 0);
+                          const hCashBs = hSales.reduce((sum, sale) => sum + (sale?.payment_details?.cash_bs || 0), 0);
                           
                           const expectedUsdDisplay = (s.opening_float_usd || 0) + hCashUsd;
 
                           let fisicoContadoDisplay = `$${(s.actual_cash_usd || 0).toFixed(2)}`;
-                          if (s.notes && s.notes.includes('Contado:')) {
+                          if (s.notes && typeof s.notes === 'string' && s.notes.includes('Contado:')) {
                             fisicoContadoDisplay = s.notes.split('|').pop().trim().replace('Contado: ', '');
                           }
 
                           return (
-                            <tr key={s.id}>
-                              <td>{new Date(s.opened_at).toLocaleString()}</td>
+                            <tr key={s.id || index}>
+                              <td>{s.opened_at ? new Date(s.opened_at).toLocaleString() : ''}</td>
                               <td>{s.closed_at ? new Date(s.closed_at).toLocaleString() : '---'}</td>
                               <td><strong>{reg ? reg.name : `Caja #${s.register_id}`}</strong></td>
                               <td>{emp ? emp.full_name : 'Cajero'}</td>
@@ -5441,139 +5454,330 @@ return (
             <DeliveryDashboard storeId={currentStoreId} isOnline={isOnline} />
           )}
 
-          {activeTab === 'kds' && currentStoreType === 'restaurant' && (
-            <div style={{ padding: '20px', background: '#f8f9fa', minHeight: '80vh', borderRadius: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#212529', margin: 0 }}>
-                  <span style={{ fontSize: '24px' }}>🍳</span> KDS - Cocina Activa
-                </h2>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <span className="badge-pending" style={{ fontSize: '14px', padding: '6px 12px' }}>
-                    {sales.filter(s => s.status === 'pending').length} Pedidos en Cola
-                  </span>
-                </div>
-              </div>
+          {activeTab === 'kds' && (
+  <div 
+    id="kds-panel"
+    style={{ padding: '24px', background: '#f8f9fa', minHeight: '100vh', width: '100%', boxSizing: 'border-box', overflowY: 'auto' }}
+  >
+    
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
-                {sales.filter(s => s.status === 'pending').length === 0 ? (
-                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: '#6c757d' }}>
-                    <CheckCircle size={48} style={{ marginBottom: '12px', color: '#adb5bd' }} />
-                    <h3>No hay comandas pendientes</h3>
-                    <p>La cocina está libre por ahora.</p>
-                  </div>
-                ) : (
-                  sales.filter(s => s.status === 'pending').map(sale => (
-                    <div key={sale.id} className="product-form-card" style={{ borderLeft: '4px solid #f59f00', padding: '16px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #dee2e6', paddingBottom: '8px', marginBottom: '12px' }}>
-                        <span style={{ fontWeight: 'bold', fontSize: '16px' }}>#{sale.invoice_number || sale.id.toString().slice(-4)}</span>
-                        <span style={{ fontSize: '12px', color: '#6c757d' }}>{new Date(sale.created_at).toLocaleTimeString()}</span>
-                      </div>
-                      <div style={{ marginBottom: '12px', fontSize: '13px' }}>
-                        <strong>Cliente:</strong> {sale.client_name || 'Mesa / Cliente General'}
-                      </div>
-                      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 16px 0', minHeight: '100px' }}>
-                        {sale.items?.map((item, idx) => (
-                          <li key={idx} style={{ padding: '6px 0', borderBottom: '1px dashed #e9ecef', fontSize: '14px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                              <span>{item.quantity}x {item.name}</span>
-                            </div>
-                            {item.customization && (
-                              <div style={{ fontSize: '12px', color: '#fa5252', marginTop: '2px', paddingLeft: '8px' }}>
-                                ↳ {item.customization}
-                              </div>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                      <button 
-                        onClick={async () => {
-                          try {
-                            await supabase.from('sales').update({ status: 'ready' }).eq('id', sale.id);
-                            // Optimistic update
-                            const updated = sales.map(s => s.id === sale.id ? { ...s, status: 'ready' } : s);
-                            setSales(updated);
-                          } catch (e) {
-                            alert("Error al marcar como listo: " + e.message);
-                          }
-                        }}
-                        style={{ width: '100%', padding: '12px', background: '#2b8a3e', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                      >
-                        <CheckCircle size={18} /> Marcar Listo
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+      <div>
+        <h2 style={{ margin: 0, color: '#212529', letterSpacing: '-0.5px' }}>Panel de Cocina (KDS)</h2>
+        <p style={{ fontSize: '13px', color: '#868e96', margin: '4px 0 0 0' }}>Gestión de comandas en tiempo real</p>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <button 
+          onClick={() => {
+            const panel = document.getElementById('kds-panel');
+            if (!document.fullscreenElement) {
+              if (panel && panel.requestFullscreen) {
+                panel.requestFullscreen().catch(err => console.error("Error fullscreen:", err));
+              }
+            } else {
+              if (document.exitFullscreen) document.exitFullscreen();
+            }
+          }}
+          style={{ background: '#212529', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          🖥️ Pantalla Completa
+        </button>
+
+        <span style={{ background: '#2b8a3e', color: '#fff', padding: '8px 16px', borderRadius: '4px', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ width: '8px', height: '8px', background: '#51cf66', borderRadius: '50%', display: 'inline-block' }}></span> En Vivo
+        </span>
+      </div>
+    </div>
+
+    {(() => {
+      try {
+        const rawOrders = (typeof sales !== 'undefined' && Array.isArray(sales)) ? sales : [];
+        
+        const getItems = (s) => {
+          if (!s) return [];
+          if (Array.isArray(s.items)) return s.items;
+          if (typeof s.items === 'string') { try { return JSON.parse(s.items); } catch(e){} }
+          if (Array.isArray(s.cart)) return s.cart;
+          if (typeof s.cart === 'string') { try { return JSON.parse(s.cart); } catch(e){} }
+          return [];
+        };
+
+        const generalKeywords = ['toddy', 'harina', 'azucar', 'galletas', 'citrato', 'disco duro', 'cronch', 'palitos', 'pepsi', 'coca cola', 'refresco', 'agua', 'cerveza'];
+
+        const waitingOrders = rawOrders.filter(s => {
+          if (!s) return false;
+          const status = String(s.status || s.estatus || s.state || '').trim().toLowerCase();
+          
+          if (['completed', 'pagada', 'paid', 'credit', 'crédito'].includes(status)) return false;
+          
+          const validKitchenStates = ['pending', 'en espera', 'pendiente', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'];
+          if (!validKitchenStates.includes(status)) return false;
+
+          const itemsList = getItems(s);
+          if (itemsList.length === 0) return false;
+
+          const kitchenItems = itemsList.filter(item => {
+            const name = String(item.name || '').toLowerCase();
+            return !generalKeywords.some(gk => name.includes(gk));
+          });
+
+          return kitchenItems.length > 0;
+        });
+
+        if (waitingOrders.length === 0) {
+          return (
+            <div style={{ textAlign: 'center', padding: '60px', background: '#fff', borderRadius: '4px', border: '1px solid #dee2e6' }}>
+              <p style={{ color: '#868e96', fontSize: '15px', margin: 0 }}>
+                No hay comandas pendientes en este momento.
+              </p>
             </div>
-          )}
+          );
+        }
+
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+            {waitingOrders.map((order, index) => {
+              const orderId = order && order.id ? order.id.toString() : String(index + 1);
+              
+              const itemsList = getItems(order).filter(item => {
+                const name = String(item.name || '').toLowerCase();
+                return !generalKeywords.some(gk => name.includes(gk));
+              });
+              
+              const currentStatus = String(order.status || order.estatus || 'pending').trim().toLowerCase();
+              const isPreparing = currentStatus === 'preparando' || currentStatus === 'en preparación';
+              const isReady = currentStatus === 'ready' || currentStatus === 'listo' || currentStatus === 'espera_pago';
+
+              let headerBg = '#e03131'; 
+              let headerColor = '#fff';
+              let borderColor = '#e03131';
+              let statusText = 'PENDIENTE';
+
+              if (isPreparing) {
+                headerBg = '#fab005'; 
+                headerColor = '#212529';
+                borderColor = '#fab005';
+                statusText = 'PREPARANDO';
+              } else if (isReady) {
+                headerBg = '#2b8a3e'; 
+                headerColor = '#fff';
+                borderColor = '#2b8a3e';
+                statusText = 'LISTO PARA ENTREGAR';
+              }
+
+              const timeStr = order.created_at ? new Date(order.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--';
+
+              return (
+                <div key={order && order.id ? order.id : index} style={{ background: '#fff', borderRadius: '4px', border: `1px solid ${borderColor}`, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                  
+                  <div style={{ background: headerBg, color: headerColor, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <strong style={{ fontSize: '18px', lineHeight: 1 }}>#{orderId.slice(-4)}</strong>
+                      <span style={{ fontSize: '11px', opacity: 0.9 }}>{timeStr}</span>
+                    </div>
+                    <span style={{ fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.5px' }}>{statusText}</span>
+                  </div>
+
+                  <div style={{ padding: '16px', flex: 1 }}>
+                    {itemsList.map((item, i) => {
+                      const itemName = item && item.name ? item.name : 'Producto';
+                      const itemQty = item && item.quantity ? item.quantity : 1;
+                      
+                      // Leemos exactamente lo que el cajero marcó en el POS
+                      const customizationText = item.customization || item.customNote || '';
+
+                      return (
+                        <div key={i} style={{ paddingBottom: '12px', marginBottom: '12px', borderBottom: i === itemsList.length - 1 ? 'none' : '1px dashed #e9ecef' }}>
+                          <div style={{ fontWeight: '600', fontSize: '16px', color: '#212529' }}>{itemQty} x {itemName}</div>
+                          
+                          {customizationText && (
+                            <div style={{ 
+                              fontSize: '14px', 
+                              color: customizationText === 'Con todo' ? '#1c7ed6' : '#e03131', 
+                              marginTop: '4px', 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: '2px', 
+                              paddingLeft: '8px', 
+                              borderLeft: `2px solid ${customizationText === 'Con todo' ? '#a5d8ff' : '#ffc9c9'}` 
+                            }}>
+                              <span style={{ fontWeight: 'bold' }}>• {customizationText}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ display: 'flex', borderTop: `1px solid ${borderColor}` }}>
+                    {!isPreparing && !isReady && (
+                      <button 
+                        onClick={async (e) => {
+                          e.currentTarget.blur();
+                          if (typeof setSales === 'function') {
+                            setSales(sales.map(s => s.id === order.id ? { ...s, status: 'preparando' } : s));
+                          }
+                          try {
+                            if (typeof supabase !== 'undefined') {
+                              await supabase.from('sales').update({ status: 'preparando' }).eq('id', order.id);
+                            }
+                          } catch (err) { console.error("Error al actualizar estatus:", err); }
+                        }}
+                        style={{ flex: 1, background: '#fff', color: '#e03131', border: 'none', padding: '14px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', transition: 'background 0.2s' }}
+                        onMouseOver={e => e.currentTarget.style.background = '#fff5f5'}
+                        onMouseOut={e => e.currentTarget.style.background = '#fff'}
+                      >
+                        Preparar
+                      </button>
+                    )}
+
+                    {!isReady && (
+                      <button 
+                        onClick={async (e) => {
+                          e.currentTarget.blur();
+
+                          if (typeof setSales === 'function') {
+                            setSales(sales.map(s => s.id === order.id ? { ...s, status: 'ready' } : s));
+                          }
+                          try {
+                            if (typeof supabase !== 'undefined') {
+                              await supabase.from('sales').update({ status: 'ready' }).eq('id', order.id);
+                            }
+                          } catch (err) { console.error("Error al actualizar estatus:", err); }
+                        }}
+                        style={{ flex: 1, background: isPreparing ? '#fab005' : '#f8f9fa', color: isPreparing ? '#212529' : '#868e96', border: 'none', borderLeft: isPreparing ? 'none' : '1px solid #dee2e6', padding: '14px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' }}
+                      >
+                        Despachar
+                      </button>
+                    )}
+
+                    {isReady && (
+                      <div style={{ width: '100%', textAlign: 'center', padding: '14px', background: '#2b8a3e', color: '#fff', fontSize: '13px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Esperando Mesonero
+                      </div>
+                    )}
+                  </div>
+                  
+                </div>
+              );
+            })}
+          </div>
+        );
+      } catch (err) {
+        return (
+          <div style={{ padding: '20px', background: '#ffe3e3', color: '#c92a2a', borderRadius: '4px', border: '1px solid #ffc9c9' }}>
+            <strong>Error:</strong> {err.message}
+          </div>
+        );
+      }
+    })()}
+  </div>
+)}
         </section>
       </main>
 
       {/* ---------------- MODALES GLOBALES ---------------- */}
 
-      {/* Modal de Modificadores (Restaurante) */}
       {showModifierModal && productForModifiers && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '400px' }}>
-            <h3 style={{ marginBottom: '16px' }}>Personalizar: {productForModifiers.name}</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
-              {Object.keys(dynamicToggles).map((modKey) => (
-                <label key={modKey} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', background: dynamicToggles[modKey] ? '#e7f5ff' : '#ffe3e3', padding: '12px', borderRadius: '6px', border: dynamicToggles[modKey] ? '1px solid #339af0' : '1px solid #ff8787', transition: 'all 0.2s' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={dynamicToggles[modKey]} 
-                    onChange={(e) => setDynamicToggles({...dynamicToggles, [modKey]: e.target.checked})}
-                    style={{ width: '18px', height: '18px' }}
-                  />
-                  <span style={{ fontWeight: 'bold', color: dynamicToggles[modKey] ? '#1864ab' : '#c92a2a' }}>
-                    {modKey} {dynamicToggles[modKey] ? '✓' : '✗'}
-                  </span>
-                </label>
-              ))}
+        <div className="modal-overlay" style={{ zIndex: 10006 }}>
+          <div className="modal-content" style={{ width: '400px' }}>
+            <div className="modal-header">
+              <h3>Personalizar: {productForModifiers.name}</h3>
+              <button className="btn-close-modal" onClick={() => setShowModifierModal(false)}><X size={20} /></button>
             </div>
-            <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
-              <button className="btn-secondary" onClick={() => { setShowModifierModal(false); setProductForModifiers(null); }}>Cancelar</button>
-              <button className="btn-primary" onClick={confirmAddToCartWithModifiers}>Agregar a la Cuenta</button>
+            <div className="modal-body fiskal-form">
+              <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '16px' }}>
+                Por defecto se incluye <strong>"Con todo"</strong>. Desmarca los ingredientes que el cliente NO desee.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: '#f8f9fa', padding: '16px', borderRadius: '6px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: 'bold', color: '#2b8a3e' }}>
+                  <input type="checkbox" checked={true} disabled style={{ width: '18px', height: '18px' }} />
+                  Con todo (Base)
+                </label>
+                <hr style={{ border: '0', borderTop: '1px solid #dee2e6', margin: '2px 0' }} />
+                
+                {Object.keys(dynamicToggles).length === 0 ? (
+                  <p style={{ fontSize: '12px', color: '#6c757d', fontStyle: 'italic' }}>Este platillo no tiene modificadores configurados.</p>
+                ) : (
+                  Object.keys(dynamicToggles).map((modName, idx) => (
+                    <label key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '14px' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={dynamicToggles[modName]} 
+                        onChange={(e) => setDynamicToggles({ ...dynamicToggles, [modName]: e.target.checked })} 
+                        style={{ width: '18px', height: '18px', cursor: 'pointer' }} 
+                      />
+                      {modName}
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowModifierModal(false)}>Cancelar</button>
+              <button type="button" className="btn-primary" onClick={confirmAddToCartWithModifiers} style={{ background: '#2b8a3e' }}>
+                Añadir a la Comanda
+              </button>
             </div>
           </div>
         </div>
       )}
+
 
       {/* Modal de Venta por Peso */}
       {showWeightModal && productForWeight && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '400px' }}>
-            <h3>Balanza: {productForWeight.name}</h3>
-            <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '16px' }}>
-              Precio Base: ${productForWeight.price.toFixed(2)} por {weightUnit}
-            </p>
-            <div className="form-group">
-              <label>Peso Medido ({weightUnit})</label>
-              <input 
-                type="number" 
-                step="0.001" 
-                min="0"
-                value={weightValue} 
-                onChange={(e) => setWeightValue(e.target.value)} 
-                autoFocus
-                style={{ fontSize: '24px', padding: '12px', textAlign: 'center' }}
-              />
+        <div className="modal-overlay" style={{ zIndex: 10007 }}>
+          <div className="modal-content" style={{ width: '380px', textAlign: 'center' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>⚖️ Balanza: {productForWeight.name}</h3>
+              <button className="btn-close-modal" onClick={() => setShowWeightModal(false)}><X size={20} /></button>
             </div>
-            
-            <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '6px', textAlign: 'center', marginBottom: '20px' }}>
-              <span style={{ fontSize: '13px', color: '#6c757d' }}>Total a cobrar:</span>
-              <h2 style={{ margin: '4px 0 0 0', color: '#2b8a3e' }}>
-                ${ (productForWeight.price * (weightUnit === 'g' ? (parseFloat(weightValue||0)/1000) : parseFloat(weightValue||0))).toFixed(2) }
-              </h2>
-            </div>
+            <div className="modal-body fiskal-form" style={{ textAlign: 'left' }}>
+              <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '16px' }}>
+                Precio base: <strong>${productForWeight.price.toFixed(2)} USD</strong> por cada 1 {productForWeight.modifiers && productForWeight.modifiers[0] ? productForWeight.modifiers[0] : 'kg'}.
+              </p>
 
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => { setShowWeightModal(false); setProductForWeight(null); }}>Cancelar</button>
-              <button className="btn-primary" onClick={confirmAddToCartWithWeight}>Agregar al Carrito</button>
+              <div className="form-group">
+                <label>Cantidad en la Balanza ({weightUnit === 'kg' ? 'Kilogramos' : 'Gramos'})</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input 
+                    type="number" 
+                    step="0.001" 
+                    value={weightValue} 
+                    onChange={(e) => setWeightValue(e.target.value)} 
+                    placeholder="Ej. 0.500" 
+                    style={{ flex: 2, padding: '10px', fontSize: '16px', fontWeight: 'bold' }} 
+                    autoFocus
+                  />
+                  <select 
+                    value={weightUnit} 
+                    onChange={(e) => setWeightUnit(e.target.value)}
+                    style={{ flex: 1, padding: '10px', fontSize: '14px', borderRadius: '6px', border: '1px solid #ced4da' }}
+                  >
+                    <option value="kg">Kg</option>
+                    <option value="g">Gramos</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ background: '#e7f5ff', padding: '12px', borderRadius: '6px', marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#1971c2' }}>Total a cobrar:</span>
+                <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#2b8a3e' }}>
+                  ${((parseFloat(weightValue) || 0) * (weightUnit === 'g' ? productForWeight.price / 1000 : productForWeight.price)).toFixed(2)} USD
+                </span>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowWeightModal(false)}>Cancelar</button>
+              <button type="button" className="btn-primary" onClick={confirmAddToCartWithWeight} style={{ background: '#2b8a3e' }}>
+                Añadir al Carrito
+              </button>
             </div>
           </div>
         </div>
       )}
+
 
       {/* Modal Cierre de Caja / Reporte Z */}
       {showCloseShiftModal && currentShift && (
@@ -6440,120 +6644,121 @@ return (
 
       
       
-        {/* MODAL DE REPORTE Z DETALLADO Y EXTENDIDO */}
-        
-{typeof showShiftReportModal !== 'undefined' && showShiftReportModal && selectedShiftReport && (
-  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-    <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '100%', maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-      
-      <div style={{ textAlign: 'center', borderBottom: '1px dashed #ccc', paddingBottom: '16px', marginBottom: '16px' }}>
-        <h2 style={{ margin: '0 0 8px 0', fontSize: '20px' }}>Detalle de Reporte Z (Auditoría)</h2>
-        <p style={{ margin: '0 0 4px 0', color: '#6c757d', fontSize: '13px' }}>
-          <strong>Apertura:</strong> {new Date(selectedShiftReport.opened_at).toLocaleString()}
-        </p>
-        <p style={{ margin: 0, color: '#6c757d', fontSize: '13px' }}>
-          <strong>Cierre:</strong> {selectedShiftReport.closed_at ? new Date(selectedShiftReport.closed_at).toLocaleString() : 'Turno Activo'}
-        </p>
-        <p style={{ margin: '8px 0 0 0', fontWeight: 'bold' }}>
-          Responsable: {(typeof employees !== 'undefined' && employees.find(e => e.id === selectedShiftReport.user_id)?.full_name) || 'Cajero'}
-        </p>
-      </div>
+{/* Modal Detalle de Reporte Z */}
+          {showShiftReportModal && selectedShiftReport && (
+            <div className="modal-overlay" style={{ zIndex: 10000, padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="modal-content" style={{ width: '100%', maxWidth: '600px', maxHeight: '90vh', background: '#fff', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column' }}>
+                
+                <div style={{ padding: '20px', overflowY: 'auto' }}>
+                  <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                    <h3 style={{ margin: '0 0 10px 0', color: '#212529', fontSize: '18px' }}>Detalle de Reporte Z (Auditoría)</h3>
+                    <p style={{ margin: '2px 0', fontSize: '12px', color: '#6c757d' }}>
+                      <strong>Apertura:</strong> {new Date(selectedShiftReport.opened_at).toLocaleString()}
+                    </p>
+                    <p style={{ margin: '2px 0', fontSize: '12px', color: '#6c757d' }}>
+                      <strong>Cierre:</strong> {selectedShiftReport.closed_at ? new Date(selectedShiftReport.closed_at).toLocaleString() : 'Turno Abierto'}
+                    </p>
+                    <p style={{ margin: '8px 0 0 0', fontSize: '14px', color: '#212529' }}>
+                      <strong>Responsable:</strong> {employees.find(e => e.id === selectedShiftReport.user_id)?.full_name || 'Cajero'}
+                    </p>
+                  </div>
 
-      <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '8px', marginBottom: '20px' }}>
-        <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', borderBottom: '1px solid #dee2e6', paddingBottom: '4px' }}>Desglose de Ingresos Calculados:</h4>
-        {(() => {
-          const shiftSales = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
-          let tUsd = 0, tBs = 0, tZelle = 0, tDebit = 0, tPm = 0;
-          shiftSales.forEach(s => {
-            const pd = s.payment_details || {};
-            tUsd += (pd.cash_usd || 0);
-            tBs += (pd.cash_bs || 0);
-            tZelle += (pd.zelle || 0);
-            tDebit += (pd.debit || pd.debit_bs || 0);
-            tPm += (pd.pago_movil || pd.pago_movil_bs || 0);
-          });
-          
-          // Separamos el fondo inicial en USD y Bs según lo guardado en el turno
-          const floatUsd = Number(selectedShiftReport.opening_float_usd || 0);
-          const floatBs = Number(selectedShiftReport.opening_float_ves || selectedShiftReport.opening_float_bs || 0);
+                  <hr style={{ border: 'none', borderTop: '1px dashed #dee2e6', marginBottom: '20px' }} />
 
-          return (
-            <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Fondo Inicial USD:</span> <strong>${floatUsd.toFixed(2)}</strong></div>
-              {currentStoreCountry === 'venezuela' && (
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Fondo Inicial Bs:</span> <strong>Bs. {floatBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
-              )}
-              <hr style={{ border: 'none', borderTop: '1px dashed #dee2e6', margin: '4px 0' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Efectivo USD:</span> <strong>${tUsd.toFixed(2)}</strong></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Zelle:</span> <strong>${tZelle.toFixed(2)}</strong></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Punto Venta:</span> <strong>Bs. {tDebit.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Pago Móvil:</span> <strong>Bs. {tPm.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Efectivo Bs:</span> <strong>Bs. {tBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
-            </div>
-          );
-        })()}
-      </div>
+                  {/* DESGLOSE DE INGRESOS */}
+                  <div style={{ marginBottom: '24px' }}>
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#212529' }}>Desglose de Ingresos Calculados:</h4>
+                    {(() => {
+                      const shiftSales = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
+                      let tUsd = 0, tBs = 0, tZelle = 0, tDebit = 0, tPm = 0;
+                      shiftSales.forEach(s => {
+                        const pd = s.payment_details || {};
+                        tUsd += (pd.cash_usd || 0);
+                        tBs += (pd.cash_bs || 0);
+                        tZelle += (pd.zelle || 0);
+                        tDebit += (pd.debit || pd.debit_bs || 0);
+                        tPm += (pd.pago_movil || pd.pago_movil_bs || 0);
+                      });
+                      
+                      const floatUsd = Number(selectedShiftReport?.opening_float_usd || selectedShiftReport?.opening_float || 0);
+                      
+                      const match = selectedShiftReport?.notes?.match(/FondoBs:([0-9.]+)/);
+                      const floatBs = match ? parseFloat(match[1]) : 0;
 
-      <div style={{ marginBottom: '20px' }}>
-        <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', borderBottom: '1px solid #dee2e6', paddingBottom: '4px' }}>Detalle de Facturas y Productos Vendidos:</h4>
-        
-        {(() => {
-          const shiftSales = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
-          if (shiftSales.length === 0) {
-            return <p style={{ textAlign: 'center', color: '#6c757d', fontSize: '13px' }}>Sin ventas registradas en este turno</p>;
-          }
+                      return (
+                        <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#f8f9fa', padding: '16px', borderRadius: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Fondo Inicial USD:</span> <strong>${floatUsd.toFixed(2)}</strong></div>
+                          {currentStoreCountry === 'venezuela' && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Fondo Inicial Bs:</span> <strong>Bs. {floatBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
+                          )}
+                          <hr style={{ border: 'none', borderTop: '1px dashed #dee2e6', margin: '4px 0' }} />
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Efectivo USD:</span> <strong>${tUsd.toFixed(2)}</strong></div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Zelle:</span> <strong>${tZelle.toFixed(2)}</strong></div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Punto Venta:</span> <strong>Bs. {tDebit.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Pago Móvil:</span> <strong>Bs. {tPm.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Efectivo Bs:</span> <strong>Bs. {tBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
+                        </div>
+                      );
+                    })()}
+                  </div>
 
-          return shiftSales.map((sale, sIndex) => (
-            <div key={sale.id || sIndex} style={{ marginBottom: '16px', border: '1px solid #e9ecef', borderRadius: '8px', padding: '12px', background: '#fff' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', borderBottom: '1px solid #f1f3f5', paddingBottom: '6px', marginBottom: '8px', color: '#1c7ed6' }}>
-                <span>Factura #{sale.invoice_number || `A-${String(sale.id).padStart(3, '0')}`} - {sale.client_name || 'Cliente General'}</span>
-                <span>${Number(sale.total_usd).toFixed(2)} USD</span>
+                  {/* DETALLE DE FACTURAS */}
+                  <div>
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#212529' }}>Detalle de Facturas y Productos Vendidos:</h4>
+                    {(() => {
+                      const shiftSalesList = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
+                      
+                      if (shiftSalesList.length === 0) {
+                        return <p style={{ fontSize: '13px', color: '#6c757d', textAlign: 'center', padding: '20px 0' }}>Sin ventas registradas en este turno</p>;
+                      }
+
+                      return shiftSalesList.map((sale, index) => (
+                        <div key={sale.id || index} style={{ border: '1px solid #e9ecef', borderRadius: '8px', padding: '12px', marginBottom: '12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', borderBottom: '1px solid #f1f3f5', paddingBottom: '8px' }}>
+                            <strong style={{ fontSize: '13px', color: '#1971c2' }}>Factura #{sale.receipt_number || `A-00${index + 1}`} - {sale.client_name || 'Cliente General'}</strong>
+                            <strong style={{ fontSize: '13px', color: '#1971c2' }}>${(sale.total_usd || 0).toFixed(2)} USD</strong>
+                          </div>
+                          
+                          <table style={{ width: '100%', fontSize: '12px', color: '#495057' }}>
+                            <thead>
+                              <tr style={{ textAlign: 'left', color: '#adb5bd' }}>
+                                <th style={{ paddingBottom: '4px', fontWeight: 'normal', width: '40px' }}>Cant</th>
+                                <th style={{ paddingBottom: '4px', fontWeight: 'normal' }}>Producto</th>
+                                <th style={{ paddingBottom: '4px', fontWeight: 'normal', textAlign: 'right' }}>Subtotal</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sale.items && sale.items.map((item, idx) => (
+                                <tr key={idx}>
+                                  <td style={{ padding: '2px 0', verticalAlign: 'top' }}>{item.quantity}</td>
+                                  <td style={{ padding: '2px 0' }}>{item.name}</td>
+                                  <td style={{ padding: '2px 0', textAlign: 'right' }}>
+                                    ${((item.price || item.price_usd || item.unit_price || 0) * item.quantity).toFixed(2)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <div style={{ textAlign: 'right', marginTop: '6px', fontSize: '11px', color: '#adb5bd' }}>
+                            Hora: {new Date(sale.created_at).toLocaleTimeString()}
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
+
+                <div style={{ padding: '16px 20px', borderTop: '1px solid #e9ecef', background: '#f8f9fa', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <button className="btn-primary" style={{ width: '100%', padding: '10px', background: '#1971c2', border: 'none', borderRadius: '6px', color: '#fff', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    🖨️ Imprimir / Guardar PDF Detallado
+                  </button>
+                  <button className="btn-secondary" onClick={() => setShowShiftReportModal(false)} style={{ width: '100%', padding: '10px', background: '#fff', border: '1px solid #ced4da', borderRadius: '6px', color: '#495057', cursor: 'pointer' }}>
+                    Cerrar Reporte
+                  </button>
+                </div>
               </div>
-              <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ color: '#6c757d' }}>
-                    <th style={{ textAlign: 'left', paddingBottom: '4px' }}>Cant</th>
-                    <th style={{ textAlign: 'left', paddingBottom: '4px' }}>Producto</th>
-                    <th style={{ textAlign: 'right', paddingBottom: '4px' }}>Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(sale.items || []).map((item, iIndex) => (
-                    <tr key={iIndex} style={{ borderBottom: '1px solid #f8f9fa' }}>
-                      <td style={{ padding: '4px 0' }}>{item.quantity || 1}</td>
-                      <td style={{ padding: '4px 0' }}>{item.name}</td>
-                      <td style={{ padding: '4px 0', textAlign: 'right' }}>${Number(item.price * (item.quantity || 1)).toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div style={{ fontSize: '11px', color: '#868e96', textAlign: 'right', marginTop: '4px' }}>
-                Hora: {new Date(sale.created_at).toLocaleTimeString()}
-              </div>
             </div>
-          ));
-        })()}
-      </div>
-
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-        <button 
-          onClick={handlePrintZReport}
-          style={{ flex: 1, padding: '10px', background: '#1c7ed6', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
-        >
-          🖨️ Imprimir / Guardar PDF Detallado
-        </button>
-      </div>
-
-      <button 
-        onClick={() => { if(typeof setShowShiftReportModal !== 'undefined') setShowShiftReportModal(false); }}
-        style={{ width: '100%', padding: '10px', background: '#f1f3f5', border: 'none', borderRadius: '8px', color: '#495057', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
-      >
-        Cerrar Reporte
-      </button>
-      
-    </div>
-  </div>
-)}
+          )}
 
     </div>
   );
