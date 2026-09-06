@@ -461,6 +461,7 @@ const confirmAddToCartWithWeight = () => {
   const [payZelle, setPayZelle] = useState('');
   const [payDebit, setPayDebit] = useState('');
   const [paymentRef, setPaymentRef] = useState('');
+  const [changeCurrencyType, setChangeCurrencyType] = useState('USD'); // 'USD' o 'BS'
 
   const [calcPayments, setCalcPayments] = useState({
     cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0
@@ -2173,50 +2174,69 @@ const syncOfflineData = async () => {
 
   const notasFinales = fondoBsTag + (shiftNotes ? ` | Cierre: ${shiftNotes}` : '');
 
-  const handleCloseShift = async () => {
+const handleCloseShift = async () => {
     if (!currentShift) return;
-    if (!isOnline || pendingSalesCount > 0) {
-      alert("No puedes cerrar la caja estando Offline o si tienes transacciones pendientes.");
-      return;
-    }
 
-    const cashUSDCounted = parseFloat(actualCashUSD) || 0;
-    const cashBsCounted = parseFloat(actualCashBs) || 0;
-    const totalActualCashUSD = cashUSDCounted + (currentStoreCountry === 'venezuela' ? (cashBsCounted / (bcvRate || 1)) : 0);
+    // Extracción segura del fondo en Bs desde la base de datos o desde las notas
+    const floatUsd = Number(currentShift.opening_float_usd || 0);
+    const match = (currentShift.notes || '').match(/FondoBs:([0-9.]+)/);
+    const floatBs = match ? parseFloat(match[1]) : Number(currentShift.opening_float_ves || currentShift.opening_float_bs || 0);
 
-    const shiftSales = sales.filter(s => s.shift_id === currentShift.id && s.status === 'completed');
-    const cashCollectedUSD = shiftSales.reduce((sum, s) => sum + (s.payment_details?.cash_usd || 0), 0);
-    const cashCollectedBs = shiftSales.reduce((sum, s) => sum + (s.payment_details?.cash_bs || 0), 0);
-    const cashCollectedBsInUSD = currentStoreCountry === 'venezuela' ? (cashCollectedBs / (bcvRate || 1)) : 0;
+    // 1. Cálculos de expectativa separados (Fondo inicial + Ventas en efectivo)
+    const expectedUsd = floatUsd + shiftCashUSD;
+    const expectedBs = floatBs + shiftCashBs;
 
-    const expectedCash = currentShift.opening_float_usd + cashCollectedUSD + cashCollectedBsInUSD;
-    const difference = parseFloat((totalActualCashUSD - expectedCash).toFixed(2));
+    // 2. Efectivo físico real ingresado por el cajero
+    const countedUsd = parseFloat(actualCashUSD) || 0;
+    const countedBs = parseFloat(actualCashBs) || 0;
 
-    const finalNotesStr = currentStoreCountry === 'venezuela' 
-      ? `Contado: $${cashUSDCounted.toFixed(2)} + Bs. ${cashBsCounted.toFixed(2)}`
-      : `Contado: $${cashUSDCounted.toFixed(2)}`;
+    // 3. Diferencias aisladas por moneda
+    const differenceUsd = countedUsd - expectedUsd;
+    const differenceBs = countedBs - expectedBs;
+
+    // 4. Payload limpio solo con las columnas nuevas y nativas
+    const payload = {
+      closed_at: new Date().toISOString(),
+      expected_cash_usd: expectedUsd,
+      expected_cash_bs: expectedBs,
+      actual_cash_usd: countedUsd,
+      actual_cash_bs: countedBs,
+      difference_usd: differenceUsd,
+      difference_bs: differenceBs,
+      notes: shiftNotes,
+      status: 'closed'
+    };
 
     try {
-      const { error } = await supabase.from('shifts').update({
-          status: 'closed',
-          closed_at: new Date().toISOString(),
-          expected_cash_usd: expectedCash,
-          actual_cash_usd: totalActualCashUSD,
-          difference_usd: difference,
-          notes: shiftNotes ? `${shiftNotes} | ${finalNotesStr}` : finalNotesStr
-        }).eq('id', currentShift.id);
+      const { error } = await supabase
+        .from('shifts')
+        .update(payload)
+        .eq('id', currentShift.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error al cerrar en BD:", error);
+        alert('Error en BD: ' + error.message);
+        return;
+      }
 
-      alert(`Corte de caja realizado.\nDiferencia: $${difference >= 0 ? '+' : ''}${difference}`);
+      // 5. Alerta detallando ambas cajas
+      let alertMsg = 'Corte de caja realizado.\n\n';
+      alertMsg += `Diferencia USD: ${differenceUsd > 0 ? '+' : ''}$${differenceUsd.toFixed(2)}\n`;
+      if (currentStoreCountry === 'venezuela') {
+        alertMsg += `Diferencia Bs: ${differenceBs > 0 ? '+' : ''}Bs. ${differenceBs.toFixed(2)}`;
+      }
+      alert(alertMsg);
+
       setShowCloseShiftModal(false);
       setActualCashUSD('');
       setActualCashBs('');
       setShiftNotes('');
-      setCurrentShift(null);
-      setActiveTab('history');
-    } catch (error) {
-      alert("Error al cerrar caja: " + error.message);
+      
+      // Recargar la página o ejecutar tu función de refresco
+      window.location.reload(); 
+    } catch (err) {
+      console.error('Error cerrando turno:', err);
+      alert('Error cerrando el turno.');
     }
   };
 
@@ -2996,7 +3016,7 @@ const updateCalculations = () => {
     setProcessing(false);
   };
 
-  const handleCheckoutSubmit = async () => {
+const handleCheckoutSubmit = async () => {
     if (!currentShift || !currentStoreId) {
       alert("La caja está cerrada.");
       return;
@@ -3020,15 +3040,37 @@ const updateCalculations = () => {
     const clientData = clients.find(c => c.name === selectedClient);
     const clientDocToSave = clientData ? clientData.document : (settlingSale?.payment_details?.client_document || '');
 
+    const calculatedChangeUSD = parseFloat((Math.max(0, currentTotalPaidUSD - totalUSD)).toFixed(2));
+    const calculatedChangeBs = parseFloat((calculatedChangeUSD * (bcvRate || 1)).toFixed(2));
+
+    // ==========================================
+    // AJUSTE CLAVE: GESTIÓN DE VUELTO MIXTO EN CAJA
+    // ==========================================
+    let netCashUsdToRegister = finalCashUSD;
+    let netCashBsToRegister = finalCashBs;
+
+    if (calculatedChangeUSD > 0 && currentStoreCountry && currentStoreCountry.toLowerCase().includes('venezuela')) {
+      if (changeCurrencyType === 'BS') {
+        // Si el vuelto se entregó en bolívares físicos de la gaveta:
+        netCashBsToRegister = Math.max(0, finalCashBs - calculatedChangeBs);
+      } else {
+        // Si el vuelto se entregó en dólares físicos de la gaveta:
+        netCashUsdToRegister = Math.max(0, finalCashUSD - calculatedChangeUSD);
+      }
+    }
+
     const paymentDetails = {
-      cash_usd: finalCashUSD,
-      cash_bs: finalCashBs,
+      cash_usd: netCashUsdToRegister,       // Efectivo neto real que ingresa a la gaveta
+      cash_bs: netCashBsToRegister,         // Efectivo Bs neto real que ingresa a la gaveta
+      raw_cash_usd: finalCashUSD,           // Monto bruto entregado por el cliente
+      raw_cash_bs: finalCashBs,             // Monto bruto en Bs entregado
       pago_movil: finalPagoMovil,
       zelle: finalZelle,
       debit: finalDebit,
       reference: paymentRef,
-      change_usd: parseFloat((Math.max(0, currentTotalPaidUSD - totalUSD)).toFixed(2)),
-      change_bs: parseFloat((Math.max(0, currentTotalPaidUSD - totalUSD) * bcvRate).toFixed(2)),
+      change_usd: calculatedChangeUSD,
+      change_bs: calculatedChangeBs,
+      change_currency_type: changeCurrencyType || 'USD',
       applied_bcv_rate: bcvRate,
       client_document: clientDocToSave
     };
@@ -3367,13 +3409,34 @@ const fastFoodCategories = ['hamburguesas', 'perros calientes', 'perros', 'pizza
     }
   });
 
-  const currentShiftSales = currentShift ? sales.filter(s => s.shift_id === currentShift.id && s.status === 'completed') : [];
+const currentShiftSales = currentShift ? sales.filter(s => s.shift_id === currentShift.id && s.status === 'completed') : [];
   const shiftTotalUSD = currentShiftSales.reduce((sum, s) => sum + s.total_usd, 0);
-  const shiftCashUSD = currentShiftSales.reduce((sum, s) => sum + (s.payment_details?.cash_usd || 0), 0);
   const shiftZelle = currentShiftSales.reduce((sum, s) => sum + (s.payment_details?.zelle || 0), 0);
   const shiftPagoMovilBs = currentShiftSales.reduce((sum, s) => sum + (s.payment_details?.pago_movil || 0), 0);
   const shiftDebitBs = currentShiftSales.reduce((sum, s) => sum + (s.payment_details?.debit || 0), 0);
-  const shiftCashBs = currentShiftSales.reduce((sum, s) => sum + (s.payment_details?.cash_bs || 0), 0);
+
+
+// Efectivo USD en gaveta (Descuenta el vuelto incluso si no se recibió efectivo USD en esa venta)
+  const shiftCashUSD = currentShiftSales.reduce((sum, s) => {
+    const pd = s.payment_details || {};
+    const cashIn = Number(pd.raw_cash_usd !== undefined ? pd.raw_cash_usd : (pd.cash_usd || 0));
+    const changeOut = (!pd.change_currency_type || pd.change_currency_type === 'USD') ? Number(pd.change_usd || 0) : 0;
+    return sum + (cashIn - changeOut); 
+  }, 0);;
+
+// Efectivo Bs en gaveta (Descuenta el vuelto en Bs físicos incluso si se pagó solo en Dólares)
+  const shiftCashBs = currentShiftSales.reduce((sum, s) => {
+    const pd = s.payment_details || {};
+    const cashIn = Number(pd.raw_cash_bs !== undefined ? pd.raw_cash_bs : (pd.cash_bs || 0));
+    
+    let changeOutBs = 0;
+    if (pd.change_currency_type === 'BS') {
+      const rate = Number(pd.applied_bcv_rate || bcvRate || 1);
+      const chUsd = Number(pd.change_usd || 0);
+      changeOutBs = Number(pd.change_bs !== undefined ? pd.change_bs : (chUsd * rate));
+    }
+    return sum + (cashIn - changeOutBs);
+  }, 0);
 
   const getCurrentRegisterName = () => {
     if (!currentShift) return '---';
@@ -4601,7 +4664,7 @@ return (
             </div>
           )}
 
-          {activeTab === 'cash' && (
+{activeTab === 'cash' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '900px', margin: '0 auto', width: '100%' }}>
               <div className="product-form-card" style={{ width: '100%' }}>
                 <h3>Gestión de Turno y Arqueo de Caja</h3>
@@ -4619,93 +4682,68 @@ return (
                       </button>
                     </div>
 
-                    <div className="payment-summary-box" style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
-                      
-                      {/* Fondo Inicial */}
-                      <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
-                        <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Fondo Inicial:</span>
-                        <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#212529' }}>
-                            ${Number(currentShift?.opening_float_usd || 0).toFixed(2)} <span style={{ fontSize: '12px', color: '#6c757d' }}>USD</span>
-                          </div>
-                          {currentStoreCountry === 'venezuela' && (() => {
-                            const match = (currentShift?.notes || '').match(/FondoBs:([0-9.]+)/);
-                            const floatBs = match ? parseFloat(match[1]) : 0;
-                            return (
-                              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#2b8a3e' }}>
-                                Bs. {floatBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <div className="payment-summary-box" style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                      {(() => {
+                        // 1. Extraemos el fondo inicial de forma limpia
+                        const floatUsd = Number(currentShift?.opening_float_usd || 0);
+                        const match = (currentShift?.notes || '').match(/FondoBs:([0-9.]+)/);
+                        const floatBs = match ? parseFloat(match[1]) : Number(currentShift?.opening_float_ves || currentShift?.opening_float_bs || 0);
+
+                        // 2. Calculamos el total exacto que debe haber en gaveta usando las variables globales blindadas
+                        const expectedUsd = floatUsd + shiftCashUSD;
+                        const expectedBs = floatBs + shiftCashBs;
+
+                        return (
+                          <>
+                            {/* Tarjeta 1: Fondo Inicial */}
+                            <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
+                              <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Fondo Inicial de Caja:</span>
+                              <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#495057' }}>
+                                  ${floatUsd.toFixed(2)} <span style={{ fontSize: '12px', color: '#adb5bd' }}>USD</span>
+                                </div>
+                                {(!currentStoreCountry || currentStoreCountry.toLowerCase().includes('venezuela')) && (
+                                  <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#495057' }}>
+                                    Bs. {floatBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                )}
                               </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
+                            </div>
 
-                      {/* Ventas del Turno */}
-                      <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
-                        <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Ventas del Turno:</span>
-                        <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {(() => {
-                            const shiftSalesList = (sales || []).filter(sale => sale?.shift_id === currentShift?.id && sale?.status === 'completed');
-                            let uSales = 0, bSales = 0;
-                            shiftSalesList.forEach(s => {
-                              const pd = s?.payment_details || {};
-                              uSales += (pd.cash_usd || 0) + (pd.zelle || 0);
-                              bSales += (pd.cash_bs || 0) + (pd.pago_movil || pd.pago_movil_bs || 0) + (pd.debit || pd.debit_bs || 0);
-                            });
-
-                            return (
-                              <>
+                            {/* Tarjeta 2: Ingresos del Turno (Digital + Efectivo) */}
+                            <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
+                              <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Ingresos del Turno:</span>
+                              <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                 <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#2b8a3e' }}>
-                                  ${uSales.toFixed(2)} <span style={{ fontSize: '12px', color: '#6c757d' }}>USD</span>
+                                  ${(shiftCashUSD + shiftZelle).toFixed(2)} <span style={{ fontSize: '12px', color: '#6c757d' }}>USD (Efectivo + Zelle)</span>
                                 </div>
-                                {currentStoreCountry === 'venezuela' && (
+                                {(!currentStoreCountry || currentStoreCountry.toLowerCase().includes('venezuela')) && (
                                   <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#2b8a3e' }}>
-                                    Bs. {bSales.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    Bs. {(shiftCashBs + shiftPagoMovilBs + shiftDebitBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: '12px', color: '#6c757d' }}>(Efectivo + Digital)</span>
                                   </div>
                                 )}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </div>
+                              </div>
+                            </div>
 
-                      {/* Efectivo Esperado en Gaveta */}
-                      <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
-                        <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Efectivo Esperado en Gaveta:</span>
-                        <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {(() => {
-                            const shiftSalesList = (sales || []).filter(sale => sale?.shift_id === currentShift?.id && sale?.status === 'completed');
-                            let shiftCashUsdCalc = 0, shiftCashBsCalc = 0;
-                            shiftSalesList.forEach(s => {
-                              const pd = s?.payment_details || {};
-                              shiftCashUsdCalc += (pd.cash_usd || 0);
-                              shiftCashBsCalc += (pd.cash_bs || 0);
-                            });
-
-                            const floatUsd = Number(currentShift?.opening_float_usd || 0);
-                            const match = (currentShift?.notes || '').match(/FondoBs:([0-9.]+)/);
-                            const floatBs = match ? parseFloat(match[1]) : 0;
-
-                            const expectedUsd = floatUsd + shiftCashUsdCalc;
-                            const expectedBs = floatBs + shiftCashBsCalc;
-
-                            return (
-                              <>
-                                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#212529' }}>
-                                  ${expectedUsd.toFixed(2)} <span style={{ fontSize: '12px', color: '#6c757d' }}>Efectivo USD</span>
+                            {/* Tarjeta 3: Efectivo Físico Esperado (La más importante, resalta en azul) */}
+                            <div style={{ background: '#e7f5ff', padding: '14px', borderRadius: '8px', border: '1px solid #74c0fc' }}>
+                              <span style={{ fontSize: '12px', color: '#1864ab', fontWeight: 'bold', textTransform: 'uppercase' }}>Efectivo Esperado en Gaveta:</span>
+                              <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#212529' }}>
+                                  ${expectedUsd.toFixed(2)} <span style={{ fontSize: '12px', color: '#6c757d' }}>Físico USD</span>
                                 </div>
-                                {currentStoreCountry === 'venezuela' && (
-                                  <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#2b8a3e' }}>
-                                    Bs. {expectedBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: '12px', color: '#6c757d' }}>Efectivo Bs</span>
+                                {(!currentStoreCountry || currentStoreCountry.toLowerCase().includes('venezuela')) && (
+                                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#2b8a3e' }}>
+                                    Bs. {expectedBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: '12px', color: '#6c757d' }}>Físico Bs</span>
                                   </div>
                                 )}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
+
                   </div>
                 ) : (
                   <div style={{ textAlign: 'center', padding: '40px 20px' }}>
@@ -4915,150 +4953,187 @@ return (
       </table>
     </div>
 
-    {/* MODAL DE FACTURA INTEGRADO */}
-    {showInvoiceModal && selectedInvoice && (
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-        <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-          
-          {/* Cabecera de la Factura */}
-          <div style={{ textAlign: 'center', borderBottom: '1px dashed #ccc', paddingBottom: '16px', marginBottom: '16px' }}>
-            <h2 style={{ margin: '0 0 4px 0', fontSize: '20px' }}>Factura #{selectedInvoice.invoice_number || `A-${String(selectedInvoice.id).padStart(3, '0')}`}</h2>
-            <p style={{ margin: 0, color: '#6c757d', fontSize: '13px' }}>{new Date(selectedInvoice.created_at).toLocaleString()}</p>
-            <p style={{ margin: '4px 0 0 0', fontWeight: 'bold' }}>Cliente: {selectedInvoice.client_name || 'General'}</p>
-          </div>
-
-          {/* Tabla de Productos */}
-          <div style={{ marginBottom: '16px' }}>
-            <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #eee' }}>
-                  <th style={{ textAlign: 'left', paddingBottom: '6px' }}>Cant</th>
-                  <th style={{ textAlign: 'left', paddingBottom: '6px' }}>Producto</th>
-                  <th style={{ textAlign: 'right', paddingBottom: '6px' }}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(selectedInvoice.items || []).map((item, index) => (
-                  <tr key={index}>
-                    <td style={{ padding: '6px 0', borderBottom: '1px solid #f8f9fa' }}>{item.quantity || 1}</td>
-                    <td style={{ padding: '6px 0', borderBottom: '1px solid #f8f9fa' }}>{item.name}</td>
-                    <td style={{ padding: '6px 0', textAlign: 'right', borderBottom: '1px solid #f8f9fa' }}>${Number(item.price * (item.quantity || 1)).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Impuestos / IVA si aplica */}
-          {selectedInvoice.tax_amount > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#495057', marginBottom: '6px' }}>
-              <span>Impuesto / IVA:</span>
-              <span>${Number(selectedInvoice.tax_amount).toFixed(2)}</span>
+{/* Modal Factura / Recibo Cliente */}
+      {showInvoiceModal && selectedInvoice && (
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+          <div className="modal-content" style={{ width: '500px' }}>
+            <div className="modal-header">
+              <h3>Factura #{String(selectedInvoice.id).startsWith('local') ? 'Pendiente' : selectedInvoice.invoice_number || `A-${String(selectedInvoice.id).padStart(3, '0')}`}</h3>
+              <button className="btn-close-modal" onClick={() => setShowInvoiceModal(false)}><X size={20} /></button>
             </div>
-          )}
+            
+            <div className="modal-body fiskal-form" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+              <div style={{ textAlign: 'center', marginBottom: '16px', borderBottom: '1px dashed #dee2e6', paddingBottom: '12px' }}>
+                <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#212529' }}>{currentStoreName}</h2>
+                {currentStoreRif && <div style={{ fontSize: '12px', color: '#495057' }}>{currentStoreCountry === 'venezuela' ? 'RIF' : 'RUC/Documento'}: {currentStoreRif}</div>}
+                {currentStoreAddress && <div style={{ fontSize: '12px', color: '#495057', marginTop: '2px' }}>{currentStoreAddress}</div>}
+              </div>
 
-          {/* Historial de Abonos / Pagos Parciales */}
-          {invoiceHistory && invoiceHistory.length > 0 && (
-            <div style={{ margin: '16px 0', padding: '12px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
-              <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#343a40' }}>Historial de Abonos / Pagos:</h4>
-              {invoiceHistory.map((pay, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', borderBottom: '1px dashed #dee2e6', paddingBottom: '4px' }}>
-                  <span>{new Date(pay.created_at || pay.date).toLocaleDateString()} - Ref: {pay.reference || 'N/A'}</span>
-                  <span style={{ fontWeight: 'bold', color: '#10b981' }}>${Number(pay.amount || pay.monto || pay.valor || pay.pago || 0).toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
-          )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '13px', color: '#495057' }}>
+                <span><strong>Cliente:</strong> {selectedInvoice.client_name || 'Cliente General'}</span>
+                <span><strong>{currentStoreCountry === 'venezuela' ? 'Cédula/RIF' : 'Cédula/RUC'}:</strong> {selectedInvoice.payment_details?.client_document || 'N/A'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '13px', color: '#495057' }}>
+                <span><strong>Fecha:</strong> {new Date(selectedInvoice.created_at).toLocaleString()}</span>
+                <span><strong>Estatus:</strong> {selectedInvoice.status.toUpperCase()}</span>
+              </div>
 
-          {/* Total General */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: 'bold', borderTop: '1px dashed #ccc', paddingTop: '12px', marginBottom: '20px' }}>
-            <span>TOTAL USD:</span>
-            <span style={{ color: '#10b981' }}>${Number(selectedInvoice.total_usd).toFixed(2)}</span>
-          </div>
-
-          {/* Botones de Acción: Imprimir y WhatsApp */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-            <button 
-              onClick={() => {
-                const printWindow = window.open('', '_blank', 'width=400,height=600');
-                if (!printWindow) return;
+              {(() => {
+                const isVzla = currentStoreCountry === 'venezuela';
+                const saleBcvRate = selectedInvoice.payment_details?.applied_bcv_rate || bcvRate || 1;
+                const showTaxes = selectedInvoice.tax_usd > 0;
                 
-                const itemsHtml = (selectedInvoice.items || []).map(item => `
-                  <tr>
-                    <td>${item.quantity || 1}</td>
-                    <td>${item.name}</td>
-                    <td>$${Number(item.price * (item.quantity || 1)).toFixed(2)}</td>
-                  </tr>
-                `).join('');
+                const formatMoney = (usdVal) => {
+                  if (isVzla) return `Bs. ${(usdVal * saleBcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                  return `$${usdVal.toFixed(2)}`;
+                };
 
-                const invoiceHTML = `
-                  <html>
-                    <head>
-                      <title>Factura #${selectedInvoice.invoice_number || selectedInvoice.id}</title>
-                      <style>
-                        body { font-family: 'Courier New', monospace; padding: 15px; color: #000; width: 280px; margin: 0 auto; background: #fff; }
-                        h3, p { text-align: center; margin: 4px 0; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
-                        th, td { padding: 4px 0; border-bottom: 1px dashed #ccc; text-align: left; }
-                        th:last-child, td:last-child { text-align: right; }
-                        .total-box { display: flex; justify-content: space-between; font-weight: bold; margin-top: 10px; font-size: 14px; border-top: 2px dashed #000; padding-top: 6px; }
-                      </style>
-                    </head>
-                    <body>
-                      <h3>FISKAL POS</h3>
-                      <p>Factura #${selectedInvoice.invoice_number || `A-${String(selectedInvoice.id).padStart(3, '0')}`}</p>
-                      <p style="font-size: 10px; color: #555;">${new Date(selectedInvoice.created_at).toLocaleString()}</p>
-                      <p style="font-size: 11px; margin-top: 4px;"><strong>Cliente:</strong> ${selectedInvoice.client_name || 'General'}</p>
-                      <hr style="border: 0; border-top: 1px dashed #ccc; margin: 8px 0;" />
-                      <table>
+                const formatRef = (usdVal) => {
+                  if (isVzla) return `(Ref: $${usdVal.toFixed(2)})`;
+                  return '';
+                };
+
+                return (
+                  <>
+                    {isVzla && (
+                      <div style={{ textAlign: 'right', fontSize: '11px', color: '#868e96', marginBottom: '8px' }}>
+                        Tasa BCV Aplicada: Bs. {saleBcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    )}
+
+                    <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Artículos Facturados</h4>
+                    <div className="table-responsive" style={{ marginBottom: '16px' }}>
+                      <table className="receipt-table">
                         <thead>
-                          <tr><th>Cant</th><th>Prod</th><th>Total</th></tr>
+                          <tr>
+                            <th>Cant</th>
+                            <th>Producto</th>
+                            <th>Precio Unit</th>
+                            <th>Total</th>
+                          </tr>
                         </thead>
                         <tbody>
-                          ${itemsHtml}
+                          {(() => {
+                            let parsedItems = [];
+                            if (Array.isArray(selectedInvoice.items)) {
+                              parsedItems = selectedInvoice.items;
+                            } else if (typeof selectedInvoice.items === 'string') {
+                              try { parsedItems = JSON.parse(selectedInvoice.items); } catch(e){}
+                            }
+
+                            return parsedItems.map((item, idx) => {
+                              const itemTotalUsd = (item.price || 0) * (item.quantity || 1);
+                              return (
+                                <tr key={idx}>
+                                  <td>{item.quantity}</td>
+                                  <td>{item.name}</td>
+                                  <td>
+                                    <div>{formatMoney(item.price)}</div>
+                                    <div style={{ fontSize: '10px', color: '#868e96' }}>{formatRef(item.price)}</div>
+                                  </td>
+                                  <td>
+                                    <strong>{formatMoney(itemTotalUsd)}</strong>
+                                    <div style={{ fontSize: '10px', color: '#868e96', fontWeight: 'normal' }}>{formatRef(itemTotalUsd)}</div>
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
                         </tbody>
                       </table>
-                      <div class="total-box">
-                        <span>TOTAL:</span>
-                        <span>$${Number(selectedInvoice.total_usd).toFixed(2)}</span>
-                      </div>
-                      <p style="text-align: center; margin-top: 15px; font-size: 10px;">¡Gracias por su compra!</p>
-                      <script>
-                        window.onload = function() { window.print(); window.close(); }
-                      </script>
-                    </body>
-                  </html>
-                `;
-                printWindow.document.write(invoiceHTML);
-                printWindow.document.close();
-              }}
-              style={{ flex: 1, padding: '10px', background: '#1c7ed6', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
-            >
-              Imprimir
-            </button>
-            <button 
-              onClick={() => {
-                const itemsList = (selectedInvoice.items || []).map(i => `• ${i.quantity || 1}x ${i.name} ($${Number(i.price * (i.quantity || 1)).toFixed(2)})`).join('%0A');
-                const text = encodeURIComponent(`🧾 *FACTURA #${selectedInvoice.invoice_number || selectedInvoice.id}*%0A📅 Fecha: ${new Date(selectedInvoice.created_at).toLocaleString()}%0A👤 Cliente: ${selectedInvoice.client_name || 'General'}%0A%0A*Productos:*%0A${itemsList}%0A%0A💰 *TOTAL: $${Number(selectedInvoice.total_usd).toFixed(2)}*%0A%0A¡Gracias por preferirnos! 🚀`);
-                window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
-              }}
-              style={{ flex: 1, padding: '10px', background: '#2b8a3e', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
-            >
-              WhatsApp
-            </button>
-          </div>
+                    </div>
 
-          {/* Botón Cerrar */}
-          <button 
-            onClick={() => setShowInvoiceModal(false)}
-            style={{ width: '100%', padding: '10px', background: '#f1f3f5', border: 'none', borderRadius: '8px', color: '#495057', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
-          >
-            Cerrar Factura
-          </button>
-          
+                    <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
+                      {showTaxes && (
+                        <>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px', color: '#495057' }}>
+                            <span>Subtotal:</span>
+                            <div style={{ textAlign: 'right' }}>
+                              <strong>{formatMoney(selectedInvoice.subtotal_usd || (selectedInvoice.total_usd - selectedInvoice.tax_usd))}</strong>
+                              <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.subtotal_usd || (selectedInvoice.total_usd - selectedInvoice.tax_usd))}</div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px', color: '#495057' }}>
+                            <span>Impuesto ({currentStoreTaxRate}%):</span>
+                            <div style={{ textAlign: 'right' }}>
+                              <strong>{formatMoney(selectedInvoice.tax_usd)}</strong>
+                              <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.tax_usd)}</div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', marginBottom: '6px', alignItems: 'center' }}>
+                        <span>Total Facturado:</span>
+                        <div style={{ textAlign: 'right' }}>
+                          <strong>{formatMoney(selectedInvoice.total_usd)}</strong>
+                          <div style={{ fontSize: '12px', fontWeight: 'normal', color: '#495057' }}>{formatRef(selectedInvoice.total_usd)}</div>
+                        </div>
+                      </div>
+
+                      {selectedInvoice.balance_due_usd > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#fa5252', marginTop: '6px', borderTop: '1px solid #dee2e6', paddingTop: '6px' }}>
+                          <span>Saldo Pendiente:</span>
+                          <div style={{ textAlign: 'right' }}>
+                            <strong>{formatMoney(selectedInvoice.balance_due_usd)}</strong>
+                            <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.balance_due_usd)}</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+
+              {/* HISTORIAL DE ABONOS CON EL DESGLOSE INTEGRADO (SIN RECUADRO EXTRA) */}
+              {invoiceHistory && invoiceHistory.length > 0 && (
+                <div style={{ marginTop: '16px' }}>
+                  <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Historial de Abonos / Pagos</h4>
+                  {invoiceHistory.map((h, i) => {
+                    const pd = h.payment_details || selectedInvoice.payment_details || {};
+                    const histBcvRate = pd.applied_bcv_rate || bcvRate || 1;
+                    const isVzlaHist = currentStoreCountry === 'venezuela';
+                    const abonoText = isVzlaHist 
+                      ? `Bs. ${(h.amount_usd * histBcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Ref: $${h.amount_usd.toFixed(2)})`
+                      : `$${h.amount_usd.toFixed(2)}`;
+                      
+                    return (
+                      <div key={i} style={{ fontSize: '12px', padding: '10px', background: '#e7f5ff', borderRadius: '6px', marginBottom: '8px', border: '1px solid #74c0fc' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                          <span style={{ color: '#495057' }}>{new Date(h.created_at).toLocaleString()}</span>
+                          <strong style={{ color: '#212529' }}>Abono: {abonoText}</strong>
+                        </div>
+                        
+                        {/* Detalles integrados directo en el mismo renglón */}
+                        <div style={{ fontSize: '11px', color: '#495057', borderTop: '1px dashed #74c0fc', paddingTop: '6px', marginTop: '4px' }}>
+                          {pd.raw_cash_usd > 0 && <span><strong>Recibido:</strong> ${pd.raw_cash_usd.toFixed(2)} USD. </span>}
+                          {pd.raw_cash_bs > 0 && <span><strong>Recibido:</strong> Bs. {pd.raw_cash_bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}. </span>}
+                          {pd.pago_movil > 0 && <span><strong>Pago Móvil:</strong> Bs. {pd.pago_movil.toLocaleString('es-VE', { minimumFractionDigits: 2 })}. </span>}
+                          {pd.zelle > 0 && <span><strong>Zelle:</strong> ${pd.zelle.toFixed(2)}. </span>}
+                          {pd.debit > 0 && <span><strong>Punto:</strong> {isVzlaHist ? `Bs. ${pd.debit.toLocaleString('es-VE', {minimumFractionDigits: 2})}` : `$${pd.debit.toFixed(2)}`}. </span>}
+                          
+                          {(pd.change_usd || 0) > 0 && (
+                            <span style={{ color: '#2b8a3e', fontWeight: 'bold', display: 'block', marginTop: '4px' }}>
+                              Vuelto Entregado: ${pd.change_usd.toFixed(2)} 
+                              {pd.change_currency_type === 'BS' ? ' (En Efectivo Bs)' : 
+                               pd.change_currency_type === 'PAGO_MOVIL' ? ' (Por Pago Móvil)' : ' (En Efectivo USD)'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowInvoiceModal(false)}>Cerrar</button>
+              <button type="button" className="btn-primary" onClick={() => window.print()}>Imprimir Recibo</button>
+            </div>
+          </div>
         </div>
-      </div>
-    )}
+      )}
 
   </div>
 )}
@@ -5917,7 +5992,7 @@ return (
       )}
 
 
-      {/* Modal Cierre de Caja / Reporte Z */}
+{/* Modal Cierre de Caja / Reporte Z */}
       {showCloseShiftModal && currentShift && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
           <div className="modal-content" style={{ width: '450px' }}>
@@ -5933,9 +6008,24 @@ return (
             <div className="modal-body fiskal-form">
               <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '6px', marginBottom: '16px', border: '1px solid #dee2e6', textAlign: 'center' }}>
                 <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Esperado en Sistema</p>
-                <h2 style={{ color: '#212529', margin: 0, fontSize: '22px' }}>
-                  ${(currentShift.opening_float_usd + shiftCashUSD + (currentStoreCountry === 'venezuela' ? (shiftCashBs / (bcvRate || 1)) : 0)).toFixed(2)} USD
-                </h2>
+                {(() => {
+                  const floatUsd = Number(currentShift?.opening_float_usd || 0);
+                  const match = (currentShift?.notes || '').match(/FondoBs:([0-9.]+)/);
+                  const floatBs = match ? parseFloat(match[1]) : Number(currentShift?.opening_float_ves || currentShift?.opening_float_bs || 0);
+                  
+                  return (
+                    <>
+                      <h2 style={{ color: '#212529', margin: 0, fontSize: '22px' }}>
+                        ${(floatUsd + shiftCashUSD).toFixed(2)} USD
+                      </h2>
+                      {(!currentStoreCountry || currentStoreCountry.toLowerCase().includes('venezuela')) && (
+                        <h3 style={{ margin: '5px 0 0 0', color: '#2b8a3e', fontSize: '18px' }}>
+                          Bs. {(floatBs + shiftCashBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </h3>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="form-group">
@@ -5953,7 +6043,7 @@ return (
                 </div>
               </div>
 
-              {currentStoreCountry === 'venezuela' && (
+              {(!currentStoreCountry || currentStoreCountry.toLowerCase().includes('venezuela')) && (
                 <div className="form-group">
                   <label>Efectivo Físico Contado (Bs. Físico)</label>
                   <div style={{ position: 'relative' }}>
@@ -6087,13 +6177,15 @@ return (
             <div className="modal-body fiskal-form" style={{ padding: '20px' }}>
               
               {/* Total a Pagar Principal */}
-              <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '8px', marginBottom: '16px', textAlign: 'center', border: '1px solid #dee2e6' }}>
-                <span style={{ fontSize: '12px', color: '#6c757d', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 'bold' }}>Total a Pagar</span>
-                <h2 style={{ margin: '6px 0 2px 0', fontSize: '28px', color: '#212529' }}>${totalUSD.toFixed(2)}</h2>
+              <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '6px', marginBottom: '16px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Efectivo Esperado en Caja</p>
+                <h2 style={{ color: '#212529', margin: 0, fontSize: '22px' }}>
+                  ${(currentShift.opening_float_usd + shiftCashUSD).toFixed(2)} USD
+                </h2>
                 {currentStoreCountry === 'venezuela' && (
-                  <span style={{ fontSize: '14px', color: '#495057', fontWeight: '600' }}>
-                    Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
+                  <h3 style={{ margin: '5px 0 0 0', color: '#2b8a3e', fontSize: '18px' }}>
+                    Bs. {((currentShift.opening_float_ves || currentShift.opening_float_bs || 0) + shiftCashBs).toFixed(2)}
+                  </h3>
                 )}
               </div>
 
@@ -6110,9 +6202,26 @@ return (
                   </strong>
                 </div>
                 {changeUSD > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2b8a3e', marginTop: '8px', borderTop: '1px solid #a5d8ff', paddingTop: '8px', fontWeight: 'bold' }}>
-                    <span>Vuelto / Cambio:</span>
-                    <span>${changeUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${changeBs.toFixed(2)})`}</span>
+                  <div style={{ marginTop: '8px', borderTop: '1px solid #a5d8ff', paddingTop: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2b8a3e', fontWeight: 'bold', marginBottom: '6px' }}>
+                      <span>Vuelto / Cambio Total:</span>
+                      <span>${changeUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${changeBs.toFixed(2)})`}</span>
+                    </div>
+
+                    {currentStoreCountry === 'venezuela' && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', padding: '6px 8px', borderRadius: '4px', border: '1px solid #b2f2bb' }}>
+                        <span style={{ fontSize: '12px', color: '#2b8a3e', fontWeight: 'bold' }}>¿Cómo entregaste el vuelto?</span>
+                        <select 
+                          value={changeCurrencyType}
+                          onChange={(e) => setChangeCurrencyType(e.target.value)}
+                          style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #2b8a3e', fontSize: '12px', fontWeight: 'bold', color: '#2b8a3e', background: '#f4fce3', cursor: 'pointer' }}
+                        >
+                          <option value="USD">Efectivo USD</option>
+                          <option value="BS">Efectivo Bs (Físico en Caja)</option>
+                          <option value="PAGO_MOVIL">Pago Móvil (Vuelto Electrónico)</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -6350,7 +6459,7 @@ return (
         </div>
       )}
 
-      {showInvoiceModal && selectedInvoice && (
+{showInvoiceModal && selectedInvoice && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
           <div className="modal-content" style={{ width: '500px' }}>
             <div className="modal-header">
@@ -6439,7 +6548,7 @@ return (
                       </table>
                     </div>
 
-                    <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
+                    <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
                       {showTaxes && (
                         <>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px', color: '#495057' }}>
@@ -6477,6 +6586,55 @@ return (
                         </div>
                       )}
                     </div>
+
+                    {/* DESGLOSE DETALLADO DE PAGOS Y VUELTO (NUEVO) */}
+                    {selectedInvoice.payment_details && (
+                      <div style={{ background: '#e7f5ff', padding: '12px', borderRadius: '6px', border: '1px solid #74c0fc', marginBottom: '16px', fontSize: '13px' }}>
+                        <h4 style={{ fontSize: '13px', color: '#1864ab', marginBottom: '8px', textTransform: 'uppercase', borderBottom: '1px solid #a5d8ff', paddingBottom: '4px' }}>Desglose de Pago y Vuelto</h4>
+                        
+                        {selectedInvoice.payment_details.raw_cash_usd > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ color: '#495057' }}>Efectivo USD Recibido:</span>
+                            <strong>${selectedInvoice.payment_details.raw_cash_usd.toFixed(2)}</strong>
+                          </div>
+                        )}
+                        {selectedInvoice.payment_details.raw_cash_bs > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ color: '#495057' }}>Efectivo Bs Recibido:</span>
+                            <strong>Bs. {selectedInvoice.payment_details.raw_cash_bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong>
+                          </div>
+                        )}
+                        {selectedInvoice.payment_details.pago_movil > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ color: '#495057' }}>Pago Móvil:</span>
+                            <strong>Bs. {selectedInvoice.payment_details.pago_movil.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong>
+                          </div>
+                        )}
+                        {selectedInvoice.payment_details.zelle > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ color: '#495057' }}>Zelle:</span>
+                            <strong>${selectedInvoice.payment_details.zelle.toFixed(2)}</strong>
+                          </div>
+                        )}
+                        {selectedInvoice.payment_details.debit > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ color: '#495057' }}>Punto / Tarjeta:</span>
+                            <strong>{isVzla ? `Bs. ${selectedInvoice.payment_details.debit.toLocaleString('es-VE', { minimumFractionDigits: 2 })}` : `$${selectedInvoice.payment_details.debit.toFixed(2)}`}</strong>
+                          </div>
+                        )}
+
+                        {(selectedInvoice.payment_details.change_usd || 0) > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2b8a3e', borderTop: '1px dashed #74c0fc', paddingTop: '6px', marginTop: '6px', fontWeight: 'bold' }}>
+                            <span>Vuelto Entregado:</span>
+                            <span>
+                              ${selectedInvoice.payment_details.change_usd.toFixed(2)} 
+                              {selectedInvoice.payment_details.change_currency_type === 'BS' ? ' (En Efectivo Bs)' : 
+                               selectedInvoice.payment_details.change_currency_type === 'PAGO_MOVIL' ? ' (Por Pago Móvil)' : ' (En Efectivo USD)'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 );
               })()}
