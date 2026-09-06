@@ -139,6 +139,11 @@ function App() {
   const [bcvRate, setBcvRate] = useState(0);
   const [loadingRate, setLoadingRate] = useState(false);
   const [lastSync, setLastSync] = useState('');
+  const [rateType, setRateType] = useState(() => localStorage.getItem('fiskal_rate_type') || 'BCV');
+  const [customRateInput, setCustomRateInput] = useState(() => localStorage.getItem('fiskal_custom_rate') || '');
+  const [showRateDropdown, setShowRateDropdown] = useState(false);
+  const [tempRateType, setTempRateType] = useState('BCV');
+  const [tempCustomRate, setTempCustomRate] = useState('');
   const [loading, setLoading] = useState(false);
   const [cart, setCart] = useState([]);
   const [processing, setProcessing] = useState(false);
@@ -1407,20 +1412,20 @@ const handleSaveStore = async (e) => {
     e.preventDefault();
     if (!storeName.trim()) return;
 
-    const payload = { 
-      name: storeName.trim(), 
-      rif: storeRif.trim(),
-      document: storeRif.trim(),
-      owner_name: ownerName.trim(),
-      owner_document: ownerDoc.trim(),
-      phone: storePhone.trim(),
-      email: storeEmail.trim(),
-      address: storeAddress.trim(),
-      city: storeCity.trim(),
-      state: storeState.trim(),
-      custom_discount: parseFloat(storeCustomDiscount) || 0,
-      country: storeCountry
-    };
+const payload = { 
+  name: storeName.trim(), 
+  rif: storeRif.trim(),
+  document: storeRif.trim(),
+  owner_name: ownerName.trim(),
+  owner_document: ownerDoc.trim(),
+  phone: storePhone.trim(),
+  email: storeEmail.trim(),
+  address: storeAddress.trim(),
+  city: storeCity.trim(),
+  state: storeState.trim(),
+  custom_discount: parseFloat(storeCustomDiscount) || 0,
+  country: storeCountry
+};
 
     try {
       if (editingStore) {
@@ -2212,23 +2217,39 @@ const syncOfflineData = async () => {
     }
   };
 
-const syncBcvRate = async (storeId) => {
+const syncRate = async (type, storeId, manualValue = null) => {
     setLoadingRate(true);
     try {
+      if (type === 'CUSTOM' && manualValue !== null) {
+        const val = parseFloat(manualValue);
+        if (!isNaN(val) && val > 0) {
+          setBcvRate(val);
+          setLastSync('Tasa Manual');
+          localStorage.setItem('fiskal_cache_bcv_rate', val.toString());
+        }
+        setLoadingRate(false);
+        return;
+      }
+
       if (navigator.onLine) {
-        const response = await fetch('https://ve.dolarapi.com/v1/dolares/oficial');
-        if (!response.ok) throw new Error('Error al conectar con el servicio de tasa BCV');
+        const endpoint = type === 'EUR' 
+          ? 'https://ve.dolarapi.com/v1/euros/oficial' 
+          : 'https://ve.dolarapi.com/v1/dolares/oficial';
+          
+        const response = await fetch(endpoint);
+        if (!response.ok) throw new Error('Error al conectar con el servicio de tasas');
         
         const data = await response.json();
         const liveRate = parseFloat(data.promedio || data.price);
 
         if (liveRate && !isNaN(liveRate)) {
           setBcvRate(liveRate);
-          setLastSync(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+          const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          setLastSync(timeStr);
           localStorage.setItem('fiskal_cache_bcv_rate', liveRate.toString());
 
           if (storeId) {
-            await supabase.from('settings').upsert({ key: 'bcv_rate', value: liveRate, store_id: storeId }, { onConflict: 'key' });
+            await supabase.from('settings').upsert({ key: type === 'EUR' ? 'eur_rate' : 'bcv_rate', value: liveRate, store_id: storeId }, { onConflict: 'key' });
           }
           setLoadingRate(false);
           return;
@@ -2250,6 +2271,8 @@ const syncBcvRate = async (storeId) => {
     }
     setLoadingRate(false);
   };
+
+  const syncBcvRate = (storeId) => syncRate(rateType, storeId, rateType === 'CUSTOM' ? customRateInput : null);
 
   const handleImageSelect = async (e) => {
     const file = e.target.files[0];
@@ -2476,6 +2499,23 @@ const syncBcvRate = async (storeId) => {
   useEffect(() => {
     handleScannedCodeResultRef.current = handleScannedCodeResult;
   });
+
+  useEffect(() => {
+    const savedRateType = localStorage.getItem('fiskal_rate_type') || 'BCV';
+    const savedCustomRate = localStorage.getItem('fiskal_custom_rate') || '';
+    setRateType(savedRateType);
+    setCustomRateInput(savedCustomRate);
+
+    if (savedRateType === 'CUSTOM' && savedCustomRate) {
+      const val = parseFloat(savedCustomRate);
+      if (!isNaN(val)) {
+        setBcvRate(val);
+        setLastSync('Tasa Manual');
+      }
+    } else if (currentStoreId) {
+      syncRate(savedRateType, currentStoreId);
+    }
+  }, [currentStoreId]);
 
   useEffect(() => {
     if (showCameraScannerModal) {
@@ -3663,12 +3703,95 @@ return (
               <span>{currentShift ? `Abierta (${getCurrentRegisterName()})` : 'Caja Cerrada'}</span>
             </div>
             
-            <div className="exchange-rate-badge">
-              <span>Tasa BCV: <strong>Bs. {bcvRate ? bcvRate.toFixed(2) : '---'}</strong></span>
-              <button className={`btn-sync ${loadingRate ? 'spinning' : ''}`} onClick={() => syncBcvRate(currentStoreId)} title="Sincronizar Tasa">
+            <div className="exchange-rate-badge" style={{ position: 'relative' }}>
+              <div 
+                onClick={() => {
+                  setTempRateType(rateType);
+                  setTempCustomRate(customRateInput);
+                  setShowRateDropdown(!showRateDropdown);
+                }} 
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                title="Clic para cambiar tipo de tasa"
+              >
+                <span>
+                  {rateType === 'BCV' ? 'Dólar BCV' : rateType === 'EUR' ? 'Euro BCV' : 'Tasa Manual'}: 
+                  <strong> Bs. {bcvRate ? bcvRate.toFixed(2) : '---'}</strong>
+                </span>
+                <span style={{ fontSize: '10px' }}>▼</span>
+              </div>
+
+              <button 
+                className={`btn-sync ${loadingRate ? 'spinning' : ''}`} 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  syncRate(rateType, currentStoreId, rateType === 'CUSTOM' ? customRateInput : null); 
+                }} 
+                title="Sincronizar tasa actual"
+              >
                 <RefreshCw size={14} />
               </button>
+              
               {lastSync && <span className="sync-time">{lastSync}</span>}
+
+              {showRateDropdown && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 5px)', right: '0', background: '#ffffff', border: '1px solid #ced4da', borderRadius: '8px', padding: '14px', boxShadow: '0 8px 16px rgba(0,0,0,0.15)', zIndex: 9999, width: '250px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057', margin: 0 }}>Seleccionar Tipo de Tasa:</label>
+                  <select 
+                    value={tempRateType}
+                    onChange={(e) => setTempRateType(e.target.value)}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px', outline: 'none' }}
+                  >
+                    <option value="BCV">Dólar Oficial BCV (Automático)</option>
+                    <option value="EUR">Euro Oficial BCV (Automático)</option>
+                    <option value="CUSTOM">Tasa Personalizada / Redondeo</option>
+                  </select>
+
+                  {tempRateType === 'CUSTOM' && (
+                    <div style={{ marginTop: '2px' }}>
+                      <label style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px', display: 'block' }}>Valor personalizado (Bs.):</label>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        value={tempCustomRate} 
+                        onChange={(e) => setTempCustomRate(e.target.value)} 
+                        placeholder="Ej. 45.00" 
+                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #1c7ed6', fontSize: '14px', outline: 'none', fontWeight: 'bold' }}
+                        autoFocus
+                      />
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    <button 
+                      type="button"
+                      onClick={() => setShowRateDropdown(false)}
+                      style={{ flex: 1, padding: '8px', background: '#f1f3f5', border: '1px solid #ced4da', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold', color: '#495057' }}
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setRateType(tempRateType);
+                        setCustomRateInput(tempCustomRate);
+                        localStorage.setItem('fiskal_rate_type', tempRateType);
+                        localStorage.setItem('fiskal_custom_rate', tempCustomRate);
+                        
+                        setShowRateDropdown(false);
+                        
+                        if (tempRateType === 'CUSTOM') {
+                          syncRate('CUSTOM', currentStoreId, tempCustomRate);
+                        } else {
+                          syncRate(tempRateType, currentStoreId);
+                        }
+                      }}
+                      style={{ flex: 1, padding: '8px', background: '#2b8a3e', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      Guardar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {currentUserRole === 'system_vendor' && (
