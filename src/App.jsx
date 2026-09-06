@@ -291,38 +291,42 @@ function App() {
   const [showModifierModal, setShowModifierModal] = useState(false);
   const [productForModifiers, setProductForModifiers] = useState(null);
   const [dynamicToggles, setDynamicToggles] = useState({}); // Toggles dinámicos
+  const [isParaLlevar, setIsParaLlevar] = useState(false);
 
   const confirmAddToCartWithModifiers = () => {
-  if (!productForModifiers) return;
+    if (!productForModifiers) return;
 
-  // 1. Definimos primero el identificador único para evitar errores de referencia
-  const cartItemId = `${productForModifiers.id}_mod_${Date.now()}`;
+    const cartItemId = `${productForModifiers.id}_mod_${Date.now()}`;
 
-  // 2. Verificamos cuáles desmarcó el usuario (los que están en false)
-  const excluded = Object.keys(dynamicToggles).filter(k => !dynamicToggles[k]);
-  let customizationText = "Con todo";
-  
-  if (excluded.length > 0) {
-    customizationText = excluded.map(item => `Sin ${item}`).join(', ');
-  }
+    const excluded = Object.keys(dynamicToggles).filter(k => !dynamicToggles[k]);
+    let customizationText = "Con todo";
+    
+    if (excluded.length > 0) {
+      customizationText = excluded.map(item => `Sin ${item}`).join(', ');
+    }
 
-  // 3. Creamos el ítem para añadirlo al carrito con todas sus propiedades seguras
-  const itemToAdd = {
-    ...productForModifiers,
-    cartItemId,
-    quantity: 1,
-    customization: customizationText
+    // SI ESTÁ MARCADO "PARA LLEVAR", SE AÑADE AL TEXTO DE LA COMANDA
+    if (isParaLlevar) {
+      customizationText += " | Para Llevar";
+    }
+
+    const itemToAdd = {
+      ...productForModifiers,
+      cartItemId,
+      quantity: 1,
+      customization: customizationText
+    };
+
+    setCart([...cart, itemToAdd]);
+    setShowModifierModal(false);
+    setProductForModifiers(null);
+    setIsParaLlevar(false);
   };
-
-  setCart([...cart, itemToAdd]);
-  setShowModifierModal(false);
-  setProductForModifiers(null);
-};
 
   const handleOpenModifierModal = (prod) => {
     setProductForModifiers(prod);
+    setIsParaLlevar(false); // Siempre inicia desmarcado
     
-    // Leemos las etiquetas que guardaste en este producto específico
     let modsArray = ['Cebolla', 'Papa', 'Queso', 'Salsas'];
     if (prod.modifiers) {
       modsArray = typeof prod.modifiers === 'string' 
@@ -330,7 +334,6 @@ function App() {
         : prod.modifiers;
     }
 
-    // Por defecto todos empiezan marcados ("Con todo")
     const initialToggles = {};
     modsArray.forEach(m => {
       initialToggles[m] = true;
@@ -5835,6 +5838,18 @@ return (
                     </label>
                   ))
                 )}
+
+                {/* NUEVO CHECK: PARA LLEVAR (SEPARA DEL RESTO VISUALMENTE) */}
+                <hr style={{ border: '0', borderTop: '1px solid #dee2e6', margin: '6px 0' }} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', color: '#1c7ed6' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={isParaLlevar} 
+                    onChange={(e) => setIsParaLlevar(e.target.checked)} 
+                    style={{ width: '18px', height: '18px', cursor: 'pointer' }} 
+                  />
+                  📦 Para Llevar
+                </label>
               </div>
             </div>
             <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
