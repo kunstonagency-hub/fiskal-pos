@@ -404,6 +404,116 @@ const confirmAddToCartWithWeight = () => {
   const [newRegisterName, setNewRegisterName] = useState('');
   const [isMainRegister, setIsMainRegister] = useState(false);
 
+  // Estados para Plantillas de WhatsApp y Selectores
+  const [clientes, setClientes] = useState([]);
+  const [productos, setProductos] = useState([]);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState('');
+  const [productoSeleccionado, setProductoSeleccionado] = useState('');
+  const [plantillaActiva, setPlantillaActiva] = useState('reposicionStock');
+  // 2. Cargar clientes y productos desde Supabase al abrir la pantalla
+  useEffect(() => {
+    const cargarDatosParaWhatsApp = async () => {
+      // Cargar Clientes (solo necesitamos id, name y phone)
+      const { data: clientsData } = await supabase
+        .from('clients')
+        .select('id, name, phone');
+      
+      if (clientsData) setClientes(clientsData);
+
+      // Cargar Productos (solo necesitamos id y name)
+      const { data: productsData } = await supabase
+        .from('products')
+        .select('id, name');
+      
+      if (productsData) setProductos(productsData);
+    };
+
+    cargarDatosParaWhatsApp();
+  }, []); // Se ejecuta una sola vez al cargar
+
+  // 3. Función para enviar el mensaje por WhatsApp
+  const handleEnviarWhatsApp = () => {
+    if (!clienteSeleccionado) {
+      alert("Por favor selecciona un cliente destino.");
+      return;
+    }
+
+    // Buscar el objeto completo del cliente seleccionado
+    const cliente = clientes.find(c => c.id == clienteSeleccionado);
+    
+    if (!cliente || !cliente.phone || cliente.phone === 'EMPTY') {
+      alert("El cliente seleccionado no tiene un número de teléfono válido registrado.");
+      return;
+    }
+
+    // Buscar el producto seleccionado (si aplica)
+    const producto = productos.find(p => p.id == productoSeleccionado);
+    const nombreProducto = producto ? producto.name : "[Producto]";
+
+    // Obtener la plantilla actual
+    let mensaje = plantillas[plantillaActiva] || '';
+
+    // Reemplazar las variables dinámicas en el texto
+    mensaje = mensaje.replace(/{cliente}/g, cliente.name);
+    mensaje = mensaje.replace(/{producto}/g, nombreProducto);
+    mensaje = mensaje.replace(/{comercio}/g, "nuestra tienda"); // Puedes cambiar esto por el nombre real de tu negocio
+
+    // Formatear número para WhatsApp (adaptado para Venezuela)
+    let phoneLimpio = cliente.phone.replace(/\D/g, ''); // Elimina guiones o espacios
+    if (phoneLimpio.startsWith('0')) {
+      phoneLimpio = '58' + phoneLimpio.substring(1); // Cambia el 0 inicial por 58
+    } else if (!phoneLimpio.startsWith('58')) {
+      phoneLimpio = '58' + phoneLimpio; // Agrega 58 si no lo tiene
+    }
+
+    // Abrir WhatsApp Web/App con el mensaje pre-llenado
+    const url = `https://wa.me/${phoneLimpio}?text=${encodeURIComponent(mensaje)}`;
+    window.open(url, '_blank');
+  };
+  // 1. Nuevos estados y Referencia (agrégalos junto a tus otros useState)
+  const [mostrarNuevaPlantilla, setMostrarNuevaPlantilla] = useState(false);
+  const [nombreNuevaPlantilla, setNombreNuevaPlantilla] = useState('');
+  const textareaRef = useRef(null);
+
+  // 2. Función para crear una nueva plantilla
+  const handleCrearPlantilla = () => {
+    if (!nombreNuevaPlantilla.trim()) return;
+    
+    // Convertir el nombre a un formato de clave (ej. "Feliz Cumpleaños" -> "feliz_cumpleaños")
+    const clave = nombreNuevaPlantilla.toLowerCase().replace(/\s+/g, '_');
+    
+    setPlantillas(prev => ({
+      ...prev,
+      [clave]: ''
+    }));
+    setPlantillaActiva(clave);
+    setNombreNuevaPlantilla('');
+    setMostrarNuevaPlantilla(false);
+  };
+
+  // 3. Función para insertar la variable exactamente donde esté el cursor
+  const insertarVariable = (variable) => {
+    const textarea = textareaRef.current;
+    const textoActual = plantillas[plantillaActiva] || '';
+    
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const nuevoTexto = textoActual.substring(0, start) + variable + textoActual.substring(end);
+      
+      setPlantillas({ ...plantillas, [plantillaActiva]: nuevoTexto });
+      
+      // Regresar el foco al textarea y poner el cursor después de la variable insertada
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + variable.length, start + variable.length);
+      }, 0);
+    } else {
+      // Respaldo por si el ref falla: lo agrega al final
+      setPlantillas({ ...plantillas, [plantillaActiva]: textoActual + variable });
+    }
+  };
+
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSalesCount, setPendingSalesCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -5597,56 +5707,183 @@ return (
                 </div>
               </div>
 
-              {/* 4. Columna Derecha: Cajas y Plantillas apiladas */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                <div className="product-form-card" style={{ margin: 0 }}>
-                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#d9480f' }}>
-                    <HardDrive size={20} /> Gestión de Cajas Físicas
-                  </h3>
-                  <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '16px' }}>Agrega terminales para aperturar turnos separados.</p>
-                  <form onSubmit={handleAddRegister} className="fiskal-form">
-                    <div className="form-group">
-                      <label>Nombre de la Caja</label>
-                      <input type="text" value={newRegisterName} onChange={(e) => setNewRegisterName(e.target.value)} required placeholder="Ej. Caja Principal" />
-                    </div>
-                    <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                      <input type="checkbox" id="isMainReg" checked={isMainRegister} onChange={(e) => setIsMainRegister(e.target.checked)} style={{ width: '16px', height: '16px' }} />
-                      <label htmlFor="isMainReg" style={{ margin: 0, cursor: 'pointer', fontSize: '13px' }}>Establecer como Caja Principal</label>
-                    </div>
-                    <button type="submit" className="btn-primary" style={{ background: '#d9480f' }}>
-                      <Plus size={18} /> Registrar Caja
-                    </button>
-                  </form>
-                  <div style={{ marginTop: '24px' }}>
-                    <h4 style={{ fontSize: '13px', color: '#495057', marginBottom: '8px', borderBottom: '1px solid #dee2e6', paddingBottom: '4px' }}>Cajas Registradas</h4>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                      {registers.map(reg => (
-                        <li key={reg.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: reg.is_main ? '#fff4e6' : '#f8f9fa', marginBottom: '4px', borderRadius: '4px', fontSize: '12px', border: reg.is_main ? '1px solid #ffd8a8' : 'none' }}>
-                          <span><strong>{reg.name}</strong> {reg.is_main && <span style={{ color: '#d9480f', fontSize: '10px', marginLeft: '4px' }}>(Principal)</span>}</span>
-                          <button onClick={() => handleDeleteRegister(reg.id)} style={{ background: 'none', border: 'none', color: '#fa5252', cursor: 'pointer' }}><Trash2 size={14}/></button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
+{/* 4. Columna Derecha: Cajas y Plantillas apiladas */}
+<div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+  
+  {/* --- TARJETA 1: GESTIÓN DE CAJAS FÍSICAS --- */}
+  <div className="product-form-card" style={{ margin: 0 }}>
+    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#d9480f' }}>
+      <HardDrive size={20} /> Gestión de Cajas Físicas
+    </h3>
+    <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '16px' }}>
+      Agrega terminales para aperturar turnos separados.
+    </p>
+    <form onSubmit={handleAddRegister} className="fiskal-form">
+      <div className="form-group">
+        <label>Nombre de la Caja</label>
+        <input 
+          type="text" 
+          value={newRegisterName} 
+          onChange={(e) => setNewRegisterName(e.target.value)} 
+          required 
+          placeholder="Ej. Caja Principal" 
+        />
+      </div>
+      <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+        <input 
+          type="checkbox" 
+          id="isMainReg" 
+          checked={isMainRegister} 
+          onChange={(e) => setIsMainRegister(e.target.checked)} 
+          style={{ width: '16px', height: '16px' }} 
+        />
+        <label htmlFor="isMainReg" style={{ margin: 0, cursor: 'pointer', fontSize: '13px' }}>
+          Establecer como Caja Principal
+        </label>
+      </div>
+      <button type="submit" className="btn-primary" style={{ background: '#d9480f' }}>
+        <Plus size={18} /> Registrar Caja
+      </button>
+    </form>
+    <div style={{ marginTop: '24px' }}>
+      <h4 style={{ fontSize: '13px', color: '#495057', marginBottom: '8px', borderBottom: '1px solid #dee2e6', paddingBottom: '4px' }}>
+        Cajas Registradas
+      </h4>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {registers.map(reg => (
+          <li key={reg.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: reg.is_main ? '#fff4e6' : '#f8f9fa', marginBottom: '4px', borderRadius: '4px', fontSize: '12px', border: reg.is_main ? '1px solid #ffd8a8' : 'none' }}>
+            <span>
+              <strong>{reg.name}</strong> 
+              {reg.is_main && <span style={{ color: '#d9480f', fontSize: '10px', marginLeft: '4px' }}>(Principal)</span>}
+            </span>
+            <button onClick={() => handleDeleteRegister(reg.id)} style={{ background: 'none', border: 'none', color: '#fa5252', cursor: 'pointer' }}>
+              <Trash2 size={14}/>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </div>
 
-                <div className="product-form-card" style={{ margin: 0 }}>
-                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#2b8a3e' }}>
-                    <MessageCircle size={20} /> Plantillas de WhatsApp
-                  </h3>
-                  <div className="form-group">
-                    <label>Reposición de Stock</label>
-                    <textarea value={plantillas.reposicionStock} onChange={(e) => setPlantillas({...plantillas, reposicionStock: e.target.value})} rows="2" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '12px', outline: 'none' }} />
-                  </div>
-                  <div className="form-group">
-                    <label>Promociones</label>
-                    <textarea value={plantillas.promocionGeneral} onChange={(e) => setPlantillas({...plantillas, promocionGeneral: e.target.value})} rows="2" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '12px', outline: 'none' }} />
-                  </div>
-                  <button onClick={handleGuardarPlantillas} className="btn-primary" style={{ background: '#2b8a3e' }}>
-                    <Check size={18} /> Guardar Plantillas
-                  </button>
-                </div>
-              </div>
+  {/* --- TARJETA 2: PLANTILLAS DE WHATSAPP --- */}
+  <div className="product-form-card" style={{ margin: 0 }}>
+    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#2b8a3e', marginBottom: '16px' }}>
+      <MessageCircle size={20} /> Plantillas de WhatsApp
+    </h3>
+
+    {/* Selectores de Cliente y Producto en una sola fila (Única vez) */}
+    <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+      <div className="form-group" style={{ flex: 1, margin: 0 }}>
+        <label style={{ fontSize: '12px', marginBottom: '4px', display: 'block', fontWeight: 'bold' }}>CLIENTE DESTINO</label>
+        <select 
+          value={clienteSeleccionado} 
+          onChange={(e) => setClienteSeleccionado(e.target.value)}
+          style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '12px', outline: 'none' }}
+        >
+          <option value="">Selecciona un cliente...</option>
+          {clientes.map(cliente => (
+            <option key={cliente.id} value={cliente.id}>
+              {cliente.name} {cliente.phone ? `(${cliente.phone})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="form-group" style={{ flex: 1, margin: 0 }}>
+        <label style={{ fontSize: '12px', marginBottom: '4px', display: 'block', fontWeight: 'bold' }}>PRODUCTO A ENVIAR</label>
+        <select 
+          value={productoSeleccionado} 
+          onChange={(e) => setProductoSeleccionado(e.target.value)}
+          style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '12px', outline: 'none' }}
+        >
+          <option value="">Selecciona un producto...</option>
+          {productos.map(producto => (
+            <option key={producto.id} value={producto.id}>{producto.name}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+
+    {/* Selector de Plantilla a Editar y Botón Nueva Plantilla */}
+    <div className="form-group" style={{ marginBottom: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+        <label style={{ fontSize: '12px', fontWeight: 'bold', margin: 0 }}>PLANTILLA A EDITAR</label>
+        <button 
+          type="button"
+          onClick={() => setMostrarNuevaPlantilla(!mostrarNuevaPlantilla)} 
+          style={{ background: 'none', border: 'none', color: '#2b8a3e', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+        >
+          <Plus size={14} /> Nueva Plantilla
+        </button>
+      </div>
+
+      {mostrarNuevaPlantilla ? (
+        <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+          <input 
+            type="text" 
+            value={nombreNuevaPlantilla} 
+            onChange={(e) => setNombreNuevaPlantilla(e.target.value)} 
+            placeholder="Ej. Recordatorio de Pago" 
+            style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '12px', outline: 'none' }}
+          />
+          <button onClick={handleCrearPlantilla} type="button" className="btn-primary" style={{ background: '#2b8a3e', padding: '0 12px', fontSize: '12px' }}>Crear</button>
+          <button onClick={() => setMostrarNuevaPlantilla(false)} type="button" style={{ background: '#f8f9fa', border: '1px solid #ced4da', padding: '0 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}>Cancelar</button>
+        </div>
+      ) : (
+        <select 
+          value={plantillaActiva} 
+          onChange={(e) => setPlantillaActiva(e.target.value)}
+          style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '12px', outline: 'none', backgroundColor: '#f8f9fa' }}
+        >
+          {Object.keys(plantillas).map(clave => (
+            <option key={clave} value={clave}>
+              {clave.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+
+    {/* Área de texto única con Botones de Variables */}
+    <div className="form-group" style={{ marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+        <label style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', margin: 0 }}>CONTENIDO DE LA PLANTILLA</label>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button type="button" onClick={() => insertarVariable('{cliente}')} style={{ background: '#e9ecef', border: '1px solid #ced4da', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', cursor: 'pointer', color: '#495057' }}>+ Cliente</button>
+          <button type="button" onClick={() => insertarVariable('{producto}')} style={{ background: '#e9ecef', border: '1px solid #ced4da', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', cursor: 'pointer', color: '#495057' }}>+ Producto</button>
+          <button type="button" onClick={() => insertarVariable('{comercio}')} style={{ background: '#e9ecef', border: '1px solid #ced4da', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', cursor: 'pointer', color: '#495057' }}>+ Comercio</button>
+        </div>
+      </div>
+      <textarea 
+        ref={textareaRef}
+        value={plantillas[plantillaActiva] || ''} 
+        onChange={(e) => setPlantillas({...plantillas, [plantillaActiva]: e.target.value})} 
+        rows="4" 
+        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '12px', outline: 'none', resize: 'vertical' }} 
+        placeholder="Ejemplo: ¡Hola {cliente}! Ya tenemos el {producto} en stock."
+      />
+    </div>
+
+    {/* Botones de Acción */}
+    <div style={{ display: 'flex', gap: '10px' }}>
+      <button 
+        onClick={handleGuardarPlantillas} 
+        className="btn-primary" 
+        style={{ background: '#f8f9fa', color: '#2b8a3e', border: '1px solid #2b8a3e', width: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+      >
+        <Check size={18} /> Guardar Cambios
+      </button>
+
+      <button 
+        onClick={handleEnviarWhatsApp} 
+        className="btn-primary" 
+        style={{ background: '#25D366', color: '#fff', border: 'none', width: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+      >
+        <MessageCircle size={18} /> Enviar por WhatsApp
+      </button>
+    </div>
+  </div>
+</div>
 
             </div>
           )}
