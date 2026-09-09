@@ -6393,202 +6393,93 @@ return (
 
       {/* Modal Pagos */}
       {showPaymentModal && (
-        <div className="modal-overlay" style={{ zIndex: 10000, padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-content" style={{ width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
-            
-            {/* Header */}
-            <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid #e9ecef', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', color: '#212529' }}>
-                {settlingSale ? 'Abonar / Pagar Crédito' : 'Pasarela de Pagos'}
-              </h3>
-              <button 
-                className="btn-close-modal" 
-                onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-              >
-                <X size={20} color="#6c757d" />
-              </button>
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>{settlingSale ? 'Abonar / Pagar Crédito' : 'Pasarela de Pagos'}</h3>
+              <button className="btn-close-modal" onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}><X size={20} /></button>
             </div>
-
-            {/* Body */}
-            <div className="modal-body fiskal-form" style={{ padding: '20px' }}>
-              
-              {/* Total a Pagar Principal */}
-              <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '6px', marginBottom: '16px', border: '1px solid #dee2e6', textAlign: 'center' }}>
-                <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Efectivo Esperado en Caja</p>
-                <h2 style={{ color: '#212529', margin: 0, fontSize: '22px' }}>
-                  ${(currentShift.opening_float_usd + shiftCashUSD).toFixed(2)} USD
-                </h2>
-                {currentStoreCountry === 'venezuela' && (
-                  <h3 style={{ margin: '5px 0 0 0', color: '#2b8a3e', fontSize: '18px' }}>
-                    Bs. {((currentShift.opening_float_ves || currentShift.opening_float_bs || 0) + shiftCashBs).toFixed(2)}
-                  </h3>
-                )}
+            <div className="modal-body">
+              <div className="payment-summary-box">
+                <div>
+                  <span>Total a Pagar:</span>
+                  <h2>${totalUSD.toFixed(2)}</h2>
+                  {currentStoreCountry === 'venezuela' && (
+                    <span style={{ fontSize: '13px', color: '#6c757d', fontWeight: '600' }}>Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  )}
+                </div>
               </div>
 
-              {/* Estado del Pago (Pagado, Restante, Cambio) */}
-              <div style={{ background: '#e7f5ff', padding: '12px 16px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #74c0fc', fontSize: '13px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ color: '#495057' }}>Total Ingresado:</span>
-                  <strong style={{ color: '#1971c2' }}>${totalPaidUSD.toFixed(2)}</strong>
+              <div className="payment-status-box" style={{ marginBottom: '16px' }}>
+                <div className="status-row">
+                  <span>Total Pagado:</span>
+                  <strong>${totalPaidUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${(totalPaidUSD * bcvRate).toFixed(2)})`}</strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ color: '#495057' }}>Resta por pagar:</span>
+                <div className="status-row">
+                  <span>Restante / Falta:</span>
                   <strong style={{ color: remainingUSD > 0 ? '#fa5252' : '#2b8a3e' }}>
                     ${remainingUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${remainingBs.toFixed(2)})`}
                   </strong>
                 </div>
                 {changeUSD > 0 && (
-                  <div style={{ marginTop: '8px', borderTop: '1px solid #a5d8ff', paddingTop: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2b8a3e', fontWeight: 'bold', marginBottom: '6px' }}>
-                      <span>Vuelto / Cambio Total:</span>
-                      <span>${changeUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${changeBs.toFixed(2)})`}</span>
-                    </div>
-
-                    {currentStoreCountry === 'venezuela' && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', padding: '6px 8px', borderRadius: '4px', border: '1px solid #b2f2bb' }}>
-                        <span style={{ fontSize: '12px', color: '#2b8a3e', fontWeight: 'bold' }}>¿Cómo entregaste el vuelto?</span>
-                        <select 
-                          value={changeCurrencyType}
-                          onChange={(e) => setChangeCurrencyType(e.target.value)}
-                          style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #2b8a3e', fontSize: '12px', fontWeight: 'bold', color: '#2b8a3e', background: '#f4fce3', cursor: 'pointer' }}
-                        >
-                          <option value="USD">Efectivo USD</option>
-                          <option value="BS">Efectivo Bs (Físico en Caja)</option>
-                          <option value="PAGO_MOVIL">Pago Móvil (Vuelto Electrónico)</option>
-                        </select>
-                      </div>
-                    )}
+                  <div className="status-row highlight" style={{ color: '#2b8a3e' }}>
+                    <span>Cambio / Vuelto:</span>
+                    <strong>${changeUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${changeBs.toFixed(2)})`}</strong>
                   </div>
                 )}
               </div>
 
-              {/* Inputs de Métodos de Pago (Se adaptan automáticamente en celulares y PC) */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-                
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Efectivo ($ USD)</label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={payCashUSD} 
-                    onChange={(e) => setPayCashUSD(e.target.value)} 
-                    onBlur={updateCalculations} 
-                    placeholder="0.00" 
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
-                  />
+              <div className="payment-inputs-grid">
+                <div className="form-group">
+                  <label>Efectivo ($ USD)</label>
+                  <input type="number" step="0.01" value={payCashUSD} onChange={(e) => setPayCashUSD(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
                 </div>
-
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>
-                    {currentStoreCountry === 'panama' ? 'Yappy ($)' : currentStoreCountry === 'el_salvador' ? 'Transferencia ($)' : 'Zelle ($)'}
+                <div className="form-group">
+                  <label>
+                    {currentStoreCountry === 'panama' ? 'Yappy ($)' : currentStoreCountry === 'el_salvador' ? 'Transferencia / Chivo ($)' : 'Zelle ($)'}
                   </label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={payZelle} 
-                    onChange={(e) => setPayZelle(e.target.value)} 
-                    onBlur={updateCalculations} 
-                    placeholder="0.00" 
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
-                  />
+                  <input type="number" step="0.01" value={payZelle} onChange={(e) => setPayZelle(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
                 </div>
-
+                
                 {currentStoreCountry === 'venezuela' && (
                   <>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Efectivo (Bs)</label>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        value={payCashBs} 
-                        onChange={(e) => setPayCashBs(e.target.value)} 
-                        onBlur={updateCalculations} 
-                        placeholder="0.00" 
-                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
-                      />
+                    <div className="form-group">
+                      <label>Efectivo (Bs)</label>
+                      <input type="number" step="0.01" value={payCashBs} onChange={(e) => setPayCashBs(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
                     </div>
-
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Pago Móvil (Bs)</label>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        value={payPagoMovil} 
-                        onChange={(e) => setPayPagoMovil(e.target.value)} 
-                        onBlur={updateCalculations} 
-                        placeholder="0.00" 
-                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
-                      />
+                    <div className="form-group">
+                      <label>Pago Móvil / Transf. (Bs)</label>
+                      <input type="number" step="0.01" value={payPagoMovil} onChange={(e) => setPayPagoMovil(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
                     </div>
                   </>
                 )}
-
-                <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>
-                    Punto de Venta / Tarjeta {currentStoreCountry === 'venezuela' ? '(Bs)' : '($ USD)'}
-                  </label>
+                
+                <div className="form-group">
+                  <label>Punto de Venta / Débito {currentStoreCountry === 'venezuela' ? '(Bs)' : '($ USD)'}</label>
+                  <input type="number" step="0.01" value={payDebit} onChange={(e) => setPayDebit(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
+                </div>
+                <div className="form-group">
+                  <label>Referencia Bancaria (Opcional)</label>
                   <input 
-                    type="number" 
-                    step="0.01" 
-                    value={payDebit} 
-                    onChange={(e) => setPayDebit(e.target.value)} 
-                    onBlur={updateCalculations} 
-                    placeholder="0.00" 
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
+                    type="text" 
+                    value={paymentRef} 
+                    onChange={(e) => setPaymentRef(e.target.value)} 
+                    placeholder={currentStoreCountry === 'panama' ? 'Teléfono Yappy o Ref' : 'Últimos 4 dígitos o ref'} 
                   />
                 </div>
               </div>
-
-              <div className="form-group" style={{ margin: 0 }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Referencia Bancaria (Opcional)</label>
-                <input 
-                  type="text" 
-                  value={paymentRef} 
-                  onChange={(e) => setPaymentRef(e.target.value)} 
-                  placeholder="Últimos 4 dígitos o referencia" 
-                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
-                />
-              </div>
-
             </div>
-
-            {/* Footer */}
-            <div className="modal-footer" style={{ padding: '16px 20px', borderTop: '1px solid #e9ecef', background: '#f8f9fa', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              
-              <button 
-                type="button"
-                className="btn-primary" 
-                onClick={handleCheckoutSubmit} 
-                disabled={totalPaidUSD <= 0 || processing}
-                style={{ width: '100%', padding: '12px', fontSize: '15px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: '#212529', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
-              >
-                {processing ? 'Procesando...' : (remainingUSD > 0 ? 'Registrar Abono / Pago Parcial' : 'Confirmar y Procesar Factura')}
-              </button>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                {!settlingSale && (
-                  <button 
-                    type="button"
-                    className="btn-secondary" 
-                    onClick={handleCreditCheckout} 
-                    style={{ background: 'none', border: 'none', color: '#fa5252', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
-                  >
-                    Dejar a Crédito
-                  </button>
-                )}
-                <button 
-                  type="button"
-                  className="btn-secondary" 
-                  onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}
-                  style={{ marginLeft: 'auto', background: '#fff', border: '1px solid #ced4da', color: '#495057', padding: '6px 14px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}
-                >
-                  Cancelar
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {!settlingSale && (
+                <button className="btn-secondary" onClick={handleCreditCheckout} style={{ borderColor: '#fa5252', color: '#fa5252' }}>Pasar a Crédito</button>
+              )}
+              <div style={{ display: 'flex', gap: '8px', marginLeft: settlingSale ? 'auto' : '0' }}>
+                <button className="btn-secondary" onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}>Cancelar</button>
+                <button className="btn-primary" onClick={handleCheckoutSubmit} disabled={totalPaidUSD <= 0 || processing}>
+                  {processing ? 'Procesando...' : 'Confirmar Pago'}
                 </button>
               </div>
-
             </div>
-
           </div>
         </div>
       )}
