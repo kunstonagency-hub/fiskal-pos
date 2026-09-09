@@ -171,6 +171,48 @@ function App() {
   
   // NUEVOS ESTADOS: Máscaras y Tipos de Comercio
   const [currentStoreType, setCurrentStoreType] = useState('standard'); // 'standard' | 'restaurant'
+  // NUEVO: Imágenes publicitarias de pantalla de clientes (1920x1080)
+  const [currentStoreKdsBanners, setCurrentStoreKdsBanners] = useState([]);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+
+  const handleUploadKdsBanner = async (file) => {
+    if (!file || !currentStoreId) return;
+    setUploadingBanner(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `kds_banner_${currentStoreId}_${Date.now()}.${fileExt}`;
+      const { error: uploadErr } = await supabase.storage.from('product-images').upload(fileName, file);
+      if (uploadErr) throw uploadErr;
+
+      const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(fileName);
+      const newUrl = urlData.publicUrl;
+
+      const updatedBanners = [...currentStoreKdsBanners, newUrl];
+      const { error: dbErr } = await supabase.from('stores').update({ kds_banners: updatedBanners }).eq('id', currentStoreId);
+      if (dbErr) throw dbErr;
+
+      setCurrentStoreKdsBanners(updatedBanners);
+      alert("¡Imagen de pantalla agregada con éxito!");
+    } catch (err) {
+      alert("Error al subir imagen: " + err.message);
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
+  const handleDeleteKdsBanner = async (bannerUrl) => {
+    if (!window.confirm("¿Seguro que deseas eliminar esta imagen de la pantalla de clientes?")) return;
+    try {
+      const updatedBanners = currentStoreKdsBanners.filter(url => url !== bannerUrl);
+      const { error: dbErr } = await supabase.from('stores').update({ kds_banners: updatedBanners }).eq('id', currentStoreId);
+      if (dbErr) throw dbErr;
+
+      setCurrentStoreKdsBanners(updatedBanners);
+      alert("Imagen eliminada de la cartelera.");
+    } catch (err) {
+      alert("Error al eliminar imagen: " + err.message);
+    }
+  };
   const [adminDemoMask, setAdminDemoMask] = useState('standard'); // Para la demo del super_admin
   const [selectedRestaurantCategory, setSelectedRestaurantCategory] = useState(null); 
   
@@ -303,27 +345,56 @@ function App() {
   const [productForModifiers, setProductForModifiers] = useState(null);
   const [dynamicToggles, setDynamicToggles] = useState({}); // Toggles dinámicos
   const [isParaLlevar, setIsParaLlevar] = useState(false);
+  // NUEVO: Estados para Extras con Precio en Restaurante
+  const [productExtras, setProductExtras] = useState([]); // [{ name: 'Huevo', price: 1.0 }]
+  const [newExtraName, setNewExtraName] = useState('');
+  const [newExtraPrice, setNewExtraPrice] = useState('');
+  const [selectedExtrasToggles, setSelectedExtrasToggles] = useState({});
 
-  const confirmAddToCartWithModifiers = () => {
+const confirmAddToCartWithModifiers = () => {
     if (!productForModifiers) return;
 
     const cartItemId = `${productForModifiers.id}_mod_${Date.now()}`;
 
+    // 1. Ingredientes base excluidos
     const excluded = Object.keys(dynamicToggles).filter(k => !dynamicToggles[k]);
-    let customizationText = "Con todo";
-    
-    if (excluded.length > 0) {
-      customizationText = excluded.map(item => `Sin ${item}`).join(', ');
+    let customizationText = excluded.length > 0 ? excluded.map(item => `Sin ${item}`).join(', ') : "Con todo";
+
+    // 2. Sumar el costo de los extras seleccionados
+    let availableExtras = [];
+    if (productForModifiers.extras) {
+      availableExtras = typeof productForModifiers.extras === 'string' 
+        ? JSON.parse(productForModifiers.extras) 
+        : productForModifiers.extras;
     }
 
-    // SI ESTÁ MARCADO "PARA LLEVAR", SE AÑADE AL TEXTO DE LA COMANDA
+    let extrasTotalCost = 0;
+    const chosenExtrasText = [];
+
+    availableExtras.forEach(ex => {
+      if (selectedExtrasToggles[ex.name]) {
+        const p = parseFloat(ex.price) || 0;
+        extrasTotalCost += p;
+        chosenExtrasText.push(`+ ${ex.name} (+$${p.toFixed(2)})`);
+      }
+    });
+
+    if (chosenExtrasText.length > 0) {
+      customizationText += ` | ${chosenExtrasText.join(', ')}`;
+    }
+
+    // 3. Para llevar
     if (isParaLlevar) {
       customizationText += " | Para Llevar";
     }
 
+    const finalItemPrice = parseFloat((productForModifiers.price + extrasTotalCost).toFixed(2));
+
     const itemToAdd = {
       ...productForModifiers,
       cartItemId,
+      price: finalItemPrice,
+      basePrice: productForModifiers.price,
       quantity: 1,
       customization: customizationText
     };
@@ -332,62 +403,71 @@ function App() {
     setShowModifierModal(false);
     setProductForModifiers(null);
     setIsParaLlevar(false);
+    setSelectedExtrasToggles({});
   };
 
   const handleOpenModifierModal = (prod) => {
     setProductForModifiers(prod);
-    setIsParaLlevar(false); // Siempre inicia desmarcado
-    
+    setIsParaLlevar(false);
+
+    // Cargar ingredientes base (todos marcados por defecto)
     let modsArray = ['Cebolla', 'Papa', 'Queso', 'Salsas'];
     if (prod.modifiers) {
       modsArray = typeof prod.modifiers === 'string' 
         ? prod.modifiers.split(',').map(s => s.trim()).filter(Boolean) 
         : prod.modifiers;
     }
-
     const initialToggles = {};
-    modsArray.forEach(m => {
-      initialToggles[m] = true;
-    });
-
+    modsArray.forEach(m => { initialToggles[m] = true; });
     setDynamicToggles(initialToggles);
+
+    // Cargar extras con precio (todos DESMARCADOS por defecto)
+    let availableExtras = [];
+    if (prod.extras) {
+      try {
+        availableExtras = typeof prod.extras === 'string' ? JSON.parse(prod.extras) : prod.extras;
+      } catch(e) { availableExtras = []; }
+    }
+    const initialExtrasToggles = {};
+    availableExtras.forEach(ex => { initialExtrasToggles[ex.name] = false; });
+    setSelectedExtrasToggles(initialExtrasToggles);
+
     setShowModifierModal(true);
   };
-
-const handleOpenWeightModal = (prod) => {
-  setProductForWeight(prod);
-  setWeightValue('1');
-  setWeightUnit(prod.modifiers && prod.modifiers[0] ? prod.modifiers[0] : 'kg');
-  setShowWeightModal(true);
-};
-
-const confirmAddToCartWithWeight = () => {
-  if (!productForWeight) return;
-  const val = parseFloat(weightValue) || 0;
-  if (val <= 0) return;
-
-  let finalItemPrice = productForWeight.price;
-  let weightLabel = `${val} Kg`;
-
-  if (weightUnit === 'g') {
-    finalItemPrice = productForWeight.price * (val / 1000);
-    weightLabel = `${val} g`;
-  } else {
-    finalItemPrice = productForWeight.price * val;
-  }
-
-  const weightedItem = {
-    ...productForWeight,
-    cartItemId: `${productForWeight.id}_weight_${Date.now()}`,
-    price: finalItemPrice,
-    quantity: 1,
-    customNote: `Peso: ${weightLabel} (Base: $${productForWeight.price.toFixed(2)}/${weightUnit})`
+  const handleOpenWeightModal = (prod) => {
+    setProductForWeight(prod);
+    setWeightValue('1');
+    setWeightUnit(prod.modifiers && prod.modifiers[0] ? prod.modifiers[0] : 'kg');
+    setShowWeightModal(true);
   };
 
-  setCart([...cart, weightedItem]);
-  setShowWeightModal(false);
-  setProductForWeight(null);
-};
+  const confirmAddToCartWithWeight = () => {
+    if (!productForWeight) return;
+    const val = parseFloat(weightValue) || 0;
+    if (val <= 0) return;
+
+    let finalItemPrice = productForWeight.price;
+    let weightLabel = `${val} Kg`;
+
+    if (weightUnit === 'g') {
+      finalItemPrice = productForWeight.price * (val / 1000);
+      weightLabel = `${val} g`;
+    } else {
+      finalItemPrice = productForWeight.price * val;
+    }
+
+    const weightedItem = {
+      ...productForWeight,
+      cartItemId: `${productForWeight.id}_weight_${Date.now()}`,
+      price: finalItemPrice,
+      quantity: 1,
+      customNote: `Peso: ${weightLabel} (Base: $${productForWeight.price.toFixed(2)}/${weightUnit})`
+    };
+
+    setCart([...cart, weightedItem]);
+    setShowWeightModal(false);
+    setProductForWeight(null);
+  };
 
   const addProductModifierTag = () => {
     if (!newModifierText.trim()) return;
@@ -881,15 +961,41 @@ const fetchUserProfileAndStore = async (user) => {
 
       if (activeStoreId && activeStoreId !== 'null' && activeStoreId !== 'undefined') {
         if (navigator.onLine) {
-          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active, store_type, country, rif, document, address, tax_enabled, tax_rate, tax_inclusive, krono_enabled, lat, lng').eq('id', activeStoreId).single();
+          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active, store_type, country, rif, document, address, tax_enabled, tax_rate, tax_inclusive, krono_enabled, lat, lng, is_trial, trial_end_date, subscription_expires_at, kds_banners').eq('id', activeStoreId).single();
           
           if (storeInfo) {
             console.log("🚨 DATOS CRUDOS DE SUPABASE PARA ESTA TIENDA:", storeInfo); 
 
-            if (storeInfo.is_active === false) {
-              alert("⚠️ Este comercio se encuentra suspendido por la administración. Acceso denegado.");
-              await supabase.auth.signOut();
-              return;
+            // SEGURIDAD SAAS: Si no es Super Admin, verificar estado y fechas de corte
+            if (profile.role !== 'super_admin') {
+              const now = new Date().getTime();
+
+              // 1. Bloqueo si fue suspendido manualmente
+              if (storeInfo.is_active === false) {
+                alert("⚠️ Este comercio se encuentra suspendido por la administración. Acceso denegado.");
+                await supabase.auth.signOut();
+                return;
+              }
+
+              // 2. Bloqueo automático si el periodo de prueba gratuita expiró
+              if (storeInfo.is_trial) {
+                const trialEnd = new Date(storeInfo.trial_end_date || storeInfo.created_at).getTime();
+                if (now > trialEnd) {
+                  alert("⚠️ El periodo de prueba gratuita de 10 días para este comercio ha finalizado.\n\nPor favor, comunícate con la administración de Fiskal para activar tu suscripción formal.");
+                  await supabase.auth.signOut();
+                  return;
+                }
+              }
+
+              // 3. Bloqueo automático si la suscripción mensual venció
+              if (!storeInfo.is_trial && storeInfo.subscription_expires_at) {
+                const subEnd = new Date(storeInfo.subscription_expires_at).getTime();
+                if (now > subEnd) {
+                  alert("⚠️ La suscripción mensual de este comercio ha vencido.\n\nPor favor, contacta a soporte para realizar tu pago de renovación y reactivar el servicio.");
+                  await supabase.auth.signOut();
+                  return;
+                }
+              }
             }
             if (storeInfo.name) {
               let rawType = storeInfo.store_type ? String(storeInfo.store_type).trim().toLowerCase() : 'standard';
@@ -907,6 +1013,7 @@ const fetchUserProfileAndStore = async (user) => {
               setCurrentStoreKronoEnabled(storeInfo.krono_enabled || false);
               setCurrentStoreLat(parseFloat(storeInfo.lat) || 10.4806);
               setCurrentStoreLng(parseFloat(storeInfo.lng) || -66.9036);
+              setCurrentStoreKdsBanners(storeInfo.kds_banners || []);
               
               localStorage.setItem(`fiskal_cache_store_name_${activeStoreId}`, storeInfo.name);
               localStorage.setItem(`fiskal_cache_store_type_${activeStoreId}`, safeType);
@@ -1477,7 +1584,7 @@ const handleVendorRegisterStoreSubmit = async (e) => {
     }
   };
 
-  const handleDeleteStore = async (storeId, storeName) => {
+const handleDeleteStore = async (storeId, storeName) => {
     if (currentUserRole !== 'super_admin') {
       alert("Acceso denegado: Solo el Administrador Principal puede eliminar comercios.");
       return;
@@ -1488,13 +1595,20 @@ const handleVendorRegisterStoreSubmit = async (e) => {
     if (!window.confirm(confirmText)) return;
 
     try {
-      const { error } = await supabase.from('stores').delete().eq('id', storeId);
+      // Usamos .select() para confirmar que Supabase realmente eliminó la fila
+      const { data, error } = await supabase.from('stores').delete().eq('id', storeId).select();
       
       if (error) {
         if (error.message.includes('foreign key constraint') || error.code === '23503') {
-           throw new Error("No puedes eliminar este comercio porque tiene productos o ventas registradas. Ve a Supabase, busca las tablas relacionadas (products, sales) y activa 'Cascade Delete' en las llaves foráneas.");
+           throw new Error("No puedes eliminar este comercio porque tiene productos, cajas o ventas registradas. Debes eliminar primero sus registros o activar borrado en cascada (Cascade) en Supabase.");
         }
         throw error;
+      }
+
+      // Si RLS bloqueó el borrado, data vendrá vacío
+      if (!data || data.length === 0) {
+        alert("⚠️ La base de datos no permitió borrar el comercio. Esto ocurre porque la política RLS en Supabase no tiene habilitado el permiso de DELETE.");
+        return;
       }
       
       alert(`El comercio "${storeName}" ha sido eliminado exitosamente.`);
@@ -1504,7 +1618,19 @@ const handleVendorRegisterStoreSubmit = async (e) => {
     }
   };
 
-const handleStartEditStore = (store) => {
+const [storeIsDemo, setStoreIsDemo] = useState(false);
+
+  const handleToggleDemo = async (storeId, currentStatus) => {
+    try {
+      const { error } = await supabase.from('stores').update({ is_demo: !currentStatus }).eq('id', storeId);
+      if (error) throw error;
+      fetchAdminStores();
+    } catch (error) {
+      alert("Error al cambiar estatus de demo: " + error.message);
+    }
+  };
+
+  const handleStartEditStore = (store) => {
     setEditingStore(store);
     setStoreName(store.name || '');
     setStoreRif(store.rif || store.document || '');
@@ -1519,9 +1645,10 @@ const handleStartEditStore = (store) => {
     setStorePaidAdvance(false);
     setStoreCustomDiscount(store.custom_discount !== undefined && store.custom_discount !== null ? store.custom_discount : globalPromoDiscount);
     setNewStoreType(store.store_type || 'standard');
+    setStoreIsDemo(store.is_demo || false);
   };
 
-const resetStoreForm = () => {
+  const resetStoreForm = () => {
     setEditingStore(null);
     setStoreName('');
     setStoreRif('');
@@ -1536,26 +1663,28 @@ const resetStoreForm = () => {
     setStorePaidAdvance(false);
     setStoreCustomDiscount(0);
     setNewStoreType('standard');
+    setStoreIsDemo(false);
   };
 
-const handleSaveStore = async (e) => {
+  const handleSaveStore = async (e) => {
     e.preventDefault();
     if (!storeName.trim()) return;
 
-const payload = { 
-  name: storeName.trim(), 
-  rif: storeRif.trim(),
-  document: storeRif.trim(),
-  owner_name: ownerName.trim(),
-  owner_document: ownerDoc.trim(),
-  phone: storePhone.trim(),
-  email: storeEmail.trim(),
-  address: storeAddress.trim(),
-  city: storeCity.trim(),
-  state: storeState.trim(),
-  custom_discount: parseFloat(storeCustomDiscount) || 0,
-  country: storeCountry
-};
+    const payload = { 
+      name: storeName.trim(), 
+      rif: storeRif.trim(),
+      document: storeRif.trim(),
+      owner_name: ownerName.trim(),
+      owner_document: ownerDoc.trim(),
+      phone: storePhone.trim(),
+      email: storeEmail.trim(),
+      address: storeAddress.trim(),
+      city: storeCity.trim(),
+      state: storeState.trim(),
+      custom_discount: parseFloat(storeCustomDiscount) || 0,
+      country: storeCountry,
+      is_demo: storeIsDemo
+    };
 
     try {
       if (editingStore) {
@@ -1592,16 +1721,17 @@ const payload = {
         
         if (error) throw error;
         
-        if (storePaidAdvance && newStore) {
+        // Si NO es demo, registra ingreso a la contabilidad
+        if (storePaidAdvance && newStore && !storeIsDemo) {
           await supabase.from('saas_transactions').insert([{
             type: 'income',
             amount: priceToLock,
             description: 'Registro inicial Standalone (Suscripción): ' + newStore.name,
             store_id: newStore.id
           }]);
-          alert("¡Comercio registrado exitosamente con 40 DÍAS ACTIVOS (30 del mes + 10 de cortesía)!");
+          alert("¡Comercio registrado exitosamente con 40 DÍAS ACTIVOS!");
         } else {
-          alert("¡Comercio registrado exitosamente con 10 días de prueba!");
+          alert(storeIsDemo ? "¡Comercio de prueba (DEMO) registrado! No afectará la contabilidad." : "¡Comercio registrado exitosamente con 10 días de prueba!");
         }
       }
 
@@ -1641,33 +1771,45 @@ const payload = {
     }
 
     try {
-      const { error } = await supabase.from('stores').update({
+      const { data, error } = await supabase.from('stores').update({
         is_trial: false,
+        is_active: true,
         subscription_expires_at: newExpirationDate.toISOString()
-      }).eq('id', store.id);
+      }).eq('id', store.id).select();
 
       if (error) throw error;
+      if (!data || data.length === 0) {
+        alert("⚠️ La base de datos no permitió actualizar la tienda. Asegúrate de ejecutar el SQL en Supabase.");
+        return;
+      }
 
-      await supabase.from('saas_transactions').insert([{
-        type: 'income',
-        amount: parseFloat(finalPrice),
-        description: 'Renovación Mensual: ' + store.name,
-        store_id: store.id,
-        vendor_id: store.system_vendor_id
-      }]);
+      // Ingreso financiero SOLO si NO es demo
+      if (!store.is_demo) {
+        try {
+          await supabase.from('saas_transactions').insert([{
+            type: 'income',
+            amount: parseFloat(finalPrice),
+            description: 'Renovación Mensual: ' + store.name,
+            store_id: store.id,
+            vendor_id: store.system_vendor_id || null
+          }]);
 
-      if (store.system_vendor_id) {
-        const commissionAmount = parseFloat(finalPrice) * 0.20;
-        const { data: vData } = await supabase.from('system_vendors').select('pending_balance, total_earned').eq('id', store.system_vendor_id).single();
-        if (vData) {
-           await supabase.from('system_vendors').update({
-             pending_balance: parseFloat((vData.pending_balance || 0)) + commissionAmount,
-             total_earned: parseFloat((vData.total_earned || 0)) + commissionAmount
-           }).eq('id', store.system_vendor_id);
+          if (store.system_vendor_id) {
+            const commissionAmount = parseFloat(finalPrice) * 0.20;
+            const { data: vData } = await supabase.from('system_vendors').select('pending_balance, total_earned').eq('id', store.system_vendor_id).single();
+            if (vData) {
+               await supabase.from('system_vendors').update({
+                 pending_balance: parseFloat((vData.pending_balance || 0)) + commissionAmount,
+                 total_earned: parseFloat((vData.total_earned || 0)) + commissionAmount
+               }).eq('id', store.system_vendor_id);
+            }
+          }
+        } catch (transErr) {
+          console.warn("Aviso transacciones SaaS:", transErr.message);
         }
       }
 
-      alert(`¡Suscripción renovada exitosamente!\n\nNueva fecha de vencimiento: ${newExpirationDate.toLocaleDateString()}\nSe han ajustado los balances financieros.`);
+      alert(`¡Suscripción renovada exitosamente!\n\nNueva fecha de vencimiento: ${newExpirationDate.toLocaleDateString()}\nEl comercio ha sido reactivado.`);
       fetchAdminStores();
       fetchSystemVendors();
       fetchSaasTransactions();
@@ -2527,6 +2669,7 @@ const syncRate = async (type, storeId, manualValue = null) => {
         barcode: barcode.trim() || null,
         image_url: imageUrl,
         modifiers: productModifiers.join(', '),
+        extras: productExtras,
         show_in_krono: showInKrono,
         krono_preferential_price: kronoPrice ? parseFloat(kronoPrice) : null
       };
@@ -2577,6 +2720,16 @@ const syncRate = async (type, storeId, manualValue = null) => {
     } else {
       setProductModifiers(['Cebolla', 'Papa', 'Queso', 'Salsas']);
     }
+
+    if (prod.extras) {
+      const arr = typeof prod.extras === 'string' 
+        ? prod.extras.split(',').map(s => s.trim()).filter(Boolean) 
+        : prod.extras;
+      setProductExtras(arr);
+    } else {
+      setProductExtras([]);
+    }
+
   };
 
   const resetProductForm = () => {
@@ -2593,6 +2746,9 @@ const syncRate = async (type, storeId, manualValue = null) => {
     setNewModifierText('');
     setShowInKrono(false);
     setKronoPrice('');
+    setProductExtras([]);
+    setNewExtraName('');
+    setNewExtraPrice('');
   };
 
   const handleDeleteProduct = async (id) => {
@@ -3187,6 +3343,7 @@ const handleCheckoutSubmit = async () => {
 
     if (changeCurrencyType === 'PAGO_MOVIL' && pagoMovilRateMode === 'personalizada' && !(parseFloat(pagoMovilCustomRate) > 0)) {
       alert("Ingresa una tasa personalizada válida para el vuelto por Pago Móvil antes de confirmar.");
+      setProcessing(false);
       return;
     }
 
@@ -3197,27 +3354,29 @@ const handleCheckoutSubmit = async () => {
     const calculatedChangeUSD = parseFloat((Math.max(0, currentTotalPaidUSD - totalUSD)).toFixed(2));
     const calculatedChangeBs = parseFloat((calculatedChangeUSD * changeRateToUse).toFixed(2));
 
-    // ==========================================
-    // AJUSTE CLAVE: GESTIÓN DE VUELTO MIXTO EN CAJA
-    // ==========================================
+    // =========================================================================
+    // LÓGICA DE VUELTO REAL: Si es Pago Móvil, el efectivo en gaveta NO se toca
+    // =========================================================================
     let netCashUsdToRegister = finalCashUSD;
     let netCashBsToRegister = finalCashBs;
 
     if (calculatedChangeUSD > 0 && currentStoreCountry && currentStoreCountry.toLowerCase().includes('venezuela')) {
       if (changeCurrencyType === 'BS') {
-        // Si el vuelto se entregó en bolívares físicos de la gaveta:
+        // Salió efectivo físico en Bs de la gaveta
         netCashBsToRegister = Math.max(0, finalCashBs - calculatedChangeBs);
-      } else {
-        // Si el vuelto se entregó en dólares físicos de la gaveta:
+      } else if (changeCurrencyType === 'USD') {
+        // Salió efectivo físico en USD de la gaveta
         netCashUsdToRegister = Math.max(0, finalCashUSD - calculatedChangeUSD);
       }
+      // NOTA: Si changeCurrencyType === 'PAGO_MOVIL', NO se descuenta nada de gaveta física.
+      // Los $10 USD entran íntegros al conteo físico.
     }
 
     const paymentDetails = {
-      cash_usd: netCashUsdToRegister,       // Efectivo neto real que ingresa a la gaveta
-      cash_bs: netCashBsToRegister,         // Efectivo Bs neto real que ingresa a la gaveta
-      raw_cash_usd: finalCashUSD,           // Monto bruto entregado por el cliente
-      raw_cash_bs: finalCashBs,             // Monto bruto en Bs entregado
+      cash_usd: netCashUsdToRegister,
+      cash_bs: netCashBsToRegister,
+      raw_cash_usd: finalCashUSD,
+      raw_cash_bs: finalCashBs,
       pago_movil: finalPagoMovil,
       zelle: finalZelle,
       debit: finalDebit,
@@ -3237,74 +3396,32 @@ const handleCheckoutSubmit = async () => {
       const isFullyPaid = newBalanceDue <= 0.01;
       const updatedStatus = isFullyPaid ? 'completed' : 'credit';
 
-      if (!isOnline) {
-        if (String(settlingSale.id).startsWith('local_')) {
-          const actions = await getOfflineActions();
-          const insertAction = actions.find(a => a.type === 'INSERT_SALE' && (a.tempId === settlingSale.id || (a.saleData && a.saleData.id === settlingSale.id)));
-          if (insertAction) {
-            await clearOfflineAction(insertAction.local_id);
-            await queueOfflineAction({
-              type: 'INSERT_SALE',
-              saleData: { ...insertAction.saleData, status: updatedStatus, balance_due_usd: newBalanceDue, payment_details: paymentDetails, store_id: currentStoreId },
-              historyData: { amount_usd: netPaidForDebt, payment_details: paymentDetails, store_id: currentStoreId },
-              tempId: settlingSale.id
-            });
-          }
-        } else {
-          await queueOfflineAction({
-            type: 'UPDATE_SALE',
-            saleId: settlingSale.id,
-            updatedStatus,
-            newBalanceDue,
-            paymentDetails,
-            historyData: { amount_usd: netPaidForDebt, payment_details: paymentDetails, store_id: currentStoreId }
-          });
-        }
+      await supabase.from('payment_history').insert([{
+        sale_id: settlingSale.id,
+        amount_usd: netPaidForDebt,
+        payment_details: paymentDetails,
+        store_id: currentStoreId
+      }]);
 
-        const updatedSales = sales.map(s => {
-          if (s.id === settlingSale.id) {
-            return { ...s, status: updatedStatus, balance_due_usd: newBalanceDue, payment_details: paymentDetails };
-          }
-          return s;
-        });
-        setSales(updatedSales);
+      const { error } = await supabase
+        .from('sales')
+        .update({
+          status: updatedStatus,
+          balance_due_usd: newBalanceDue,
+          payment_details: paymentDetails
+        })
+        .eq('id', settlingSale.id)
+        .eq('store_id', currentStoreId);
 
-        alert(isFullyPaid ? "¡Estás Offline! Factura pagada localmente." : `¡Estás Offline! Abono registrado. Saldo pendiente: $${newBalanceDue.toFixed(2)}`);
+      if (error) {
+        alert("Error al procesar abono: " + error.message);
+      } else {
+        alert(isFullyPaid ? "¡Crédito pagado por completo!" : `¡Abono registrado! Saldo pendiente: $${newBalanceDue.toFixed(2)}`);
         setSettlingSale(null);
         setShowPaymentModal(false);
         setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
         setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
-        checkPendingSales();
-        setProcessing(false);
-        return;
-      } else {
-        await supabase.from('payment_history').insert([{
-          sale_id: settlingSale.id,
-          amount_usd: netPaidForDebt,
-          payment_details: paymentDetails,
-          store_id: currentStoreId
-        }]);
-
-        const { error } = await supabase
-          .from('sales')
-          .update({
-            status: updatedStatus,
-            balance_due_usd: newBalanceDue,
-            payment_details: paymentDetails
-          })
-          .eq('id', settlingSale.id)
-          .eq('store_id', currentStoreId);
-
-        if (error) {
-          alert("Error al procesar el abono: " + error.message);
-        } else {
-          alert(isFullyPaid ? "¡Crédito pagado por completo!" : `¡Abono registrado! Saldo pendiente: $${newBalanceDue.toFixed(2)}`);
-          setSettlingSale(null);
-          setShowPaymentModal(false);
-          setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
-          setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
-          fetchSales(currentStoreId);
-        }
+        fetchSales(currentStoreId);
       }
     } else {
       const newBalanceDue = parseFloat((Math.max(0, totalUSD - currentTotalPaidUSD)).toFixed(2));
@@ -3334,48 +3451,23 @@ const handleCheckoutSubmit = async () => {
         payment_details: paymentDetails
       };
 
-      const historyData = { amount_usd: actualPaidToRecord, payment_details: paymentDetails, store_id: currentStoreId };
-
-      if (!isOnline) {
-        const tempId = `local_${Date.now()}`;
-        await queueOfflineAction({ type: 'INSERT_SALE', saleData, historyData, tempId });
-
-        const currentProducts = [...products];
-        for (const item of cart) {
-          const idx = currentProducts.findIndex(p => p.id === item.id);
-          if (idx !== -1) {
-            currentProducts[idx].stock = Math.max(0, (currentProducts[idx].stock || 0) - item.quantity);
-          }
+      const { data: newSale, error } = await supabase.from('sales').insert([saleData]).select().single();
+      if (error) {
+        alert("Error al procesar el pago: " + error.message);
+      } else {
+        if (newSale && actualPaidToRecord > 0) {
+          await supabase.from('payment_history').insert([{
+            sale_id: newSale.id, amount_usd: actualPaidToRecord, payment_details: paymentDetails, store_id: currentStoreId
+          }]);
         }
-        setProducts(currentProducts);
-        setSales([{ ...saleData, id: tempId, created_at: new Date().toISOString() }, ...sales]);
-
+        await deductInventory(cart);
         setCart([]);
         setSelectedClient('Cliente General');
         setShowPaymentModal(false);
         setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
         setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
-        checkPendingSales();
-        alert(`¡Estás Offline! Venta ${invoiceNumber} guardada localmente.`);
-      } else {
-        const { data: newSale, error } = await supabase.from('sales').insert([saleData]).select().single();
-        if (error) {
-          alert("Error al procesar el pago: " + error.message);
-        } else {
-          if (newSale && actualPaidToRecord > 0) {
-            await supabase.from('payment_history').insert([{
-              sale_id: newSale.id, amount_usd: actualPaidToRecord, payment_details: paymentDetails, store_id: currentStoreId
-            }]);
-          }
-          await deductInventory(cart);
-          setCart([]);
-          setSelectedClient('Cliente General');
-          setShowPaymentModal(false);
-          setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
-          setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
-          fetchSales(currentStoreId);
-          alert(newBalanceDue > 0 ? `¡Venta ${invoiceNumber} registrada con saldo pendiente de $${newBalanceDue.toFixed(2)}!` : `¡Venta ${invoiceNumber} procesada con éxito!`);
-        }
+        fetchSales(currentStoreId);
+        alert(newBalanceDue > 0 ? `¡Venta ${invoiceNumber} registrada con crédito pendiente!` : `¡Venta ${invoiceNumber} procesada con éxito!`);
       }
     }
     setProcessing(false);
@@ -3580,17 +3672,28 @@ const currentShiftSales = currentShift ? sales.filter(s => s.shift_id === curren
   }, 0);;
 
 // Efectivo Bs en gaveta (Descuenta el vuelto en Bs físicos incluso si se pagó solo en Dólares)
+  // Efectivo Bs en gaveta física (SOLO resta si el vuelto se entregó en billetes físicos de Bs)
   const shiftCashBs = currentShiftSales.reduce((sum, s) => {
     const pd = s.payment_details || {};
     const cashIn = Number(pd.raw_cash_bs !== undefined ? pd.raw_cash_bs : (pd.cash_bs || 0));
     
-    let changeOutBs = 0;
+    // Si el vuelto fue en Pago Móvil, NO se resta de la gaveta física
+    let changeOutPhysicalBs = 0;
     if (pd.change_currency_type === 'BS') {
-      const rate = Number(pd.applied_bcv_rate || bcvRate || 1);
-      const chUsd = Number(pd.change_usd || 0);
-      changeOutBs = Number(pd.change_bs !== undefined ? pd.change_bs : (chUsd * rate));
+      changeOutPhysicalBs = Number(pd.change_bs || 0);
     }
-    return sum + (cashIn - changeOutBs);
+    return sum + (cashIn - changeOutPhysicalBs);
+  }, 0);
+
+  // NUEVO: Total de Egresos del Banco (Vueltos pagados por Pago Móvil a tasa del comercio)
+  const shiftChangePagoMovilBs = currentShiftSales.reduce((sum, s) => {
+    const pd = s.payment_details || {};
+    return sum + (pd.change_currency_type === 'PAGO_MOVIL' ? Number(pd.change_bs || 0) : 0);
+  }, 0);
+
+  const shiftChangePagoMovilUSD = currentShiftSales.reduce((sum, s) => {
+    const pd = s.payment_details || {};
+    return sum + (pd.change_currency_type === 'PAGO_MOVIL' ? Number(pd.change_usd || 0) : 0);
   }, 0);
 
   const getCurrentRegisterName = () => {
@@ -3689,8 +3792,18 @@ const currentShiftSales = currentShift ? sales.filter(s => s.shift_id === curren
   });
 
   const getSystemFinancials = () => {
-    const totalIncome = saasTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount), 0);
-    const totalExpenses = saasTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    // Obtenemos los IDs de comercios que sean DEMO para ignorarlos
+    const demoStoreIds = adminStores.filter(s => s.is_demo).map(s => s.id);
+
+    // Solo sumamos ingresos de comercios REALES
+    const totalIncome = saasTransactions
+      .filter(t => t.type === 'income' && !demoStoreIds.includes(t.store_id))
+      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+
+    const totalExpenses = saasTransactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+
     const netProfit = totalIncome - totalExpenses;
     const totalPendingComm = systemVendors.reduce((sum, v) => sum + (parseFloat(v.pending_balance) || 0), 0);
     return { totalIncome, totalExpenses, netProfit, totalPendingComm };
@@ -4129,7 +4242,9 @@ return (
 )}
 
 {activeTab === 'admin' && currentUserRole === 'super_admin' && (
-  <AdminMasterView 
+  <AdminMasterView
+    bcvRate={bcvRate}
+    saasTransactions={saasTransactions}
     currentStoreType={currentStoreType}
     setCurrentStoreType={setCurrentStoreType}
     getSystemFinancials={getSystemFinancials}
@@ -4186,12 +4301,17 @@ return (
     handleOpenOwnerModal={handleOpenOwnerModal}
     handleStartEditStore={handleStartEditStore}
     handleToggleKrono={handleToggleKrono}
+    storeIsDemo={storeIsDemo}
+    setStoreIsDemo={setStoreIsDemo}
+    handleToggleDemo={handleToggleDemo}
     handleDeleteStore={handleDeleteStore}
   />
 )}
 
 {activeTab === 'cash' && (
   <CashShiftsView 
+    shiftChangePagoMovilBs={shiftChangePagoMovilBs}
+    shiftChangePagoMovilUSD={shiftChangePagoMovilUSD}
     currentShift={currentShift}
     getCurrentRegisterName={getCurrentRegisterName}
     setShowCloseShiftModal={setShowCloseShiftModal}
@@ -4287,11 +4407,21 @@ return (
     handleOpenLabel={handleOpenLabel}
     handleStartEditProduct={handleStartEditProduct}
     handleDeleteProduct={handleDeleteProduct}
+    productExtras={productExtras}
+    setProductExtras={setProductExtras}
+    newExtraName={newExtraName}
+    setNewExtraName={setNewExtraName}
+    newExtraPrice={newExtraPrice}
+    setNewExtraPrice={setNewExtraPrice}
   />
 )}
 
 {activeTab === 'settings' && (currentUserRole === 'owner' || currentUserRole === 'super_admin' || currentUserRole === 'system_vendor') && (
-  <SettingsView 
+  <SettingsView
+    kdsBanners={currentStoreKdsBanners}
+    handleUploadKdsBanner={handleUploadKdsBanner}
+    handleDeleteKdsBanner={handleDeleteKdsBanner}
+    uploadingBanner={uploadingBanner} 
     currentStoreRif={currentStoreRif}
     setCurrentStoreRif={setCurrentStoreRif}
     currentStoreAddress={currentStoreAddress}
@@ -4353,7 +4483,13 @@ return (
 )}
 
 {activeTab === 'kds' && (
-  <KitchenDashboard sales={sales} setSales={setSales} currentStoreId={currentStoreId} />
+  <KitchenDashboard 
+  sales={sales} 
+  setSales={setSales} 
+  currentStoreId={currentStoreId}
+  currentStoreName={currentStoreName}
+  kdsBanners={currentStoreKdsBanners}
+/>
 )}
         </section>
       </main>
@@ -4367,59 +4503,138 @@ return (
       {/* GRUPO 1: OPERACIONES DE VENTA Y POS                                       */}
       {/* -------------------------------------------------------------------------- */}
 
-      {/* 1.1 MODAL: PERSONALIZAR PLATILLO (MODIFICADORES E INGREDIENTES) */}
+{/* 1.1 MODAL: PERSONALIZAR PLATILLO (CON EXTRAS Y PRECIOS) */}
       {showModifierModal && productForModifiers && (
         <div className="modal-overlay" style={{ zIndex: 10006 }}>
-          <div className="modal-content" style={{ width: '400px' }}>
-            <div className="modal-header">
-              <h3>Personalizar: {productForModifiers.name}</h3>
+          <div className="modal-content" style={{ width: '430px', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
+            <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid #f1f3f5' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#111827', margin: 0 }}>
+                Personalizar: {productForModifiers.name}
+              </h3>
               <button className="btn-close-modal" onClick={() => setShowModifierModal(false)}>
-                <X size={20} />
+                <X size={18} color="#6b7280" />
               </button>
             </div>
-            <div className="modal-body fiskal-form">
-              <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '16px' }}>
-                Por defecto se incluye <strong>"Con todo"</strong>. Desmarca los ingredientes que el cliente NO desee.
-              </p>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: '#f8f9fa', padding: '16px', borderRadius: '6px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: 'bold', color: '#2b8a3e' }}>
-                  <input type="checkbox" checked={true} disabled style={{ width: '18px', height: '18px' }} />
-                  Con todo (Base)
-                </label>
-                <hr style={{ border: '0', borderTop: '1px solid #dee2e6', margin: '2px 0' }} />
-                
-                {Object.keys(dynamicToggles).length === 0 ? (
-                  <p style={{ fontSize: '12px', color: '#6c757d', fontStyle: 'italic' }}>Este platillo no tiene modificadores configurados.</p>
-                ) : (
-                  Object.keys(dynamicToggles).map((modName, idx) => (
-                    <label key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '14px' }}>
+            
+            <div className="modal-body fiskal-form" style={{ padding: '20px', maxHeight: '70vh', overflowY: 'auto' }}>
+              
+              {/* SECCIÓN 1: INGREDIENTES BASE (CON TODO) */}
+              <div style={{ marginBottom: '16px' }}>
+                <span style={{ fontSize: '11px', color: '#6b7280', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '8px' }}>
+                  Ingredientes Base (Desmarca para quitar)
+                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#fafafa', padding: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', fontWeight: '700', color: '#16a34a' }}>
+                    <input type="checkbox" checked={true} disabled style={{ width: '16px', height: '16px' }} />
+                    Con todo (Base incluida)
+                  </label>
+                  <hr style={{ border: '0', borderTop: '1px dashed #e5e7eb', margin: '2px 0' }} />
+                  
+                  {Object.keys(dynamicToggles).map((modName, idx) => (
+                    <label key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '13px', color: '#374151' }}>
                       <input 
                         type="checkbox" 
                         checked={dynamicToggles[modName]} 
                         onChange={(e) => setDynamicToggles({ ...dynamicToggles, [modName]: e.target.checked })} 
-                        style={{ width: '18px', height: '18px', cursor: 'pointer' }} 
+                        style={{ width: '16px', height: '16px', cursor: 'pointer' }} 
                       />
                       {modName}
                     </label>
-                  ))
-                )}
+                  ))}
+                </div>
+              </div>
 
-                <hr style={{ border: '0', borderTop: '1px solid #dee2e6', margin: '6px 0' }} />
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', color: '#1c7ed6' }}>
+              {/* SECCIÓN 2: EXTRAS / ADICIONALES CON PRECIO (DESMARCADOS POR DEFECTO) */}
+              {(() => {
+                let availableExtras = [];
+                if (productForModifiers.extras) {
+                  try {
+                    availableExtras = typeof productForModifiers.extras === 'string' ? JSON.parse(productForModifiers.extras) : productForModifiers.extras;
+                  } catch(e) { availableExtras = []; }
+                }
+
+                if (availableExtras.length === 0) return null;
+
+                return (
+                  <div style={{ marginBottom: '16px' }}>
+                    <span style={{ fontSize: '11px', color: '#111827', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '8px' }}>
+                      ⭐ Adicionales / Extras (Opcionales con costo)
+                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#f9fafb', padding: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                      {availableExtras.map((ex, idx) => {
+                        const isChecked = !!selectedExtrasToggles[ex.name];
+                        return (
+                          <label key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={isChecked} 
+                                onChange={(e) => setSelectedExtrasToggles({ ...selectedExtrasToggles, [ex.name]: e.target.checked })} 
+                                style={{ width: '16px', height: '16px', cursor: 'pointer' }} 
+                              />
+                              <span style={{ fontSize: '13px', fontWeight: isChecked ? '700' : '500', color: isChecked ? '#111827' : '#4b5563' }}>
+                                + {ex.name}
+                              </span>
+                            </div>
+                            <strong style={{ fontSize: '13px', color: '#16a34a' }}>
+                              +${Number(ex.price).toFixed(2)}
+                            </strong>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* SECCIÓN 3: PARA LLEVAR */}
+              <div style={{ background: '#f9fafb', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: '700', color: '#111827', margin: 0 }}>
                   <input 
                     type="checkbox" 
                     checked={isParaLlevar} 
                     onChange={(e) => setIsParaLlevar(e.target.checked)} 
-                    style={{ width: '18px', height: '18px', cursor: 'pointer' }} 
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }} 
                   />
-                  📦 Para Llevar
+                  📦 Empacar Para Llevar
                 </label>
               </div>
+
+              {/* RESUMEN DEL PRECIO FINAL EN VIVO */}
+              {(() => {
+                let availableExtras = [];
+                if (productForModifiers.extras) {
+                  try {
+                    availableExtras = typeof productForModifiers.extras === 'string' ? JSON.parse(productForModifiers.extras) : productForModifiers.extras;
+                  } catch(e) { availableExtras = []; }
+                }
+
+                let extrasSum = 0;
+                availableExtras.forEach(ex => {
+                  if (selectedExtrasToggles[ex.name]) extrasSum += (parseFloat(ex.price) || 0);
+                });
+
+                const finalTotal = (productForModifiers.price || 0) + extrasSum;
+
+                return (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', padding: '12px 14px', background: '#f3f4f6', borderRadius: '8px' }}>
+                    <span style={{ fontSize: '12px', color: '#4b5563', fontWeight: '600' }}>
+                      Precio Base: ${productForModifiers.price.toFixed(2)} {extrasSum > 0 && `(Extras: +$${extrasSum.toFixed(2)})`}
+                    </span>
+                    <strong style={{ fontSize: '18px', fontWeight: '900', color: '#111827' }}>
+                      ${finalTotal.toFixed(2)} USD
+                    </strong>
+                  </div>
+                );
+              })()}
+
             </div>
-            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowModifierModal(false)}>Cancelar</button>
-              <button type="button" className="btn-primary" onClick={confirmAddToCartWithModifiers} style={{ background: '#2b8a3e' }}>
+
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', padding: '14px 20px', background: '#fafafa', borderTop: '1px solid #f1f3f5' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowModifierModal(false)} style={{ border: '1px solid #d1d5db', color: '#4b5563' }}>
+                Cancelar
+              </button>
+              <button type="button" className="btn-primary" onClick={confirmAddToCartWithModifiers} style={{ background: '#111827', color: '#ffffff', border: 'none', fontWeight: '700', padding: '10px 18px' }}>
                 Añadir a la Comanda
               </button>
             </div>
@@ -4482,48 +4697,156 @@ return (
         </div>
       )}
 
-      {/* 1.3 MODAL: PASARELA DE COBRO Y PAGOS MIXTOS */}
+      {/* 1.3 MODAL: PASARELA DE COBRO Y PAGOS MIXTOS (MINIMALISTA CON VERDE FISKAL Y ROJO PASTEL) */}
       {showPaymentModal && (
         <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3>{settlingSale ? 'Abonar / Pagar Crédito' : 'Pasarela de Pagos'}</h3>
+          <div className="modal-content" style={{ width: '520px', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 16px 36px rgba(0,0,0,0.12)' }}>
+            <div className="modal-header" style={{ borderBottom: '1px solid #f1f3f5', padding: '16px 20px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#111827', margin: 0 }}>
+                {settlingSale ? 'Abonar / Pagar Crédito' : 'Pasarela de Pagos'}
+              </h3>
               <button className="btn-close-modal" onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}>
-                <X size={20} />
+                <X size={18} color="#6b7280" />
               </button>
             </div>
-            <div className="modal-body">
-              <div className="payment-summary-box">
-                <div>
-                  <span>Total a Pagar:</span>
-                  <h2>${totalUSD.toFixed(2)}</h2>
+            
+            <div className="modal-body" style={{ padding: '20px' }}>
+              {/* Resumen Total */}
+              <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <span style={{ fontSize: '11px', color: '#6b7280', textTransform: 'uppercase', fontWeight: '800', letterSpacing: '0.5px' }}>Total a Pagar</span>
+                <div style={{ textAlign: 'right' }}>
+                  <h2 style={{ fontSize: '24px', fontWeight: '900', color: '#111827', margin: 0 }}>${totalUSD.toFixed(2)}</h2>
                   {currentStoreCountry === 'venezuela' && (
-                    <span style={{ fontSize: '13px', color: '#6c757d', fontWeight: '600' }}>
+                    <span style={{ fontSize: '13px', color: '#6b7280', fontWeight: '600' }}>
                       Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   )}
                 </div>
               </div>
 
-              <div className="payment-status-box" style={{ marginBottom: '16px' }}>
-                <div className="status-row">
-                  <span>Total Pagado:</span>
-                  <strong>${totalPaidUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${(totalPaidUSD * bcvRate).toFixed(2)})`}</strong>
+              {/* Estado de Pagos con los toques de color precisos */}
+              <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#4b5563' }}>
+                  <span>Total Ingresado:</span>
+                  <strong style={{ color: totalPaidUSD >= totalUSD ? '#16a34a' : '#111827' }}>
+                    ${totalPaidUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${(totalPaidUSD * bcvRate).toFixed(2)})`}
+                  </strong>
                 </div>
-                <div className="status-row">
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#4b5563' }}>
                   <span>Restante / Falta:</span>
-                  <strong style={{ color: remainingUSD > 0 ? '#fa5252' : '#2b8a3e' }}>
+                  <strong style={{ color: remainingUSD > 0 ? '#e05d5d' : '#9ca3af' }}>
                     ${remainingUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${remainingBs.toFixed(2)})`}
                   </strong>
                 </div>
+
                 {changeUSD > 0 && (
-                  <div className="status-row highlight" style={{ color: '#2b8a3e' }}>
-                    <span>Cambio / Vuelto:</span>
-                    <strong>${changeUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${changeBs.toFixed(2)})`}</strong>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', borderTop: '1px dashed #e5e7eb', paddingTop: '8px', marginTop: '2px' }}>
+                    <span style={{ fontWeight: '700', color: '#111827' }}>Cambio / Vuelto:</span>
+                    <strong style={{ fontSize: '18px', fontWeight: '900', color: '#16a34a' }}>
+                      ${changeUSD.toFixed(2)}
+                    </strong>
                   </div>
                 )}
               </div>
 
+              {/* SELECTOR DE VUELTO / CAMBIO */}
+              {changeUSD > 0 && currentStoreCountry === 'venezuela' && (
+                <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '14px', marginBottom: '16px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '800', color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', display: 'block' }}>
+                    ¿Cómo vas a entregar el Vuelto de ${changeUSD.toFixed(2)}?
+                  </label>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginBottom: '10px' }}>
+                    {[
+                      { id: 'USD', label: '💵 Efectivo USD' },
+                      { id: 'BS', label: '💵 Efectivo Bs' },
+                      { id: 'PAGO_MOVIL', label: '📱 Pago Móvil' }
+                    ].map(btn => {
+                      const active = changeCurrencyType === btn.id;
+                      return (
+                        <button
+                          key={btn.id}
+                          type="button"
+                          onClick={() => setChangeCurrencyType(btn.id)}
+                          style={{
+                            padding: '9px 4px', fontSize: '11px', borderRadius: '6px', fontWeight: '700', cursor: 'pointer',
+                            border: active ? '1px solid #111827' : '1px solid #d1d5db',
+                            background: active ? '#111827' : '#ffffff',
+                            color: active ? '#ffffff' : '#374151',
+                            transition: 'all 0.15s'
+                          }}
+                        >
+                          {btn.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* AJUSTES DE TASA PARA PAGO MÓVIL */}
+                  {changeCurrencyType === 'PAGO_MOVIL' && (
+                    <div style={{ background: '#ffffff', padding: '12px', borderRadius: '6px', border: '1px solid #e5e7eb', marginTop: '8px' }}>
+                      <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={() => { setPagoMovilRateMode('actual'); setPagoMovilCustomRate(''); }}
+                          style={{
+                            flex: 1, padding: '7px', fontSize: '11px', borderRadius: '4px', cursor: 'pointer', fontWeight: '700',
+                            border: pagoMovilRateMode === 'actual' ? '1px solid #111827' : '1px solid #e5e7eb',
+                            background: pagoMovilRateMode === 'actual' ? '#111827' : '#f9fafb',
+                            color: pagoMovilRateMode === 'actual' ? '#ffffff' : '#4b5563'
+                          }}
+                        >
+                          Tasa BCV ({bcvRate ? bcvRate.toFixed(2) : '---'})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setPagoMovilRateMode('personalizada'); setPagoMovilCustomRate(String(Math.round(bcvRate * 1.05))); }}
+                          style={{
+                            flex: 1, padding: '7px', fontSize: '11px', borderRadius: '4px', cursor: 'pointer', fontWeight: '700',
+                            border: pagoMovilRateMode === 'personalizada' ? '1px solid #111827' : '1px solid #e5e7eb',
+                            background: pagoMovilRateMode === 'personalizada' ? '#111827' : '#f9fafb',
+                            color: pagoMovilRateMode === 'personalizada' ? '#ffffff' : '#4b5563'
+                          }}
+                        >
+                          ⭐ Tasa Preferencial
+                        </button>
+                      </div>
+
+                      {pagoMovilRateMode === 'personalizada' && (
+                        <div style={{ marginBottom: '8px' }}>
+                          <label style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '2px' }}>Tasa acordada (Bs/$):</label>
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            value={pagoMovilCustomRate} 
+                            onChange={(e) => setPagoMovilCustomRate(e.target.value)} 
+                            placeholder="Ej. 850.00"
+                            style={{ width: '100%', padding: '7px 10px', borderRadius: '4px', border: '1px solid #111827', fontWeight: '700', fontSize: '13px', outline: 'none' }} 
+                            autoFocus
+                          />
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1px dashed #f3f4f6' }}>
+                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#374151' }}>Monto a transferir por banco:</span>
+                        <strong style={{ fontSize: '16px', fontWeight: '900', color: '#16a34a' }}>
+                          Bs. {pagoMovilChangeBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </strong>
+                      </div>
+                    </div>
+                  )}
+
+                  {changeCurrencyType === 'USD' && (
+                    <span style={{ fontSize: '11px', color: '#6b7280', display: 'block' }}>Entregarás <strong>${changeUSD.toFixed(2)} USD</strong> en billetes físicos de la gaveta.</span>
+                  )}
+                  {changeCurrencyType === 'BS' && (
+                    <span style={{ fontSize: '11px', color: '#6b7280', display: 'block' }}>Entregarás <strong>Bs. {changeBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong> en billetes físicos de la gaveta.</span>
+                  )}
+                </div>
+              )}
+
+              {/* Inputs de Cobro */}
               <div className="payment-inputs-grid">
                 <div className="form-group">
                   <label>Efectivo ($ USD)</label>
@@ -4559,18 +4882,23 @@ return (
                     type="text" 
                     value={paymentRef} 
                     onChange={(e) => setPaymentRef(e.target.value)} 
-                    placeholder={currentStoreCountry === 'panama' ? 'Teléfono Yappy o Ref' : 'Últimos 4 dígitos o ref'} 
+                    placeholder="Últimos 4 dígitos o ref" 
                   />
                 </div>
               </div>
             </div>
-            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', background: '#f9fafb', borderTop: '1px solid #f1f3f5' }}>
               {!settlingSale && (
-                <button className="btn-secondary" onClick={handleCreditCheckout} style={{ borderColor: '#fa5252', color: '#fa5252' }}>Pasar a Crédito</button>
+                <button className="btn-secondary" onClick={handleCreditCheckout} style={{ border: '1px solid #e05d5d', color: '#e05d5d', fontWeight: '700' }}>
+                  Pasar a Crédito
+                </button>
               )}
               <div style={{ display: 'flex', gap: '8px', marginLeft: settlingSale ? 'auto' : '0' }}>
-                <button className="btn-secondary" onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}>Cancelar</button>
-                <button className="btn-primary" onClick={handleCheckoutSubmit} disabled={totalPaidUSD <= 0 || processing}>
+                <button className="btn-secondary" onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }} style={{ border: '1px solid #d1d5db', color: '#4b5563' }}>
+                  Cancelar
+                </button>
+                <button className="btn-primary" onClick={handleCheckoutSubmit} disabled={totalPaidUSD <= 0 || processing} style={{ background: '#111827', color: '#ffffff', border: 'none', fontWeight: '700', padding: '10px 20px' }}>
                   {processing ? 'Procesando...' : 'Confirmar Pago'}
                 </button>
               </div>

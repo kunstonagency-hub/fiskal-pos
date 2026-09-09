@@ -25,6 +25,12 @@ function ProductsView({
   setNewModifierText,
   addProductModifierTag,
   removeProductModifierTag,
+  productExtras,
+  setProductExtras,
+  newExtraName,
+  setNewExtraName,
+  newExtraPrice,
+  setNewExtraPrice,
   currentStoreKronoEnabled,
   showInKrono,
   setShowInKrono,
@@ -37,6 +43,30 @@ function ProductsView({
   handleStartEditProduct,
   handleDeleteProduct
 }) {
+
+  const handleAddExtraTag = () => {
+    if (!newExtraName.trim() || !newExtraPrice) return;
+    const priceNum = parseFloat(newExtraPrice);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      alert("Ingresa un precio válido para el adicional");
+      return;
+    }
+
+    const exists = (productExtras || []).some(e => e.name.toLowerCase() === newExtraName.trim().toLowerCase());
+    if (exists) {
+      alert("Ya agregaste este extra a la lista");
+      return;
+    }
+
+    setProductExtras([...(productExtras || []), { name: newExtraName.trim(), price: priceNum }]);
+    setNewExtraName('');
+    setNewExtraPrice('');
+  };
+
+  const handleRemoveExtraTag = (extraNameToRemove) => {
+    setProductExtras((productExtras || []).filter(e => e.name !== extraNameToRemove));
+  };
+
   return (
     <div className="products-layout">
       <div className="product-form-card">
@@ -132,42 +162,95 @@ function ProductsView({
             </div>
           )}
 
-          {/* ETIQUETAS DINÁMICAS (MODO RESTAURANTE) */}
+          {/* ETIQUETAS DE INGREDIENTES BASE (CON TODO) */}
           {currentStoreType === 'restaurant' && (
-            <div className="form-group" style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px', border: '1px solid #ced4da', marginBottom: '16px' }}>
-              <label style={{ fontWeight: 'bold', color: '#2b8a3e', marginBottom: '6px', display: 'block', fontSize: '13px' }}>
-                Etiquetas de Modificación (Ingredientes)
+            <div className="form-group" style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '16px' }}>
+              <label style={{ fontWeight: '800', color: '#111827', marginBottom: '6px', display: 'block', fontSize: '12px', textTransform: 'uppercase' }}>
+                1. Ingredientes Base (Vienen incluidos "Con todo")
               </label>
               <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
                 <input 
                   type="text" 
                   value={newModifierText} 
                   onChange={(e) => setNewModifierText(e.target.value)} 
-                  placeholder="Ej. Cebolla, Queso, Salsas..." 
-                  style={{ flex: 1, padding: '6px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da' }}
+                  placeholder="Ej. Cebolla, Papa, Salsas..." 
+                  style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da' }}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addProductModifierTag(); } }}
                 />
                 <button 
                   type="button" 
                   onClick={addProductModifierTag} 
-                  style={{ background: '#2b8a3e', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                  style={{ background: '#111827', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
                 >
-                  + Añadir etiqueta
+                  + Agregar
                 </button>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {productModifiers.map((mod, idx) => (
-                  <span key={idx} style={{ background: '#e9ecef', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid #dee2e6' }}>
+                  <span key={idx} style={{ background: '#e9ecef', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid #dee2e6', color: '#212529' }}>
                     {mod}
                     <button 
                       type="button" 
                       onClick={() => removeProductModifierTag(mod)} 
-                      style={{ background: 'none', border: 'none', color: '#fa5252', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', padding: 0, lineHeight: 1 }}
+                      style={{ background: 'none', border: 'none', color: '#e05d5d', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', padding: 0, lineHeight: 1 }}
                     >
                       ×
                     </button>
                   </span>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* NUEVA SECCIÓN: EXTRAS CON PRECIO (DESMARCADOS POR DEFECTO) */}
+          {currentStoreType === 'restaurant' && (
+            <div className="form-group" style={{ background: '#f9fafb', padding: '14px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '16px' }}>
+              <label style={{ fontWeight: '800', color: '#16a34a', marginBottom: '6px', display: 'block', fontSize: '12px', textTransform: 'uppercase' }}>
+                ⭐ 2. Adicionales / Extras con Precio (Opcionales con costo)
+              </label>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '6px', marginBottom: '8px' }}>
+                <input 
+                  type="text" 
+                  value={newExtraName} 
+                  onChange={(e) => setNewExtraName(e.target.value)} 
+                  placeholder="Nombre: Ej. Huevo, Tocineta" 
+                  style={{ padding: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da' }}
+                />
+                <input 
+                  type="number"
+                  step="0.01" 
+                  value={newExtraPrice} 
+                  onChange={(e) => setNewExtraPrice(e.target.value)} 
+                  placeholder="Precio ($)" 
+                  style={{ padding: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da' }}
+                />
+                <button 
+                  type="button" 
+                  onClick={handleAddExtraTag} 
+                  style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  + Añadir Extra
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {(productExtras || []).length === 0 ? (
+                  <span style={{ fontSize: '11px', color: '#9ca3af', fontStyle: 'italic' }}>No hay extras con precio configurados para este platillo.</span>
+                ) : (
+                  productExtras.map((ex, idx) => (
+                    <span key={idx} style={{ background: '#ebfbee', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #b2f2bb', color: '#16a34a', fontWeight: '700' }}>
+                      {ex.name}: +${Number(ex.price).toFixed(2)}
+                      <button 
+                        type="button" 
+                        onClick={() => handleRemoveExtraTag(ex.name)} 
+                        style={{ background: 'none', border: 'none', color: '#e05d5d', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', padding: 0, lineHeight: 1 }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -194,7 +277,7 @@ function ProductsView({
             {editingProduct && (
               <button type="button" className="btn-secondary" onClick={resetProductForm} style={{ flex: 1 }}>Cancelar</button>
             )}
-            <button type="submit" className="btn-primary" disabled={loading} style={{ flex: 2 }}>
+            <button type="submit" className="btn-primary" disabled={loading} style={{ flex: 2, background: '#111827', color: '#fff', border: 'none', fontWeight: '700' }}>
               <Package size={18} /> {loading ? 'Guardando...' : (editingProduct ? 'Actualizar' : 'Guardar')}
             </button>
           </div>
