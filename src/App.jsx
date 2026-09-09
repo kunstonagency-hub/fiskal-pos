@@ -166,6 +166,7 @@ function App() {
   const [currentStoreName, setCurrentStoreName] = useState('Fiskal Store');
 
   const [currentStoreCountry, setCurrentStoreCountry] = useState('venezuela'); // 'venezuela' | 'panama' | 'el_salvador'
+  const isVzla = (currentStoreCountry || 'venezuela').trim().toLowerCase().includes('venezuela'); // Detección unificada y blindada de Venezuela para todo el sistema
   const [storeCountry, setStoreCountry] = useState('venezuela'); // Para formularios de configuración/admin
   const [vendorStoreCountry, setVendorStoreCountry] = useState('venezuela');
   
@@ -1000,7 +1001,10 @@ const fetchUserProfileAndStore = async (user) => {
             if (storeInfo.name) {
               let rawType = storeInfo.store_type ? String(storeInfo.store_type).trim().toLowerCase() : 'standard';
               const safeType = rawType === 'restaurant' ? 'restaurant' : 'standard';
-              const safeCountry = storeInfo.country || 'venezuela';
+              
+              // Normalización unificada de país (evita discrepancias entre mayúsculas o espacios)
+              const rawCountry = (storeInfo.country || 'venezuela').trim().toLowerCase();
+              const safeCountry = rawCountry.includes('panama') ? 'panama' : rawCountry.includes('salvador') ? 'el_salvador' : 'venezuela';
               
               setCurrentStoreName(storeInfo.name);
               setCurrentStoreType(safeType);
