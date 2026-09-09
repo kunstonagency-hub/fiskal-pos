@@ -12,6 +12,17 @@ import './App.css';
 import logoDark from './assets/logo_2.png'; 
 import logoLight from './assets/logo.svg'; 
 import DeliveryDashboard from './components/DeliveryDashboard';
+import KitchenDashboard from './components/KitchenDashboard';
+import ClientsView from './components/ClientsView';
+import ProductsView from './components/ProductsView';
+import CashShiftsView from './components/CashShiftsView';
+import SalesHistoryView from './components/SalesHistoryView';
+import VendorPortalView from './components/VendorPortalView';
+import AdminMasterView from './components/AdminMasterView';
+import SettingsView from './components/SettingsView';
+import PosTerminalView from './components/PosTerminalView';
+
+
 
 const customIcon = new L.Icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -571,7 +582,9 @@ const confirmAddToCartWithWeight = () => {
   const [payZelle, setPayZelle] = useState('');
   const [payDebit, setPayDebit] = useState('');
   const [paymentRef, setPaymentRef] = useState('');
-  const [changeCurrencyType, setChangeCurrencyType] = useState('USD'); // 'USD' o 'BS'
+  const [changeCurrencyType, setChangeCurrencyType] = useState('USD'); // 'USD', 'BS' o 'PAGO_MOVIL'
+  const [pagoMovilRateMode, setPagoMovilRateMode] = useState('actual'); // 'actual' o 'personalizada'
+  const [pagoMovilCustomRate, setPagoMovilCustomRate] = useState('');
 
   const [calcPayments, setCalcPayments] = useState({
     cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0
@@ -956,15 +969,18 @@ const fetchUserProfileAndStore = async (user) => {
     }
   };
 
-  const handleCreateSystemVendor = async (e) => {
+const handleCreateSystemVendor = async (e) => {
     e.preventDefault();
     if (!newVendorName.trim() || !newVendorEmail.trim()) return;
+
+    // Genera una contraseña aleatoria única y segura (Ej. Fk8#m2Px!)
+    const tempPassword = 'Fk*' + Math.random().toString(36).slice(-6) + '!9';
 
     setCreatingVendor(true);
     try {
       const { data: authData, error: signUpErr } = await supabase.auth.signUp({
         email: newVendorEmail.trim(),
-        password: 'Password123*',
+        password: tempPassword,
         options: {
           emailRedirectTo: window.location.origin
         }
@@ -993,7 +1009,7 @@ const fetchUserProfileAndStore = async (user) => {
         if (profErr) throw profErr;
       }
 
-      alert("¡Vendedor de Sistema registrado con éxito!\n\nCredenciales de acceso:\nCorreo: " + newVendorEmail + "\nContraseña Temporal: Password123*");
+      alert(`¡Vendedor de Sistema registrado con éxito!\n\nCredenciales de acceso generadas:\nCorreo: ${newVendorEmail}\nContraseña Temporal Única: ${tempPassword}\n\n(Copia esta contraseña y compártela con el vendedor)`);
       setNewVendorName('');
       setNewVendorEmail('');
       setNewVendorPhone('');
@@ -2936,6 +2952,20 @@ const updateCalculations = () => {
   const changeUSD = Math.max(0, parseFloat((totalPaidUSD - totalUSD).toFixed(2)));
   const changeBs = changeUSD * bcvRate;
 
+  // Tasa a usar específicamente para el vuelto por Pago Móvil: la actual, o una
+  // personalizada para esta transacción puntual (no afecta el resto de la venta).
+  const pagoMovilChangeRate = (changeCurrencyType === 'PAGO_MOVIL' && pagoMovilRateMode === 'personalizada' && parseFloat(pagoMovilCustomRate) > 0)
+    ? parseFloat(pagoMovilCustomRate)
+    : bcvRate;
+  const pagoMovilChangeBs = changeUSD * pagoMovilChangeRate;
+
+  useEffect(() => {
+    if (changeUSD <= 0) {
+      setPagoMovilRateMode('actual');
+      setPagoMovilCustomRate('');
+    }
+  }, [changeUSD]);
+
   const deductInventory = async (itemsToDeduct) => {
     for (const item of itemsToDeduct) {
       const currentProd = products.find(p => p.id === item.id);
@@ -3132,6 +3162,11 @@ const handleCheckoutSubmit = async () => {
       return;
     }
 
+    if (currentStoreCountry && currentStoreCountry.toLowerCase().includes('venezuela') && (!bcvRate || bcvRate <= 0)) {
+      alert("No se puede cobrar: la tasa de cambio (BCV) no está configurada o es inválida en este momento. Ve a Ajustes, sincroniza o ingresa la tasa manualmente, y vuelve a intentarlo.");
+      return;
+    }
+
     const finalCashUSD = parseFloat(payCashUSD) || 0;
     const finalCashBs = parseFloat(payCashBs) || 0;
     const finalPagoMovil = parseFloat(payPagoMovil) || 0;
@@ -3150,8 +3185,17 @@ const handleCheckoutSubmit = async () => {
     const clientData = clients.find(c => c.name === selectedClient);
     const clientDocToSave = clientData ? clientData.document : (settlingSale?.payment_details?.client_document || '');
 
+    if (changeCurrencyType === 'PAGO_MOVIL' && pagoMovilRateMode === 'personalizada' && !(parseFloat(pagoMovilCustomRate) > 0)) {
+      alert("Ingresa una tasa personalizada válida para el vuelto por Pago Móvil antes de confirmar.");
+      return;
+    }
+
+    const changeRateToUse = (changeCurrencyType === 'PAGO_MOVIL' && pagoMovilRateMode === 'personalizada')
+      ? parseFloat(pagoMovilCustomRate)
+      : (bcvRate || 1);
+
     const calculatedChangeUSD = parseFloat((Math.max(0, currentTotalPaidUSD - totalUSD)).toFixed(2));
-    const calculatedChangeBs = parseFloat((calculatedChangeUSD * (bcvRate || 1)).toFixed(2));
+    const calculatedChangeBs = parseFloat((calculatedChangeUSD * changeRateToUse).toFixed(2));
 
     // ==========================================
     // AJUSTE CLAVE: GESTIÓN DE VUELTO MIXTO EN CAJA
@@ -3181,6 +3225,7 @@ const handleCheckoutSubmit = async () => {
       change_usd: calculatedChangeUSD,
       change_bs: calculatedChangeBs,
       change_currency_type: changeCurrencyType || 'USD',
+      change_rate_used: changeRateToUse,
       applied_bcv_rate: bcvRate,
       client_document: clientDocToSave
     };
@@ -4013,2115 +4058,324 @@ return (
         </header>
 
 <section className="content-area">
-           {activeTab === 'pos' && (
-            <div className="pos-grid">
-              <div className="products-catalog">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                  <h3>{currentStoreType === 'restaurant' ? 'Menú de Platillos' : 'Catálogo Rápido'}</h3>
-                  <form onSubmit={handleBarcodeSubmit} style={{ display: 'flex', gap: '6px', width: '300px' }}>
-                    <div style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center' }}>
-                      <Barcode size={16} style={{ position: 'absolute', left: '10px', top: '10px', color: '#6c757d', zIndex: 2 }} />
-                      <input 
-                        ref={barcodeInputRef}
-                        type="text" 
-                        value={barcodeInput}
-                        onChange={(e) => setBarcodeInput(e.target.value)}
-                        placeholder="Escanear código o SKU..."
-                        style={{ width: '100%', padding: '8px 38px 8px 34px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', outline: 'none' }}
-                        autoFocus
-                      />
-                      <button 
-                        type="button" 
-                        onClick={startCameraScanner}
-                        title="Escanear con Cámara"
-                        style={{ position: 'absolute', right: '4px', background: '#212529', color: '#fff', border: 'none', borderRadius: '4px', padding: '5px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <Camera size={15} />
-                      </button>
-                    </div>
-                  </form>
-                </div>
 
-                <div style={{ marginBottom: '16px', position: 'relative' }}>
-                  <Search size={16} style={{ position: 'absolute', left: '10px', top: '10px', color: '#6c757d', zIndex: 2 }} />
-                  <input
-                    type="text"
-                    value={productSearchQuery}
-                    onChange={(e) => setProductSearchQuery(e.target.value)}
-                    placeholder={currentStoreType === 'restaurant' ? "Buscar platillo, bebida o combo..." : "Buscar producto por nombre o SKU manualmente..."}
-                    style={{ width: '100%', padding: '8px 8px 8px 34px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', outline: 'none', background: '#fff' }}
-                  />
-                </div>
-
-                {!currentShift && (
-                  <div className="alert-banner-warning">
-                    <ShieldAlert size={20} />
-                    <span>La caja se encuentra cerrada. Debes abrir un turno en la pestaña <strong>Caja / Turnos</strong> para poder facturar.</span>
-                  </div>
-                )}
-
-                {currentStoreType === 'restaurant' && !selectedRestaurantCategory ? (
-                  /* VISTA DE CATEGORÍAS DE RESTAURANTE */
-                  <div>
-                    {(() => {
-                      const restaurantProducts = products.filter(p => {
-                        const cat = (p.category || '').trim().toLowerCase();
-                        return cat !== 'general' && cat !== 'por peso';
-                      });
-                      const uniqueCategories = [...new Set(restaurantProducts.map(p => (p.category || 'General').trim()))];
-
-                      if (uniqueCategories.length === 0) {
-                        return (
-                          <div style={{ textAlign: 'center', padding: '40px', background: '#f8f9fa', borderRadius: '8px', border: '1px dashed #ced4da' }}>
-                            <Package size={40} color="#adb5bd" style={{ marginBottom: '12px' }} />
-                            <h4>No hay categorías ni platillos creados</h4>
-                            <p style={{ fontSize: '13px', color: '#6c757d', marginTop: '4px' }}>Ve a la pestaña <strong>Menú & Stock</strong> para registrar tus platillos y asignarles categorías (ej. Hamburguesas, Perros, Bebidas).</p>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div className="catalog-grid">
-                          {uniqueCategories
-                            .filter(cat => currentStoreType !== 'restaurant' || cat.toLowerCase() !== 'por peso')
-                            .map((cat, idx) => {
-                            const count = restaurantProducts.filter(p => (p.category || '').trim().toLowerCase() === cat.toLowerCase()).length;
-                            return (
-                              <div 
-                                key={idx} 
-                                className="product-card" 
-                                onClick={() => setSelectedRestaurantCategory(cat)}
-                                style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)', border: '2px solid #dee2e6' }}
-                              >
-                                <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
-                                  <Store size={28} color="#2b8a3e" />
-                                </div>
-                                <h4 style={{ fontSize: '16px', fontWeight: 'bold', color: '#212529', marginBottom: '4px', textAlign: 'center' }}>{cat}</h4>
-                                <span style={{ fontSize: '12px', color: '#6c757d', background: '#fff', padding: '2px 8px', borderRadius: '10px' }}>{count} platillo{count === 1 ? '' : 's'}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                ) : (
-                  /* VISTA DE PLATILLOS (O TIENDA ESTÁNDAR) */
-                  <div>
-                    {currentStoreType === 'restaurant' && (
-                      <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <button 
-                          onClick={() => setSelectedRestaurantCategory(null)} 
-                          style={{ background: '#e9ecef', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', color: '#495057' }}
-                        >
-                          ← Volver a Categorías ({selectedRestaurantCategory})
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="catalog-grid">
-                      {(() => {
-                        let displayProducts = filteredProductsForCatalog;
-                        
-                        // FILTRO ESTRICTO DE AISLAMIENTO ENTRE MODOS
-                        const fastFoodCats = ['hamburguesas', 'perros calientes', 'perros', 'pizzas', 'comida', 'comida rápida', 'bebidas', 'postres', 'salchipapas', 'pepitos'];
-                        displayProducts = displayProducts.filter(p => {
-                          const cat = (p.category || '').trim().toLowerCase();
-                          if (currentStoreType === 'restaurant') {
-                            return cat !== 'general' && cat !== 'por peso';
-                          } else {
-                            return !fastFoodCats.includes(cat) && cat !== 'restaurante';
-                          }
-                        });
-
-                        if (currentStoreType === 'restaurant' && selectedRestaurantCategory) {
-          const targetCat = selectedRestaurantCategory.trim().toLowerCase();
-          displayProducts = displayProducts.filter(p => {
-            const pCat = (p.category || '').trim().toLowerCase();
-            return pCat === targetCat || pCat.includes(targetCat) || targetCat.includes(pCat);
-          });
-        }
-
-                        return displayProducts.length === 0 ? (
-                          <p className="empty-text">No se encontraron platillos o productos en esta vista.</p>
-                        ) : (
-                            displayProducts.map((prod) => (
-                            <div 
-                              key={prod.id} 
-                              className={`product-card ${prod.stock <= 0 ? 'out-of-stock' : ''}`} 
-                              onClick={() => {
-                                 if (currentStoreType === 'restaurant') {
-                                 handleOpenModifierModal(prod);
-                                 } else if (prod.category === 'Por Peso') {
-                                     handleOpenWeightModal(prod);
-                                     } else {
-                                    addToCart(prod);
-                                }
-                              }}
-                            >
-                              <div className="img-container">
-                                {prod.image_url ? (
-                                  <img src={prod.image_url} alt={prod.name} />
-                                ) : (
-                                  <Package size={36} strokeWidth={1.5} color="#adb5bd" />
-                                )}
-                              </div>
-                              <div className="product-card-content">
-                                <h4>{prod.name}</h4>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 'auto' }}>
-                                  <span className="product-price">${prod.price.toFixed(2)}</span>
-                                  <span style={{ fontSize: '11px', background: prod.stock <= 2 ? '#ffe3e3' : '#f8f9fa', color: prod.stock <= 2 ? '#fa5252' : '#495057', padding: '4px 8px', borderRadius: '12px', fontWeight: 'bold', border: '1px solid #e9ecef' }}>
-                                    {prod.stock !== undefined ? prod.stock : 0} ud.
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          ))
-                        );
-                      })()}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="cart-summary">
-                <div>
-                  <h3>Resumen de Venta</h3>
-                  <div className="form-group" style={{ marginTop: '12px', position: 'relative' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><UserCheck size={14} /> Cliente Asociado</span>
-                      <span style={{ fontSize: '11px', color: '#2b8a3e', fontWeight: '600' }}>Activo: {selectedClient}</span>
-                    </label>
-
-                    <div style={{ position: 'relative', marginTop: '4px' }}>
-                      <Search size={15} style={{ position: 'absolute', left: '10px', top: '10px', color: '#adb5bd' }} />
-                      <input 
-                        type="text"
-                        value={clientSearchQuery}
-                        onChange={handleClientSearchChange}
-                        placeholder="Escribe cédula o nombre a buscar..."
-                        style={{ width: '100%', padding: '8px 8px 8px 32px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', outline: 'none', background: '#fff' }}
-                      />
-                    </div>
-
-                    {clientSearchQuery.trim().length > 0 && (
-                      <div style={{ position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0, background: '#fff', border: '1px solid #ced4da', borderRadius: '6px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, maxHeight: '180px', overflowY: 'auto' }}>
-                        <div 
-                          onClick={() => { setSelectedClient('Cliente General'); setClientSearchQuery(''); }}
-                          style={{ padding: '8px 12px', fontSize: '12px', borderBottom: '1px solid #f1f3f5', cursor: 'pointer', background: '#f8f9fa' }}
-                        >
-                          👤 <strong>Cliente General (Anónimo)</strong>
-                        </div>
-                        {filteredClientsForPOS.length > 0 ? (
-                          filteredClientsForPOS.map(cli => (
-                            <div 
-                              key={cli.id} 
-                              onClick={() => { setSelectedClient(cli.name); setClientSearchQuery(''); }}
-                              style={{ padding: '8px 12px', fontSize: '12px', borderBottom: '1px solid #f1f3f5', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}
-                            >
-                              <span><strong>{cli.name}</strong></span>
-                              <span style={{ color: '#6c757d' }}>{cli.document || 'Sin Cédula'}</span>
-                            </div>
-                          ))
-                        ) : (
-                          <div style={{ padding: '12px', textAlign: 'center' }}>
-                            <p style={{ fontSize: '12px', color: '#fa5252', marginBottom: '8px' }}>No se encontró ningún cliente</p>
-                            <button 
-                              type="button" 
-                              onClick={() => {
-                                setQuickDocInput(clientSearchQuery);
-                                setClientDoc(clientSearchQuery);
-                                setClientSearchQuery('');
-                                setShowQuickClientModal(true);
-                              }}
-                              style={{ background: '#2b8a3e', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-                            >
-                              + Registrar nuevo cliente
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="cart-items-list">
-                  {cart.length === 0 ? (
-                    <p className="empty-text">El carrito está vacío.</p>
-                  ) : (
-                    cart.map(item => (
-                      <div key={item.cartItemId || item.id} className="cart-item">
-                        <div className="cart-item-info">
-                          <strong>{item.name}</strong>
-                          {(item.customization || item.customNote) ? (
-                          <span style={{ fontSize: '11px', color: '#fa5252', display: 'block', fontWeight: 'bold' }}>
-                            {item.customization || item.customNote}
-                          </span>
-                        ) : currentStoreType === 'restaurant' ? (
-                          <span style={{ fontSize: '11px', color: '#1c7ed6', display: 'block', fontWeight: 'bold' }}>
-                            Con todo
-                          </span>
-                        
-                        ) : null}
-
-                          <span>${item.price.toFixed(2)} c/u</span>
-                        </div>
-                        <div className="cart-item-controls">
-                          <button onClick={() => updateQuantity(item.cartItemId || item.id, -1)}><Minus size={14}/></button>
-                          <span>{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.cartItemId || item.id, 1)}><Plus size={14}/></button>
-                          <button className="btn-delete" onClick={() => removeFromCart(item.cartItemId || item.id)}>
-                          <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div className="cart-totals-container">
-                  {currentStoreTaxEnabled && (
-                    <>
-                      <div className="cart-total-row" style={{ fontSize: '14px', color: '#495057', marginBottom: '4px' }}>
-                        <span>Subtotal:</span>
-                        <strong>${cartSubtotalUSD.toFixed(2)}</strong>
-                      </div>
-                      <div className="cart-total-row" style={{ fontSize: '14px', color: '#495057', marginBottom: '8px' }}>
-                        <span>Impuesto ({currentStoreTaxRate}%):</span>
-                        <strong>${calculatedTaxUSD.toFixed(2)}</strong>
-                      </div>
-                    </>
-                  )}
-                  <div className="cart-total-row">
-                    <span>Total USD:</span>
-                    <h2>${totalUSD.toFixed(2)}</h2>
-                  </div>
-                  {currentStoreCountry === 'venezuela' && (
-                    <div className="cart-total-row-bs">
-                      <span>Total Bolívares (BCV):</span>
-                      <h3>Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="btn-secondary" onClick={handleHoldOrder} disabled={cart.length === 0 || processing || !currentShift} style={{ flex: 1, fontSize: '13px' }}>
-                      <Clock size={14} /> {currentStoreType === 'restaurant' ? 'A Cocina / Espera' : 'En Espera'}
-                    </button>
-                    <button className="btn-primary checkout-btn" onClick={() => { setSettlingSale(null); setShowPaymentModal(true); }} disabled={cart.length === 0 || !currentShift} style={{ flex: 2 }}>
-                      <CreditCard size={16} /> Cobrar
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-{activeTab === 'vendor_portal' && currentUserRole === 'system_vendor' && (
-            <div className="product-form-card" style={{ maxWidth: '700px', margin: '0 auto' }}>
-              <h3>Registrar Nuevo Comercio</h3>
-              <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '20px' }}>
-                Como vendedor de sistema, al registrar un comercio aquí, el negocio quedará vinculado a tu ID para el cálculo automático de tus comisiones (50% registro y 20% mensualidad).
-              </p>
-              
-              {globalPromoDiscount > 0 && (
-                <div style={{ background: '#fff3bf', padding: '10px', borderRadius: '6px', marginBottom: '16px', fontSize: '13px', color: '#e67700', border: '1px solid #ffe066' }}>
-                  <strong>¡Promo Activa!</strong> Tienes un <strong>{globalPromoDiscount}% de descuento</strong> disponible para ofrecer a nuevos registros hoy.
-                </div>
-              )}
-
-              <form onSubmit={handleVendorRegisterStoreSubmit} className="fiskal-form">
-                <div className="form-group">
-                  <label>Nombre del Comercio / Negocio</label>
-                  <input type="text" value={vendorStoreName} onChange={e => setVendorStoreName(e.target.value)} placeholder="Ej. Minimarket El Triunfo" required />
-                </div>
-                <div className="form-group">
-                  <label>RIF / Cédula del Comercio</label>
-                  <input type="text" value={vendorStoreRif} onChange={e => setVendorStoreRif(e.target.value)} placeholder="Ej. J-12345678-9" />
-                </div>
-                
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label>Tipo de Interfaz (Máscara) del Cliente</label>
-                  <select value={vendorNewStoreType} onChange={e => setVendorNewStoreType(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}>
-                    <option value="standard">Minimarket / Tienda Estándar</option>
-                    <option value="restaurant">Restaurante / Comida Rápida</option>
-                  </select>
-                </div>
-
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label>País Operativo del Comercio</label>
-                  <select value={vendorStoreCountry} onChange={e => setVendorStoreCountry(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}>
-                    <option value="venezuela">Venezuela (Bolívares / BCV / Pago Móvil)</option>
-                    <option value="panama">Panamá (Dolarizado / Sin BCV)</option>
-                    <option value="el_salvador">El Salvador (Dolarizado / Sin BCV)</option>
-                  </select>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="form-group">
-                    <label>Nombre del Dueño</label>
-                    <input type="text" value={vendorOwnerName} onChange={e => setVendorOwnerName(e.target.value)} placeholder="Ej. Pedro Gómez" />
-                  </div>
-                  <div className="form-group">
-                    <label>Teléfono (WhatsApp)</label>
-                    <input type="text" value={vendorOwnerPhone} onChange={e => setVendorOwnerPhone(e.target.value)} placeholder="Ej. 04141234567" />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Correo Electrónico</label>
-                  <input type="email" value={vendorOwnerEmail} onChange={e => setVendorOwnerEmail(e.target.value)} placeholder="dueño@comercio.com" />
-                </div>
-                <div className="form-group" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input type="checkbox" id="vendorPaidAdvance" checked={vendorPaidAdvance} onChange={(e) => setVendorPaidAdvance(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
-                  <label htmlFor="vendorPaidAdvance" style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', margin: 0, color: '#2b8a3e' }}>
-                    ¿El comercio pagó el mes por adelantado? (Activa 40 días: 30 de mes + 10 cortesía)
-                  </label>
-                </div>
-                <button type="submit" className="btn-primary" style={{ background: '#2b8a3e', marginTop: '10px' }}>
-                  <Store size={18} /> Registrar Comercio (${getCalculatedMonthlyPrice(0, baseMonthlyPrice).toFixed(2)}/mes)
-                </button>
-              </form>
-            </div>
-          )}
-
-          {activeTab === 'admin' && currentUserRole === 'super_admin' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-
-              {/* Selector de Demo para el Super Admin */}
-              <div style={{ background: '#e7f5ff', padding: '16px', borderRadius: '6px', border: '1px solid #74c0fc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Eye size={20} color="#1c7ed6" />
-                  <div>
-                    <h4 style={{ margin: 0, color: '#1971c2' }}>Modo Demostración (Super Admin)</h4>
-                    <span style={{ fontSize: '12px', color: '#495057' }}>Cambia la interfaz para mostrarle a un cliente cómo se ve el sistema.</span>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button 
-                    onClick={() => setCurrentStoreType('standard')} 
-                    style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '4px', border: currentStoreType === 'standard' ? 'none' : '1px solid #ced4da', background: currentStoreType === 'standard' ? '#1c7ed6' : '#fff', color: currentStoreType === 'standard' ? '#fff' : '#495057', cursor: 'pointer', fontWeight: 'bold' }}>
-                    Tienda Estándar
-                  </button>
-                  <button 
-                    onClick={() => setCurrentStoreType('restaurant')} 
-                    style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '4px', border: currentStoreType === 'restaurant' ? 'none' : '1px solid #ced4da', background: currentStoreType === 'restaurant' ? '#d9480f' : '#fff', color: currentStoreType === 'restaurant' ? '#fff' : '#495057', cursor: 'pointer', fontWeight: 'bold' }}>
-                    Comida Rápida
-                  </button>
-                </div>
-              </div>
-              
-              {/* TARJETAS FINANCIERAS RESUMEN */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                <div className="product-form-card" style={{ padding: '20px', borderLeft: '4px solid #1c7ed6' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', color: '#6c757d', fontWeight: 'bold' }}>Ingresos Totales (Suscripciones)</span>
-                    <Activity size={18} color="#1c7ed6" />
-                  </div>
-                  <h2 style={{ fontSize: '28px', marginTop: '12px', color: '#212529' }}>${getSystemFinancials().totalIncome.toFixed(2)}</h2>
-                </div>
-                <div className="product-form-card" style={{ padding: '20px', borderLeft: '4px solid #fa5252' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', color: '#6c757d', fontWeight: 'bold' }}>Comisiones Pagadas a Vendedores</span>
-                    <PieChart size={18} color="#fa5252" />
-                  </div>
-                  <h2 style={{ fontSize: '28px', marginTop: '12px', color: '#212529' }}>${getSystemFinancials().totalExpenses.toFixed(2)}</h2>
-                </div>
-                <div className="product-form-card" style={{ padding: '20px', borderLeft: '4px solid #f59f00' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', color: '#6c757d', fontWeight: 'bold' }}>Comisiones por Liquidar (Pendiente)</span>
-                    <Clock size={18} color="#f59f00" />
-                  </div>
-                  <h2 style={{ fontSize: '28px', marginTop: '12px', color: '#212529' }}>${getSystemFinancials().totalPendingComm.toFixed(2)}</h2>
-                </div>
-                <div className="product-form-card" style={{ padding: '20px', borderLeft: '4px solid #2b8a3e', background: '#f8fff9' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', color: '#2b8a3e', fontWeight: 'bold' }}>Beneficio Neto del Sistema</span>
-                    <TrendingUp size={18} color="#2b8a3e" />
-                  </div>
-                  <h2 style={{ fontSize: '28px', marginTop: '12px', color: '#2b8a3e' }}>${getSystemFinancials().netProfit.toFixed(2)}</h2>
-                </div>
-              </div>
-
-              {/* TARJETAS DE FINANZAS Y COMISIONES */}
-              <div className="products-layout" style={{ gridTemplateColumns: '1fr 2fr' }}>
-                <div className="product-form-card" style={{ background: '#f8f9fa' }}>
-                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#1c7ed6' }}>
-                    <DollarIcon size={18} /> Precios y Promociones
-                  </h3>
-                  <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '16px' }}>
-                    Ajusta la tarifa base del sistema. Quienes se registren hoy quedarán atados permanentemente a esta tarifa, incluso si la subes en el futuro.
-                  </p>
-                  <form onSubmit={handleSaveSaasSettings} className="fiskal-form">
-                    <div className="form-group">
-                      <label>Precio Base Mensual ($ USD)</label>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        value={baseMonthlyPrice} 
-                        onChange={e => setBaseMonthlyPrice(e.target.value)} 
-                        required 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Promoción Global Actual (%)</label>
-                      <div style={{ position: 'relative' }}>
-                        <Percent size={14} style={{ position: 'absolute', left: '10px', top: '12px', color: '#6c757d' }} />
-                        <input 
-                          type="number" 
-                          step="1" 
-                          max="100" 
-                          min="0"
-                          value={globalPromoDiscount} 
-                          onChange={e => setGlobalPromoDiscount(e.target.value)} 
-                          style={{ paddingLeft: '32px' }}
-                        />
-                      </div>
-                      <span style={{ fontSize: '11px', color: '#fa5252' }}>
-                        {globalPromoDiscount > 0 ? `Un nuevo registro hoy pagará $${getCalculatedMonthlyPrice(0, baseMonthlyPrice).toFixed(2)} /mes de por vida.` : 'Sin promoción activa.'}
-                      </span>
-                    </div>
-                    <button type="submit" className="btn-primary" disabled={savingSettings} style={{ width: '100%', marginTop: '8px' }}>
-                      {savingSettings ? 'Guardando...' : 'Aplicar Precios a Nuevos Registros'}
-                    </button>
-                  </form>
-                </div>
-
-                <div className="product-list-card">
-                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#d9480f' }}>
-                    <Award size={18} /> Rendimiento de Vendedores y Pago de Comisiones
-                  </h3>
-                  <div className="table-responsive">
-                    <table className="fiskal-table" style={{ fontSize: '13px' }}>
-                      <thead>
-                        <tr>
-                          <th>Vendedor</th>
-                          <th style={{ textAlign: 'center' }}>Comercios Activos</th>
-                          <th>Ganancia Histórica</th>
-                          <th style={{ color: '#d9480f' }}>Saldo Pendiente</th>
-                          <th style={{ textAlign: 'center' }}>Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {systemVendors.length === 0 ? (
-                          <tr><td colSpan="5" className="empty-text">No hay vendedores registrados.</td></tr>
-                        ) : (
-                          systemVendors.map(v => {
-                            const vendorStores = adminStores.filter(s => s.system_vendor_id === v.id);
-                            const activeCount = vendorStores.filter(s => s.is_active).length;
-                            return (
-                              <tr key={v.id}>
-                                <td><strong>{v.name}</strong><br/><span style={{ fontSize: '11px', color: '#6c757d' }}>{v.email}</span></td>
-                                <td style={{ textAlign: 'center' }}>
-                                  <span className="badge-completed">{activeCount} / {vendorStores.length}</span>
-                                </td>
-                                <td><strong>${(parseFloat(v.total_earned) || 0).toFixed(2)}</strong></td>
-                                <td><strong style={{ color: (parseFloat(v.pending_balance) || 0) > 0 ? '#d9480f' : '#2b8a3e', fontSize: '14px' }}>${(parseFloat(v.pending_balance) || 0).toFixed(2)}</strong></td>
-                                <td style={{ textAlign: 'center' }}>
-                                  <button 
-                                    className="btn-primary" 
-                                    onClick={() => handlePayVendor(v)} 
-                                    disabled={(parseFloat(v.pending_balance) || 0) <= 0}
-                                    style={{ fontSize: '11px', padding: '6px 12px', background: (parseFloat(v.pending_balance) || 0) > 0 ? '#1c7ed6' : '#ced4da', cursor: (parseFloat(v.pending_balance) || 0) > 0 ? 'pointer' : 'not-allowed' }}
-                                  >
-                                    <Check size={14} style={{ marginRight: '4px' }} /> Liquidar
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  <p style={{ fontSize: '11px', color: '#6c757d', marginTop: '12px' }}>* El saldo pendiente suma automáticamente el 50% de la cuota de nuevos registros y el 20% recurrente de sus renovaciones mensuales.</p>
-                </div>
-              </div>
-
-<div className="products-layout">
-                <div className="product-form-card">
-                  <h3>{editingStore ? `Editando: ${editingStore.name}` : 'Registrar Nuevo Comercio SaaS'}</h3>
-                  <form onSubmit={handleSaveStore} className="fiskal-form">
-                    <div className="form-group">
-                      <label>Nombre del Negocio / Comercio</label>
-                      <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="Ej. Inversiones La Esquina C.A." required />
-                    </div>
-                    <div className="form-group">
-                      <label>RIF del Negocio</label>
-                      <input type="text" value={storeRif} onChange={(e) => setStoreRif(e.target.value)} placeholder="Ej. J-12345678-9" />
-                    </div>
-                    
-                    <div className="form-group" style={{ marginBottom: '16px' }}>
-                      <label>Tipo de Interfaz (Máscara)</label>
-                      <select value={newStoreType} onChange={(e) => setNewStoreType(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}>
-                        <option value="standard">Minimarket / Tienda Estándar</option>
-                        <option value="restaurant">Restaurante / Comida Rápida</option>
-                      </select>
-                    </div>
-
-                    <div className="form-group" style={{ marginBottom: '16px' }}>
-                      <label>País Operativo del Comercio</label>
-                      <select value={storeCountry} onChange={(e) => setStoreCountry(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}>
-                        <option value="venezuela">Venezuela (Bolívares / BCV / Pago Móvil)</option>
-                        <option value="panama">Panamá (Dolarizado / Sin BCV)</option>
-                        <option value="el_salvador">El Salvador (Dolarizado / Sin BCV)</option>
-                      </select>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                      <div className="form-group">
-                        <label>Nombre del Propietario</label>
-                        <input type="text" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="Ej. Carlos Pérez" />
-                      </div>
-                      <div className="form-group">
-                        <label>Cédula del Propietario</label>
-                        <input type="text" value={ownerDoc} onChange={(e) => setOwnerDoc(e.target.value)} placeholder="Ej. V-12345678" />
-                      </div>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                      <div className="form-group">
-                        <label>Teléfono de Contacto</label>
-                        <input type="text" value={storePhone} onChange={(e) => setStorePhone(e.target.value)} placeholder="Ej. 0414-1234567" />
-                      </div>
-                      <div className="form-group">
-                        <label>Correo Electrónico</label>
-                        <input type="email" value={storeEmail} onChange={(e) => setStoreEmail(e.target.value)} placeholder="correo@negocio.com" />
-                      </div>
-                    </div>
-                    <div className="form-group">
-                      <label>Dirección Física</label>
-                      <input type="text" value={storeAddress} onChange={(e) => setStoreAddress(e.target.value)} placeholder="Ej. Av. Principal, Local 4" />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                      <div className="form-group">
-                        <label>Ciudad</label>
-                        <input type="text" value={storeCity} onChange={handleCityChange} placeholder="Ej. Los Teques" />
-                      </div>
-                      <div className="form-group">
-                        <label>Estado (Auto-detectado)</label>
-                        <input type="text" value={storeState} onChange={(e) => setStoreState(e.target.value)} placeholder="Ej. Miranda" />
-                      </div>
-                    </div>
-
-                    {editingStore && (
-                      <div className="form-group" style={{ background: '#e7f5ff', padding: '12px', borderRadius: '6px', border: '1px solid #74c0fc' }}>
-                        <label style={{ color: '#1971c2', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Award size={14}/> Descuento Especial a este Comercio (%)
-                        </label>
-                        <input type="number" step="1" max="100" min="0" value={storeCustomDiscount} onChange={(e) => setStoreCustomDiscount(e.target.value)} />
-                        <span style={{ fontSize: '11px', color: '#495057', display: 'block', marginTop: '4px' }}>
-                          Este comercio tiene un precio base congelado de <strong>${editingStore.monthly_price_agreed || baseMonthlyPrice}</strong>. Con el {storeCustomDiscount}% de descuento pasará a pagar <strong>${getCalculatedMonthlyPrice(storeCustomDiscount, editingStore.monthly_price_agreed).toFixed(2)}</strong> mensuales.
-                        </span>
-                      </div>
-                    )}
-                    
-                    {!editingStore && (
-                      <div className="form-group" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input type="checkbox" id="storePaidAdvance" checked={storePaidAdvance} onChange={(e) => setStorePaidAdvance(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
-                        <label htmlFor="storePaidAdvance" style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', margin: 0, color: '#2b8a3e' }}>
-                          ¿El comercio pagó el mes por adelantado? (Activa 40 días: 30 de mes + 10 de cortesía)
-                        </label>
-                      </div>
-                    )}
-
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                      {editingStore && (
-                        <button type="button" className="btn-secondary" onClick={resetStoreForm} style={{ flex: 1 }}>Cancelar</button>
-                      )}
-                      <button type="submit" className="btn-primary" style={{ flex: 2 }}>
-                        <Store size={18} /> {editingStore ? 'Actualizar Comercio' : 'Registrar Comercio'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-
-                <div className="product-form-card">
-                  <h3>Registrar Vendedor de Sistema</h3>
-                  <form onSubmit={handleCreateSystemVendor} className="fiskal-form">
-                    <div className="form-group">
-                      <label>Nombre del Vendedor</label>
-                      <input type="text" value={newVendorName} onChange={e => setNewVendorName(e.target.value)} placeholder="Ej. Marcos Silva" required />
-                    </div>
-                    <div className="form-group">
-                      <label>Correo (Acceso al Portal)</label>
-                      <input type="email" value={newVendorEmail} onChange={e => setNewVendorEmail(e.target.value)} placeholder="vendedor@fiskal.com" required />
-                    </div>
-                    <div className="form-group">
-                      <label>Teléfono</label>
-                      <input type="text" value={newVendorPhone} onChange={e => setNewVendorPhone(e.target.value)} placeholder="Ej. 04121234567" />
-                    </div>
-                    <button type="submit" className="btn-primary" disabled={creatingVendor} style={{ background: '#d9480f' }}>
-                      <UserPlus size={18} /> {creatingVendor ? 'Creando...' : 'Crear Vendedor de Sistema'}
-                    </button>
-                  </form>
-
-                  <div style={{ marginTop: '20px' }}>
-                    <h4 style={{ fontSize: '13px', color: '#6c757d', marginBottom: '8px' }}>Vendedores Activos ({systemVendors.length})</h4>
-                    <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
-                      {systemVendors.map(v => (
-                        <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 8px', background: '#f8f9fa', borderRadius: '4px', marginBottom: '4px', fontSize: '12px' }}>
-                          <span><strong>{v.name}</strong> ({v.email})</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="product-list-card">
-                <h3>Comercios Registrados ({adminStores.length})</h3>
-                <div className="table-responsive">
-                  <table className="fiskal-table">
-                    <thead>
-                      <tr>
-                        <th>Negocio & Vendedor</th>
-                        <th>Tarifa Mensual ($)</th>
-                        <th>Prueba / Vencimiento</th>
-                        <th>Estatus</th>
-                        <th style={{ textAlign: 'center' }}>Acciones & WhatsApp</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {adminStores.length === 0 ? (
-                        <tr><td colSpan="5" className="empty-text">No hay comercios registrados.</td></tr>
-                      ) : (
-                        adminStores.map((store) => {
-                          const now = new Date().getTime();
-                          let daysText = '---';
-                          let isExpiringSoon = false;
-                          if (store.is_trial && store.trial_end_date) {
-                            const diff = new Date(store.trial_end_date).getTime() - now;
-                            const d = Math.ceil(diff / (1000 * 60 * 60 * 24));
-                            daysText = d > 0 ? `${d} días de prueba` : 'Prueba expirada';
-                            isExpiringSoon = d <= 3;
-                          } else if (store.subscription_expires_at) {
-                            const diff = new Date(store.subscription_expires_at).getTime() - now;
-                            const d = Math.ceil(diff / (1000 * 60 * 60 * 24));
-                            daysText = d > 0 ? `${d} días de mes activo` : 'Suscripción vencida';
-                            isExpiringSoon = d <= 5;
-                          }
-                          
-                          const basePriceDisplay = store.monthly_price_agreed !== null && store.monthly_price_agreed !== undefined ? store.monthly_price_agreed : baseMonthlyPrice;
-                          const hasCustomDisc = store.custom_discount > 0;
-                          const finalDisplayPrice = getCalculatedMonthlyPrice(store.custom_discount, store.monthly_price_agreed);
-
-                          return (
-                            <tr key={store.id}>
-                              <td>
-                                <strong>{store.name}</strong><br/>
-                                <span style={{ fontSize: '11px', color: '#d9480f' }}>Vendedor: <strong>{store.system_vendors?.name || 'Admin Central'}</strong></span><br/>
-                                <span style={{ fontSize: '10px', background: store.store_type === 'restaurant' ? '#ffe8cc' : '#e7f5ff', color: store.store_type === 'restaurant' ? '#d9480f' : '#1971c2', padding: '2px 4px', borderRadius: '4px' }}>
-                                  {store.store_type === 'restaurant' ? 'Restaurante' : 'Estándar'}
-                                </span>
-                              </td>
-                              <td>
-                                <strong>${finalDisplayPrice.toFixed(2)}</strong><br/>
-                                {hasCustomDisc && <span style={{ fontSize: '10px', background: '#ffe3e3', color: '#c92a2a', padding: '2px 4px', borderRadius: '4px' }}>-{store.custom_discount}% aplicado</span>}
-                              </td>
-                              <td>
-                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: isExpiringSoon ? '#fa5252' : '#2b8a3e' }}>{daysText}</span>
-                              </td>
-                              <td>
-                                {store.is_active ? (
-                                  <span className="badge-completed"><CheckCircle size={12}/> Activo</span>
-                                ) : (
-                                  <span className="badge-credit" style={{ background: '#ffe3e3', color: '#c92a2a' }}><AlertCircle size={12}/> Suspendido</span>
-                                )}
-                              </td>
-                              <td className="action-cell">
-                                <div className="action-buttons" style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                                  <button className="btn-icon-whatsapp" onClick={() => sendStoreRenewalWhatsApp(store)} title="Enviar WhatsApp de Renovación / Cobro">
-                                    <MessageCircle size={16} />
-                                  </button>
-                                  <button className="btn-icon-success" onClick={() => handleRenewSubscription(store)} title="Renovar Suscripción (Suma 30 días al tiempo restante)" style={{ background: '#1c7ed6', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <Award size={13} /> Renovar
-                                  </button>
-                                  <button className="btn-icon-primary" onClick={() => handleOpenPreInvoice(store)} title="Generar Recibo / Factura SaaS" style={{ background: '#4c6ef5', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <FileText size={13} /> Recibo
-                                  </button>
-                                  <button className="btn-icon-success" onClick={() => handleOpenOwnerModal(store)} title="Acceso" style={{ background: '#2b8a3e', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <Key size={13} /> Acceso
-                                  </button>
-                                  <button className="btn-icon-edit" onClick={() => handleStartEditStore(store)} title="Editar Datos y Promociones"><Edit2 size={16} /></button>
-                                  
-                                  <button 
-                                    className="btn-secondary" 
-                                    onClick={() => handleToggleKrono(store.id, store.krono_enabled)} 
-                                    style={{ 
-                                      borderColor: store.krono_enabled ? '#10b981' : '#ced4da', 
-                                      color: store.krono_enabled ? '#10b981' : '#6c757d', 
-                                      background: store.krono_enabled ? '#ecfdf5' : '#f8f9fa',
-                                      fontSize: '11px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px' 
-                                    }}
-                                    title={store.krono_enabled ? "Krono Market está ACTIVO para este comercio" : "Activar Krono Market para este comercio"}
-                                  >
-                                    🛒 {store.krono_enabled ? 'Krono ON' : 'Krono OFF'}
-                                  </button>
-
-                                  <button className="btn-secondary" onClick={() => handleToggleStoreStatus(store.id, store.is_active)} style={{ borderColor: store.is_active ? '#fa5252' : '#2b8a3e', color: store.is_active ? '#fa5252' : '#2b8a3e', fontSize: '11px', padding: '4px 8px' }}>
-                                    {store.is_active ? 'Suspender' : 'Activar'}
-                                  </button>
-                                  <button className="btn-icon-danger" onClick={() => handleDeleteStore(store.id, store.name)} title="Eliminar Comercio Definitivamente" style={{ background: '#fa5252', color: '#fff', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                                    <Trash2 size={16} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-{activeTab === 'cash' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '900px', margin: '0 auto', width: '100%' }}>
-              <div className="product-form-card" style={{ width: '100%' }}>
-                <h3>Gestión de Turno y Arqueo de Caja</h3>
-                
-                {currentShift ? (
-                  <div style={{ marginTop: '20px' }}>
-                    
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
-                      <div>
-                        <span className="badge-completed">CAJA ABIERTA: {getCurrentRegisterName()}</span>
-                        <p style={{ fontSize: '13px', color: '#6c757d', marginTop: '4px' }}>Iniciado el: {new Date(currentShift.opened_at).toLocaleString()}</p>
-                      </div>
-                      <button className="btn-primary" onClick={() => setShowCloseShiftModal(true)} style={{ background: '#fa5252' }}>
-                        Cerrar Turno (Reporte Z)
-                      </button>
-                    </div>
-
-                    <div className="payment-summary-box" style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginBottom: '20px' }}>
-                      {(() => {
-                        // 1. Extraemos el fondo inicial de forma limpia
-                        const floatUsd = Number(currentShift?.opening_float_usd || 0);
-                        const match = (currentShift?.notes || '').match(/FondoBs:([0-9.]+)/);
-                        const floatBs = match ? parseFloat(match[1]) : Number(currentShift?.opening_float_ves || currentShift?.opening_float_bs || 0);
-
-                        // 2. Calculamos el total exacto que debe haber en gaveta usando las variables globales blindadas
-                        const expectedUsd = floatUsd + shiftCashUSD;
-                        const expectedBs = floatBs + shiftCashBs;
-
-                        return (
-                          <>
-                            {/* Tarjeta 1: Fondo Inicial */}
-                            <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
-                              <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Fondo Inicial de Caja:</span>
-                              <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#495057' }}>
-                                  ${floatUsd.toFixed(2)} <span style={{ fontSize: '12px', color: '#adb5bd' }}>USD</span>
-                                </div>
-                                {(!currentStoreCountry || currentStoreCountry.toLowerCase().includes('venezuela')) && (
-                                  <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#495057' }}>
-                                    Bs. {floatBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Tarjeta 2: Ingresos del Turno (Digital + Efectivo) */}
-                            <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
-                              <span style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', textTransform: 'uppercase' }}>Ingresos del Turno:</span>
-                              <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#2b8a3e' }}>
-                                  ${(shiftCashUSD + shiftZelle).toFixed(2)} <span style={{ fontSize: '12px', color: '#6c757d' }}>USD (Efectivo + Zelle)</span>
-                                </div>
-                                {(!currentStoreCountry || currentStoreCountry.toLowerCase().includes('venezuela')) && (
-                                  <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#2b8a3e' }}>
-                                    Bs. {(shiftCashBs + shiftPagoMovilBs + shiftDebitBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: '12px', color: '#6c757d' }}>(Efectivo + Digital)</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Tarjeta 3: Efectivo Físico Esperado (La más importante, resalta en azul) */}
-                            <div style={{ background: '#e7f5ff', padding: '14px', borderRadius: '8px', border: '1px solid #74c0fc' }}>
-                              <span style={{ fontSize: '12px', color: '#1864ab', fontWeight: 'bold', textTransform: 'uppercase' }}>Efectivo Esperado en Gaveta:</span>
-                              <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#212529' }}>
-                                  ${expectedUsd.toFixed(2)} <span style={{ fontSize: '12px', color: '#6c757d' }}>Físico USD</span>
-                                </div>
-                                {(!currentStoreCountry || currentStoreCountry.toLowerCase().includes('venezuela')) && (
-                                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#2b8a3e' }}>
-                                    Bs. {expectedBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: '12px', color: '#6c757d' }}>Físico Bs</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-
-                  </div>
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                    <Lock size={48} color="#6c757d" style={{ marginBottom: '16px' }} />
-                    <h4>No hay ningún turno de caja abierto</h4>
-                    <p style={{ color: '#6c757d', fontSize: '14px', margin: '8px 0 24px 0' }}>Selecciona una de tu cajas físicas registradas para iniciar operaciones.</p>
-                    <button className="btn-primary" onClick={() => setShowOpenShiftModal(true)} style={{ margin: '0 auto' }}>Abrir Nueva Caja / Turno</button>
-                  </div>
-                )}
-              </div>
-
-              <div className="product-list-card" style={{ width: '100%' }}>
-                <h3>Historial de Cierres de Caja (Reportes Z)</h3>
-                <div className="table-responsive">
-                  <table className="fiskal-table">
-                    <thead>
-                      <tr>
-                        <th>Apertura</th>
-                        <th>Cierre</th>
-                        <th>Caja</th>
-                        <th>Responsable</th>
-                        <th>Esperado</th>
-                        <th>Físico Contado</th>
-                        <th>Diferencia</th>
-                        <th style={{ textAlign: 'center' }}>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {!pastShifts || pastShifts.length === 0 ? (
-                        <tr><td colSpan="8" className="empty-text">No hay cierres de caja registrados o estás offline.</td></tr>
-                      ) : (
-                        pastShifts.map((s, index) => {
-                          if (!s) return null; // Bloqueo de seguridad absoluta contra turnos nulos
-
-                          const reg = (registers || []).find(r => r?.id === s.register_id);
-                          const emp = (employees || []).find(e => e?.id === s.user_id);
-                          
-                          const hSales = (sales || []).filter(sale => sale?.shift_id === s.id && sale?.status === 'completed');
-                          const hCashUsd = hSales.reduce((sum, sale) => sum + (sale?.payment_details?.cash_usd || 0), 0);
-                          const hCashBs = hSales.reduce((sum, sale) => sum + (sale?.payment_details?.cash_bs || 0), 0);
-                          
-                          const expectedUsdDisplay = (s.opening_float_usd || 0) + hCashUsd;
-
-                          let fisicoContadoDisplay = `$${(s.actual_cash_usd || 0).toFixed(2)}`;
-                          if (s.notes && typeof s.notes === 'string' && s.notes.includes('Contado:')) {
-                            fisicoContadoDisplay = s.notes.split('|').pop().trim().replace('Contado: ', '');
-                          }
-
-                          return (
-                            <tr key={s.id || index}>
-                              <td>{s.opened_at ? new Date(s.opened_at).toLocaleString() : ''}</td>
-                              <td>{s.closed_at ? new Date(s.closed_at).toLocaleString() : '---'}</td>
-                              <td><strong>{reg ? reg.name : `Caja #${s.register_id}`}</strong></td>
-                              <td>{emp ? emp.full_name : 'Cajero'}</td>
-                              <td>
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                  <strong>${expectedUsdDisplay.toFixed(2)}</strong>
-                                  {currentStoreCountry === 'venezuela' && hCashBs > 0 && (
-                                    <span style={{ fontSize: '11px', color: '#6c757d' }}>+ Bs. {hCashBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                  )}
-                                </div>
-                              </td>
-                              <td>
-                                <strong>{fisicoContadoDisplay}</strong>
-                              </td>
-                              <td>
-                                <strong style={{ color: (s.difference_usd || 0) < 0 ? '#fa5252' : '#2b8a3e' }}>
-                                  ${(s.difference_usd || 0).toFixed(2)}
-                                </strong>
-                              </td>
-                              <td className="action-cell">
-                                <div className="action-buttons" style={{ justifyContent: 'center' }}>
-                                  <button className="btn-icon-primary" onClick={() => { setSelectedShiftReport(s); setShowShiftReportModal(true); }} title="Ver Reporte Z Detallado">
-                                    <Eye size={18} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-{activeTab === 'history' && (
-  <div className="product-list-card" style={{ width: '100%' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-      <h3 style={{ margin: 0 }}>Registro de Ventas y Cuentas ({filteredSales.length})</h3>
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <button 
-          onClick={() => { setHistoryFilterType('all'); setHistoryCustomDate(''); }} 
-          style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: historyFilterType === 'all' ? '#1c7ed6' : '#fff', color: historyFilterType === 'all' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-        >
-          Todos
-        </button>
-        <button 
-          onClick={() => { setHistoryFilterType('yesterday'); setHistoryCustomDate(''); }} 
-          style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: historyFilterType === 'yesterday' ? '#1c7ed6' : '#fff', color: historyFilterType === 'yesterday' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-        >
-          Ayer
-        </button>
-        <button 
-          onClick={() => { setHistoryFilterType('last_week'); setHistoryCustomDate(''); }} 
-          style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: historyFilterType === 'last_week' ? '#1c7ed6' : '#fff', color: historyFilterType === 'last_week' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-        >
-          Semana Pasada
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fff', border: '1px solid #ced4da', borderRadius: '4px', padding: '2px 6px' }}>
-          <span style={{ fontSize: '11px', color: '#6c757d' }}>Fecha:</span>
-          <input 
-            type="date" 
-            value={historyCustomDate} 
-            onChange={(e) => { setHistoryCustomDate(e.target.value); setHistoryFilterType('custom'); }} 
-            style={{ border: 'none', fontSize: '12px', outline: 'none', background: 'transparent' }}
-          />
-        </div>
-      </div>
-    </div>
-
-    <div className="table-responsive">
-      <table className="fiskal-table">
-        <thead>
-          <tr>
-            <th>Factura #</th>
-            <th>Fecha y Hora</th>
-            <th>Cliente</th>
-            <th>Total USD</th>
-            <th>Saldo Pendiente</th>
-            <th>Estatus</th>
-            <th style={{ textAlign: 'center' }}>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredSales.length === 0 ? (
-            <tr><td colSpan="7" className="empty-text">No hay ventas registradas para este filtro.</td></tr>
-          ) : (
-            filteredSales.map((sale) => (
-              <tr key={sale.id}>
-                <td>
-                  <strong>
-                    {sale.invoice_number || (String(sale.id).startsWith('local') ? 'Pendiente' : `A-${String(sale.id).padStart(3, '0')}`)}
-                  </strong>
-                </td>
-                <td>{new Date(sale.created_at).toLocaleString()}</td>
-                <td>{sale.client_name || 'Cliente General'}</td>
-                <td><strong>${sale.total_usd.toFixed(2)}</strong></td>
-                <td>
-                  {sale.status === 'credit' ? (
-                    <span className="badge-credit"><AlertCircle size={12}/> Crédito</span>
-                  ) : ['pending', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'].includes(String(sale.status).toLowerCase()) ? (
-                    <span className="badge-pending"><Clock size={12}/> En Espera</span>
-                  ) : (
-                    <span className="badge-completed"><CheckCircle size={12}/> Pagada</span>
-                  )}
-                </td>
-                <td className="action-cell">
-                  <div className="action-buttons">
-                    {['pending', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'].includes(String(sale.status).toLowerCase()) && (
-                      <button className="btn-icon-success" onClick={() => handleResumeOrder(sale)} title="Retomar cuenta"><Play size={16} /></button>
-                    )}
-                    {sale.status === 'credit' && (
-                      <button className="btn-icon-success" onClick={() => handleStartSettleCredit(sale)} title="Abonar"><DollarSign size={16} /></button>
-                    )}
-                    {sale.status === 'credit' && (
-                      <button className="btn-icon-whatsapp" onClick={() => sendWhatsAppReminder(sale)} title="WhatsApp"><MessageCircle size={16} /></button>
-                    )}
-                    <button className="btn-icon-primary" onClick={() => handleViewInvoice(sale)} title="Ver Factura"><Eye size={18} /></button>
-
-                    {(currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
-                      <button 
-                        style={{ background: '#fa5252', color: 'white', border: 'none', borderRadius: '4px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        onClick={async (e) => {
-                          e.stopPropagation(); 
-                          const confirmDelete = window.confirm(`⚠️ ¿ESTÁS SEGURO? Estás a punto de ELIMINAR permanentemente la Factura/Pedido #${sale.invoice_number || sale.id}. Esta acción no se puede deshacer.`);
-                          if (confirmDelete) {
-                            try {
-                              if (typeof supabase !== 'undefined') {
-                                const { error: pErr } = await supabase.from('payment_history').delete().eq('sale_id', sale.id);
-                                if (pErr) throw pErr;
-                                const { error: sErr } = await supabase.from('sales').delete().eq('id', sale.id);
-                                if (sErr) throw sErr;
-                              }
-                              if (typeof setSales === 'function') {
-                                setSales(prevSales => prevSales.filter(s => s.id !== sale.id));
-                              }
-                            } catch (err) {
-                              console.error("Error al eliminar la factura:", err);
-                              alert("Hubo un error al eliminar el pedido: " + err.message);
-                            }
-                          }
-                        }} 
-                        title="Eliminar Pedido (Solo Dueño)"
-                      >
-                        <Trash2 size={16} /> 
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-
-{/* Modal Factura / Recibo Cliente */}
-      {showInvoiceModal && selectedInvoice && (
-        <div className="modal-overlay" style={{ zIndex: 10000 }}>
-          <div className="modal-content" style={{ width: '500px' }}>
-            <div className="modal-header">
-              <h3>Factura #{String(selectedInvoice.id).startsWith('local') ? 'Pendiente' : selectedInvoice.invoice_number || `A-${String(selectedInvoice.id).padStart(3, '0')}`}</h3>
-              <button className="btn-close-modal" onClick={() => setShowInvoiceModal(false)}><X size={20} /></button>
-            </div>
-            
-            <div className="modal-body fiskal-form" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-              <div style={{ textAlign: 'center', marginBottom: '16px', borderBottom: '1px dashed #dee2e6', paddingBottom: '12px' }}>
-                <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#212529' }}>{currentStoreName}</h2>
-                {currentStoreRif && <div style={{ fontSize: '12px', color: '#495057' }}>{currentStoreCountry === 'venezuela' ? 'RIF' : 'RUC/Documento'}: {currentStoreRif}</div>}
-                {currentStoreAddress && <div style={{ fontSize: '12px', color: '#495057', marginTop: '2px' }}>{currentStoreAddress}</div>}
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '13px', color: '#495057' }}>
-                <span><strong>Cliente:</strong> {selectedInvoice.client_name || 'Cliente General'}</span>
-                <span><strong>{currentStoreCountry === 'venezuela' ? 'Cédula/RIF' : 'Cédula/RUC'}:</strong> {selectedInvoice.payment_details?.client_document || 'N/A'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '13px', color: '#495057' }}>
-                <span><strong>Fecha:</strong> {new Date(selectedInvoice.created_at).toLocaleString()}</span>
-                <span><strong>Estatus:</strong> {selectedInvoice.status.toUpperCase()}</span>
-              </div>
-
-              {(() => {
-                const isVzla = currentStoreCountry === 'venezuela';
-                const saleBcvRate = selectedInvoice.payment_details?.applied_bcv_rate || bcvRate || 1;
-                const showTaxes = selectedInvoice.tax_usd > 0;
-                
-                const formatMoney = (usdVal) => {
-                  if (isVzla) return `Bs. ${(usdVal * saleBcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                  return `$${usdVal.toFixed(2)}`;
-                };
-
-                const formatRef = (usdVal) => {
-                  if (isVzla) return `(Ref: $${usdVal.toFixed(2)})`;
-                  return '';
-                };
-
-                return (
-                  <>
-                    {isVzla && (
-                      <div style={{ textAlign: 'right', fontSize: '11px', color: '#868e96', marginBottom: '8px' }}>
-                        Tasa BCV Aplicada: Bs. {saleBcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                    )}
-
-                    <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Artículos Facturados</h4>
-                    <div className="table-responsive" style={{ marginBottom: '16px' }}>
-                      <table className="receipt-table">
-                        <thead>
-                          <tr>
-                            <th>Cant</th>
-                            <th>Producto</th>
-                            <th>Precio Unit</th>
-                            <th>Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(() => {
-                            let parsedItems = [];
-                            if (Array.isArray(selectedInvoice.items)) {
-                              parsedItems = selectedInvoice.items;
-                            } else if (typeof selectedInvoice.items === 'string') {
-                              try { parsedItems = JSON.parse(selectedInvoice.items); } catch(e){}
-                            }
-
-                            return parsedItems.map((item, idx) => {
-                              const itemTotalUsd = (item.price || 0) * (item.quantity || 1);
-                              return (
-                                <tr key={idx}>
-                                  <td>{item.quantity}</td>
-                                  <td>{item.name}</td>
-                                  <td>
-                                    <div>{formatMoney(item.price)}</div>
-                                    <div style={{ fontSize: '10px', color: '#868e96' }}>{formatRef(item.price)}</div>
-                                  </td>
-                                  <td>
-                                    <strong>{formatMoney(itemTotalUsd)}</strong>
-                                    <div style={{ fontSize: '10px', color: '#868e96', fontWeight: 'normal' }}>{formatRef(itemTotalUsd)}</div>
-                                  </td>
-                                </tr>
-                              );
-                            });
-                          })()}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
-                      {showTaxes && (
-                        <>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px', color: '#495057' }}>
-                            <span>Subtotal:</span>
-                            <div style={{ textAlign: 'right' }}>
-                              <strong>{formatMoney(selectedInvoice.subtotal_usd || (selectedInvoice.total_usd - selectedInvoice.tax_usd))}</strong>
-                              <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.subtotal_usd || (selectedInvoice.total_usd - selectedInvoice.tax_usd))}</div>
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px', color: '#495057' }}>
-                            <span>Impuesto ({currentStoreTaxRate}%):</span>
-                            <div style={{ textAlign: 'right' }}>
-                              <strong>{formatMoney(selectedInvoice.tax_usd)}</strong>
-                              <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.tax_usd)}</div>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', marginBottom: '6px', alignItems: 'center' }}>
-                        <span>Total Facturado:</span>
-                        <div style={{ textAlign: 'right' }}>
-                          <strong>{formatMoney(selectedInvoice.total_usd)}</strong>
-                          <div style={{ fontSize: '12px', fontWeight: 'normal', color: '#495057' }}>{formatRef(selectedInvoice.total_usd)}</div>
-                        </div>
-                      </div>
-
-                      {selectedInvoice.balance_due_usd > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#fa5252', marginTop: '6px', borderTop: '1px solid #dee2e6', paddingTop: '6px' }}>
-                          <span>Saldo Pendiente:</span>
-                          <div style={{ textAlign: 'right' }}>
-                            <strong>{formatMoney(selectedInvoice.balance_due_usd)}</strong>
-                            <div style={{ fontSize: '11px', fontWeight: 'normal' }}>{formatRef(selectedInvoice.balance_due_usd)}</div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                );
-              })()}
-
-              {/* HISTORIAL DE ABONOS CON EL DESGLOSE INTEGRADO (SIN RECUADRO EXTRA) */}
-              {invoiceHistory && invoiceHistory.length > 0 && (
-                <div style={{ marginTop: '16px' }}>
-                  <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Historial de Abonos / Pagos</h4>
-                  {invoiceHistory.map((h, i) => {
-                    const pd = h.payment_details || selectedInvoice.payment_details || {};
-                    const histBcvRate = pd.applied_bcv_rate || bcvRate || 1;
-                    const isVzlaHist = currentStoreCountry === 'venezuela';
-                    const abonoText = isVzlaHist 
-                      ? `Bs. ${(h.amount_usd * histBcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Ref: $${h.amount_usd.toFixed(2)})`
-                      : `$${h.amount_usd.toFixed(2)}`;
-                      
-                    return (
-                      <div key={i} style={{ fontSize: '12px', padding: '10px', background: '#e7f5ff', borderRadius: '6px', marginBottom: '8px', border: '1px solid #74c0fc' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                          <span style={{ color: '#495057' }}>{new Date(h.created_at).toLocaleString()}</span>
-                          <strong style={{ color: '#212529' }}>Abono: {abonoText}</strong>
-                        </div>
-                        
-                        {/* Detalles integrados directo en el mismo renglón */}
-                        <div style={{ fontSize: '11px', color: '#495057', borderTop: '1px dashed #74c0fc', paddingTop: '6px', marginTop: '4px' }}>
-                          {pd.raw_cash_usd > 0 && <span><strong>Recibido:</strong> ${pd.raw_cash_usd.toFixed(2)} USD. </span>}
-                          {pd.raw_cash_bs > 0 && <span><strong>Recibido:</strong> Bs. {pd.raw_cash_bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}. </span>}
-                          {pd.pago_movil > 0 && <span><strong>Pago Móvil:</strong> Bs. {pd.pago_movil.toLocaleString('es-VE', { minimumFractionDigits: 2 })}. </span>}
-                          {pd.zelle > 0 && <span><strong>Zelle:</strong> ${pd.zelle.toFixed(2)}. </span>}
-                          {pd.debit > 0 && <span><strong>Punto:</strong> {isVzlaHist ? `Bs. ${pd.debit.toLocaleString('es-VE', {minimumFractionDigits: 2})}` : `$${pd.debit.toFixed(2)}`}. </span>}
-                          
-                          {(pd.change_usd || 0) > 0 && (
-                            <span style={{ color: '#2b8a3e', fontWeight: 'bold', display: 'block', marginTop: '4px' }}>
-                              Vuelto Entregado: ${pd.change_usd.toFixed(2)} 
-                              {pd.change_currency_type === 'BS' ? ' (En Efectivo Bs)' : 
-                               pd.change_currency_type === 'PAGO_MOVIL' ? ' (Por Pago Móvil)' : ' (En Efectivo USD)'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            
-            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowInvoiceModal(false)}>Cerrar</button>
-              <button type="button" className="btn-primary" onClick={() => window.print()}>Imprimir Recibo</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-  </div>
+{activeTab === 'pos' && (
+  <PosTerminalView 
+    currentStoreType={currentStoreType}
+    barcodeInput={barcodeInput}
+    setBarcodeInput={setBarcodeInput}
+    handleBarcodeSubmit={handleBarcodeSubmit}
+    barcodeInputRef={barcodeInputRef}
+    startCameraScanner={startCameraScanner}
+    productSearchQuery={productSearchQuery}
+    setProductSearchQuery={setProductSearchQuery}
+    currentShift={currentShift}
+    products={products}
+    filteredProductsForCatalog={filteredProductsForCatalog}
+    selectedRestaurantCategory={selectedRestaurantCategory}
+    setSelectedRestaurantCategory={setSelectedRestaurantCategory}
+    handleOpenModifierModal={handleOpenModifierModal}
+    handleOpenWeightModal={handleOpenWeightModal}
+    addToCart={addToCart}
+    selectedClient={selectedClient}
+    setSelectedClient={setSelectedClient}
+    clientSearchQuery={clientSearchQuery}
+    handleClientSearchChange={handleClientSearchChange}
+    setClientSearchQuery={setClientSearchQuery}
+    filteredClientsForPOS={filteredClientsForPOS}
+    setQuickDocInput={setQuickDocInput}
+    setClientDoc={setClientDoc}
+    setShowQuickClientModal={setShowQuickClientModal}
+    cart={cart}
+    updateQuantity={updateQuantity}
+    removeFromCart={removeFromCart}
+    currentStoreTaxEnabled={currentStoreTaxEnabled}
+    currentStoreTaxRate={currentStoreTaxRate}
+    cartSubtotalUSD={cartSubtotalUSD}
+    calculatedTaxUSD={calculatedTaxUSD}
+    totalUSD={totalUSD}
+    totalBs={totalBs}
+    currentStoreCountry={currentStoreCountry}
+    handleHoldOrder={handleHoldOrder}
+    processing={processing}
+    setSettlingSale={setSettlingSale}
+    setShowPaymentModal={setShowPaymentModal}
+  />
 )}
 
-          {activeTab === 'clients' && (
-            <div className="products-layout">
-              <div className="product-form-card">
-                <h3>Registrar Nuevo Cliente</h3>
-                <form onSubmit={(e) => handleAddClient(e, false)} className="fiskal-form">
-                  <div className="form-group">
-                    <label>Nombre y Apellido / Razón Social</label>
-                    <input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} required placeholder="Ej. Inversiones C.A." />
-                  </div>
-                  <div className="form-group">
-                    <label>Cédula / RIF</label>
-                    <input type="text" value={clientDoc} onChange={(e) => setClientDoc(e.target.value)} required placeholder="Ej. V-12345678" />
-                  </div>
-                  <div className="form-group">
-                    <label>Teléfono</label>
-                    <input type="text" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder="Ej. 0414-1234567" />
-                  </div>
-                  <div className="form-group">
-                    <label>Correo Electrónico</label>
-                    <input type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="correo@ejemplo.com" />
-                  </div>
-                  <button type="submit" className="btn-primary" disabled={loadingClient}>
-                    <PlusCircle size={18} /> {loadingClient ? 'Guardando...' : 'Guardar Cliente'}
-                  </button>
-                </form>
-              </div>
+{activeTab === 'vendor_portal' && currentUserRole === 'system_vendor' && (
+  <VendorPortalView 
+    globalPromoDiscount={globalPromoDiscount}
+    handleVendorRegisterStoreSubmit={handleVendorRegisterStoreSubmit}
+    vendorStoreName={vendorStoreName}
+    setVendorStoreName={setVendorStoreName}
+    vendorStoreRif={vendorStoreRif}
+    setVendorStoreRif={setVendorStoreRif}
+    vendorNewStoreType={vendorNewStoreType}
+    setVendorNewStoreType={setVendorNewStoreType}
+    vendorStoreCountry={vendorStoreCountry}
+    setVendorStoreCountry={setVendorStoreCountry}
+    vendorOwnerName={vendorOwnerName}
+    setVendorOwnerName={setVendorOwnerName}
+    vendorOwnerPhone={vendorOwnerPhone}
+    setVendorOwnerPhone={setVendorOwnerPhone}
+    vendorOwnerEmail={vendorOwnerEmail}
+    setVendorOwnerEmail={setVendorOwnerEmail}
+    vendorPaidAdvance={vendorPaidAdvance}
+    setVendorPaidAdvance={setVendorPaidAdvance}
+    getCalculatedMonthlyPrice={getCalculatedMonthlyPrice}
+    baseMonthlyPrice={baseMonthlyPrice}
+  />
+)}
 
-              <div className="product-list-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                  <h3 style={{ margin: 0 }}>Directorio y Filtrado de Clientes</h3>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    <button 
-                      onClick={() => setClientFilterTab('all')} 
-                      style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: clientFilterTab === 'all' ? '#1c7ed6' : '#fff', color: clientFilterTab === 'all' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-                    >
-                      Todos ({clientsWithMetrics.length})
-                    </button>
-                    <button 
-                      onClick={() => setClientFilterTab('best')} 
-                      style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: clientFilterTab === 'best' ? '#2b8a3e' : '#fff', color: clientFilterTab === 'best' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-                    >
-                      ⭐ Mejor Cliente
-                    </button>
-                    <button 
-                      onClick={() => setClientFilterTab('debtors')} 
-                      style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: clientFilterTab === 'debtors' ? '#fa5252' : '#fff', color: clientFilterTab === 'debtors' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-                    >
-                      ⚠️ Morosos ({clientsWithMetrics.filter(c => c.totalPending > 0).length})
-                    </button>
-                    <button 
-                      onClick={() => setClientFilterTab('frequent')} 
-                      style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ced4da', background: clientFilterTab === 'frequent' ? '#ae3ec9' : '#fff', color: clientFilterTab === 'frequent' ? '#fff' : '#495057', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-                    >
-                      🔥 Más Frecuentes
-                    </button>
-                  </div>
-                </div>
+{activeTab === 'admin' && currentUserRole === 'super_admin' && (
+  <AdminMasterView 
+    currentStoreType={currentStoreType}
+    setCurrentStoreType={setCurrentStoreType}
+    getSystemFinancials={getSystemFinancials}
+    baseMonthlyPrice={baseMonthlyPrice}
+    setBaseMonthlyPrice={setBaseMonthlyPrice}
+    globalPromoDiscount={globalPromoDiscount}
+    setGlobalPromoDiscount={setGlobalPromoDiscount}
+    handleSaveSaasSettings={handleSaveSaasSettings}
+    savingSettings={savingSettings}
+    getCalculatedMonthlyPrice={getCalculatedMonthlyPrice}
+    systemVendors={systemVendors}
+    adminStores={adminStores}
+    fetchAdminStores={fetchAdminStores}
+    handlePayVendor={handlePayVendor}
+    editingStore={editingStore}
+    resetStoreForm={resetStoreForm}
+    handleSaveStore={handleSaveStore}
+    storeName={storeName}
+    setStoreName={setStoreName}
+    storeRif={storeRif}
+    setStoreRif={setStoreRif}
+    newStoreType={newStoreType}
+    setNewStoreType={setNewStoreType}
+    storeCountry={storeCountry}
+    setStoreCountry={setStoreCountry}
+    ownerName={ownerName}
+    setOwnerName={setOwnerName}
+    ownerDoc={ownerDoc}
+    setOwnerDoc={setOwnerDoc}
+    storePhone={storePhone}
+    setStorePhone={setStorePhone}
+    storeEmail={storeEmail}
+    setStoreEmail={setStoreEmail}
+    storeAddress={storeAddress}
+    setStoreAddress={setStoreAddress}
+    storeCity={storeCity}
+    handleCityChange={handleCityChange}
+    storeState={storeState}
+    storeCustomDiscount={storeCustomDiscount}
+    setStoreCustomDiscount={setStoreCustomDiscount}
+    storePaidAdvance={storePaidAdvance}
+    setStorePaidAdvance={setStorePaidAdvance}
+    handleCreateSystemVendor={handleCreateSystemVendor}
+    creatingVendor={creatingVendor}
+    newVendorName={newVendorName}
+    setNewVendorName={setNewVendorName}
+    newVendorEmail={newVendorEmail}
+    setNewVendorEmail={setNewVendorEmail}
+    newVendorPhone={newVendorPhone}
+    setNewVendorPhone={setNewVendorPhone}
+    sendStoreRenewalWhatsApp={sendStoreRenewalWhatsApp}
+    handleRenewSubscription={handleRenewSubscription}
+    handleOpenPreInvoice={handleOpenPreInvoice}
+    handleOpenOwnerModal={handleOpenOwnerModal}
+    handleStartEditStore={handleStartEditStore}
+    handleToggleKrono={handleToggleKrono}
+    handleDeleteStore={handleDeleteStore}
+  />
+)}
 
-                <div className="table-responsive">
-                  <table className="fiskal-table">
-                    <thead>
-                      <tr>
-                        <th>Cliente & Cédula</th>
-                        <th>Total Facturado</th>
-                        <th>Saldo Pendiente</th>
-                        <th>Compras</th>
-                        <th style={{ textAlign: 'center' }}>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {getFilteredClientsByTab().length === 0 ? (
-                        <tr><td colSpan="5" className="empty-text">No hay clientes que coincidan con este filtro.</td></tr>
-                      ) : (
-                        getFilteredClientsByTab().map((cli, index) => (
-                          <tr key={cli.id} style={{ cursor: 'pointer' }} onClick={() => handleOpenClientDetail(cli)} title="Haz clic para ver historial y notas">
-                            <td>
-                              <strong>{cli.name}</strong><br/>
-                              <span style={{ fontSize: '11px', color: '#6c757d' }}>{cli.document || 'Sin Cédula'} | {cli.phone || 'Sin Telf'}</span>
-                            </td>
-                            <td><strong>${cli.totalBilled.toFixed(2)}</strong></td>
-                            <td>
-                              {cli.totalPending > 0 ? (
-                                <span style={{ color: '#fa5252', fontWeight: 'bold' }}>${cli.totalPending.toFixed(2)}</span>
-                              ) : (<span style={{ color: '#2b8a3e' }}>$0.00</span>)}
-                            </td>
-                            <td><span style={{ background: '#f1f3f5', padding: '2px 8px', borderRadius: '10px', fontSize: '12px', fontWeight: 'bold' }}>{cli.salesCount}</span></td>
-                            <td className="action-cell" onClick={(e) => e.stopPropagation()}>
-                              <div className="action-buttons">
-                                {cli.totalPending > 0 && cli.phone && (
-                                  <button className="btn-icon-whatsapp" onClick={() => sendClientGeneralWhatsApp(cli, cli.totalPending)} title="Cobro por WhatsApp">
-                                    <MessageCircle size={16} />
-                                  </button>
-                                )}
-                                <button className="btn-icon-primary" onClick={() => handleOpenClientDetail(cli)} title="Ver Historial y Notas">
-                                  <Eye size={16} />
-                                </button>
-                                {(currentUserRole === 'owner' || currentUserRole === 'super_admin') && (
-                                  <button className="btn-icon-danger" onClick={() => handleDeleteClient(cli.id)} title="Eliminar">
-                                    <Trash2 size={16} />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
+{activeTab === 'cash' && (
+  <CashShiftsView 
+    currentShift={currentShift}
+    getCurrentRegisterName={getCurrentRegisterName}
+    setShowCloseShiftModal={setShowCloseShiftModal}
+    currentStoreCountry={currentStoreCountry}
+    shiftCashUSD={shiftCashUSD}
+    shiftCashBs={shiftCashBs}
+    shiftZelle={shiftZelle}
+    shiftPagoMovilBs={shiftPagoMovilBs}
+    shiftDebitBs={shiftDebitBs}
+    setShowOpenShiftModal={setShowOpenShiftModal}
+    pastShifts={pastShifts}
+    registers={registers}
+    employees={employees}
+    sales={sales}
+    setSelectedShiftReport={setSelectedShiftReport}
+    setShowShiftReportModal={setShowShiftReportModal}
+  />
+)}
 
-          {activeTab === 'products' && (
-            <div className="products-layout">
-              <div className="product-form-card">
-                <h3>{editingProduct ? `Editando: ${editingProduct.name}` : `Agregar Nuevo ${currentStoreType === 'restaurant' ? 'Platillo / Ítem' : 'Producto'}`}</h3>
-                <form onSubmit={editingProduct ? handleUpdateProduct : handleAddProduct} className="fiskal-form">
-                  <div className="form-group">
-                    <label>Fotografía {currentStoreType === 'restaurant' ? 'del Platillo' : 'del Producto'}</label>
-                    <div style={{ border: '2px dashed #ced4da', padding: '16px', textAlign: 'center', borderRadius: '6px', background: '#f8f9fa' }}>
-                      {imagePreview ? (
-                        <div style={{ marginBottom: '10px' }}>
-                          <img src={imagePreview} alt="Vista previa" style={{ maxHeight: '100px', objectFit: 'cover', borderRadius: '4px' }} />
-                        </div>
-                      ) : (
-                        <div style={{ marginBottom: '10px', color: '#6c757d' }}>
-                          <ImageIcon size={32} style={{ margin: '0 auto 6px auto', display: 'block' }} />
-                          <span style={{ fontSize: '12px' }}>Sube una foto</span>
-                        </div>
-                      )}
-                      <input type="file" accept="image/*" capture="environment" onChange={handleImageSelect} style={{ fontSize: '12px', width: '100%' }} />
-                    </div>
-                  </div>
+{activeTab === 'history' && (
+  <SalesHistoryView 
+    filteredSales={filteredSales}
+    historyFilterType={historyFilterType}
+    setHistoryFilterType={setHistoryFilterType}
+    historyCustomDate={historyCustomDate}
+    setHistoryCustomDate={setHistoryCustomDate}
+    handleResumeOrder={handleResumeOrder}
+    handleStartSettleCredit={handleStartSettleCredit}
+    sendWhatsAppReminder={sendWhatsAppReminder}
+    handleViewInvoice={handleViewInvoice}
+    currentUserRole={currentUserRole}
+    currentStoreId={currentStoreId}
+    setSales={setSales}
+  />
+)}
 
-                  <div className="form-group">
-                    <label>Nombre {currentStoreType === 'restaurant' ? 'del Platillo' : 'del Producto'}</label>
-                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder={currentStoreType === 'restaurant' ? "Ej. Hamburguesa Doble" : "Ej. Harina PAN"} />
-                  </div>
-                  <div className="form-group">
-                    <label>Código de Barras / SKU</label>
-                    <input type="text" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="SKU-001" />
-                  </div>
-                  <div className="form-group">
-                    <label>Precio de Venta ($ USD)</label>
-                    <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required placeholder="0.00" />
-                  </div>
-                  <div className="form-group">
-                    <label>Stock (Unidades)</label>
-                    <input type="number" value={stock} onChange={(e) => setStock(e.target.value)} required placeholder="0" />
-                  </div>
-                  <div className="form-group">
-                    <label>Categoría</label>
-                    <select 
-                      value={
-                        ['General', 'Por Peso', ...products.map(p => (p.category || '').trim())].includes(category) 
-                          ? category 
-                          : 'OTRA'
-                      } 
-                      onChange={(e) => {
-                        if (e.target.value === 'OTRA') {
-                          setCategory(''); 
-                        } else {
-                          setCategory(e.target.value);
-                          if(e.target.value === 'Por Peso') setProductModifiers(['kg']); 
-                        }
-                      }} 
-                      style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', marginBottom: category === 'Por Peso' || !['General', 'Por Peso', ...products.map(p => (p.category || '').trim())].includes(category) ? '8px' : '0' }}
-                    >
-                      <option value="General">General</option>
-                      {currentStoreType !== 'restaurant' && <option value="Por Peso">Por Peso (Balanza)</option>}
-                      
-                      {[...new Set(products.map(p => (p.category || '').trim()).filter(c => c && c !== 'General' && c !== 'Por Peso'))].map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                      
-                      <option value="OTRA" style={{ fontWeight: 'bold', color: '#1c7ed6' }}>+ Crear nueva categoría...</option>
-                    </select>
+{activeTab === 'clients' && (
+  <ClientsView 
+    clientName={clientName}
+    setClientName={setClientName}
+    clientDoc={clientDoc}
+    setClientDoc={setClientDoc}
+    clientPhone={clientPhone}
+    setClientPhone={setClientPhone}
+    clientEmail={clientEmail}
+    setClientEmail={setClientEmail}
+    handleAddClient={handleAddClient}
+    loadingClient={loadingClient}
+    clientFilterTab={clientFilterTab}
+    setClientFilterTab={setClientFilterTab}
+    clientsWithMetrics={clientsWithMetrics}
+    getFilteredClientsByTab={getFilteredClientsByTab}
+    handleOpenClientDetail={handleOpenClientDetail}
+    sendClientGeneralWhatsApp={sendClientGeneralWhatsApp}
+    currentUserRole={currentUserRole}
+    handleDeleteClient={handleDeleteClient}
+  />
+)}
 
-                    {!['General', 'Por Peso', ...products.map(p => (p.category || '').trim())].includes(category) && (
-                      <input 
-                        type="text" 
-                        value={category} 
-                        onChange={(e) => setCategory(e.target.value)} 
-                        placeholder="Escribe el nombre de la nueva categoría..." 
-                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #1c7ed6', fontSize: '13px', background: '#e7f5ff', marginTop: '8px' }}
-                        autoFocus
-                      />
-                    )}
-                  </div>
+{activeTab === 'products' && (
+  <ProductsView 
+    editingProduct={editingProduct}
+    currentStoreType={currentStoreType}
+    handleUpdateProduct={handleUpdateProduct}
+    handleAddProduct={handleAddProduct}
+    imagePreview={imagePreview}
+    handleImageSelect={handleImageSelect}
+    name={name}
+    setName={setName}
+    barcode={barcode}
+    setBarcode={setBarcode}
+    price={price}
+    setPrice={setPrice}
+    stock={stock}
+    setStock={setStock}
+    category={category}
+    setCategory={setCategory}
+    products={products}
+    productModifiers={productModifiers}
+    setProductModifiers={setProductModifiers}
+    newModifierText={newModifierText}
+    setNewModifierText={setNewModifierText}
+    addProductModifierTag={addProductModifierTag}
+    removeProductModifierTag={removeProductModifierTag}
+    currentStoreKronoEnabled={currentStoreKronoEnabled}
+    showInKrono={showInKrono}
+    setShowInKrono={setShowInKrono}
+    kronoPrice={kronoPrice}
+    setKronoPrice={setKronoPrice}
+    resetProductForm={resetProductForm}
+    loading={loading}
+    setShowPrintCatalog={setShowPrintCatalog}
+    handleOpenLabel={handleOpenLabel}
+    handleStartEditProduct={handleStartEditProduct}
+    handleDeleteProduct={handleDeleteProduct}
+  />
+)}
 
-                  {category === 'Por Peso' && currentStoreType !== 'restaurant' && (
-                    <div className="form-group" style={{ background: '#e7f5ff', padding: '12px', borderRadius: '6px', border: '1px solid #74c0fc', marginBottom: '16px', marginTop: '12px' }}>
-                      <label style={{ color: '#1971c2', fontWeight: 'bold' }}>Unidad de Medida Base</label>
-                      <select 
-                        value={productModifiers[0] || 'kg'} 
-                        onChange={(e) => setProductModifiers([e.target.value])}
-                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px' }}
-                      >
-                        <option value="kg">Kilogramos (Kg)</option>
-                        <option value="g">Gramos (g)</option>
-                      </select>
-                      <span style={{ fontSize: '11px', color: '#495057', display: 'block', marginTop: '6px' }}>
-                        El precio de venta que colocaste arriba será el costo por cada 1 {productModifiers[0] || 'kg'} exacto de este producto.
-                      </span>
-                    </div>
-                  )}
+{activeTab === 'settings' && (currentUserRole === 'owner' || currentUserRole === 'super_admin' || currentUserRole === 'system_vendor') && (
+  <SettingsView 
+    currentStoreRif={currentStoreRif}
+    setCurrentStoreRif={setCurrentStoreRif}
+    currentStoreAddress={currentStoreAddress}
+    setCurrentStoreAddress={setCurrentStoreAddress}
+    currentStoreCountry={currentStoreCountry}
+    currentStoreTaxEnabled={currentStoreTaxEnabled}
+    setCurrentStoreTaxEnabled={setCurrentStoreTaxEnabled}
+    currentStoreTaxRate={currentStoreTaxRate}
+    setCurrentStoreTaxRate={setCurrentStoreTaxRate}
+    currentStoreTaxInclusive={currentStoreTaxInclusive}
+    setCurrentStoreTaxInclusive={setCurrentStoreTaxInclusive}
+    handleSaveFiscalSettings={handleSaveFiscalSettings}
+    savingFiscal={savingFiscal}
+    currentStoreLat={currentStoreLat}
+    setCurrentStoreLat={setCurrentStoreLat}
+    currentStoreLng={currentStoreLng}
+    setCurrentStoreLng={setCurrentStoreLng}
+    handleGetLocation={handleGetLocation}
+    newEmpName={newEmpName}
+    setNewEmpName={setNewEmpName}
+    newEmpEmail={newEmpEmail}
+    setNewEmpEmail={setNewEmpEmail}
+    newEmpPass={newEmpPass}
+    setNewEmpPass={setNewEmpPass}
+    handleCreateEmployee={handleCreateEmployee}
+    creatingEmployee={creatingEmployee}
+    employees={employees}
+    newRegisterName={newRegisterName}
+    setNewRegisterName={setNewRegisterName}
+    isMainRegister={isMainRegister}
+    setIsMainRegister={setIsMainRegister}
+    handleAddRegister={handleAddRegister}
+    registers={registers}
+    handleDeleteRegister={handleDeleteRegister}
+    clientes={clientes}
+    clienteSeleccionado={clienteSeleccionado}
+    setClienteSeleccionado={setClienteSeleccionado}
+    productos={productos}
+    productoSeleccionado={productoSeleccionado}
+    setProductoSeleccionado={setProductoSeleccionado}
+    mostrarNuevaPlantilla={mostrarNuevaPlantilla}
+    setMostrarNuevaPlantilla={setMostrarNuevaPlantilla}
+    nombreNuevaPlantilla={nombreNuevaPlantilla}
+    setNombreNuevaPlantilla={setNombreNuevaPlantilla}
+    handleCrearPlantilla={handleCrearPlantilla}
+    plantillaActiva={plantillaActiva}
+    setPlantillaActiva={setPlantillaActiva}
+    plantillas={plantillas}
+    setPlantillas={setPlantillas}
+    insertarVariable={insertarVariable}
+    textareaRef={textareaRef}
+    handleGuardarPlantillas={handleGuardarPlantillas}
+    handleEnviarWhatsApp={handleEnviarWhatsApp}
+  />
+)}
 
-                  {/* SECCIÓN DE ETIQUETAS DINÁMICAS (SÓLO MODO RESTAURANTE) */}
-                  {currentStoreType === 'restaurant' && (
-                    <div className="form-group" style={{ background: '#f8f9fa', padding: '12px', borderRadius: '6px', border: '1px solid #ced4da', marginBottom: '16px' }}>
-                      <label style={{ fontWeight: 'bold', color: '#2b8a3e', marginBottom: '6px', display: 'block', fontSize: '13px' }}>
-                        Etiquetas de Modificación (Ingredientes)
-                      </label>
-                      <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-                        <input 
-                          type="text" 
-                          value={newModifierText} 
-                          onChange={(e) => setNewModifierText(e.target.value)} 
-                          placeholder="Ej. Cebolla, Queso, Salsas..." 
-                          style={{ flex: 1, padding: '6px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da' }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addProductModifierTag(); } }}
-                        />
-                        <button 
-                          type="button" 
-                          onClick={addProductModifierTag} 
-                          style={{ background: '#2b8a3e', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-                        >
-                          + Añadir etiqueta
-                        </button>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {productModifiers.map((mod, idx) => (
-                          <span key={idx} style={{ background: '#e9ecef', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid #dee2e6' }}>
-                            {mod}
-                            <button 
-                              type="button" 
-                              onClick={() => removeProductModifierTag(mod)} 
-                              style={{ background: 'none', border: 'none', color: '#fa5252', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', padding: 0, lineHeight: 1 }}
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+{activeTab === 'delivery' && currentStoreKronoEnabled && (
+ <DeliveryDashboard storeId={currentStoreId} isOnline={isOnline} bcvRate={bcvRate} />
+)}
 
-                  {/* NUEVO MÓDULO: INTEGRACIÓN KRONO MARKET */}
-                  {currentStoreKronoEnabled && (
-                    <div className="form-group" style={{ background: showInKrono ? '#ecfdf5' : '#f8fafc', padding: '12px', borderRadius: '6px', border: showInKrono ? '1px solid #10b981' : '1px solid #e2e8f0', marginBottom: '16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: showInKrono ? '12px' : '0' }}>
-                        <input type="checkbox" id="showInKrono" checked={showInKrono} onChange={(e) => setShowInKrono(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
-                        <label htmlFor="showInKrono" style={{ margin: 0, cursor: 'pointer', fontWeight: 'bold', color: '#0f766e' }}>
-                          🛒 Publicar en Krono Market (App de Delivery)
-                        </label>
-                      </div>
-                      {showInKrono && (
-                        <div style={{ marginLeft: '24px' }}>
-                          <label style={{ fontSize: '12px', color: '#475569', marginBottom: '4px', display: 'block' }}>Precio Preferencial en Krono ($ USD) - Opcional</label>
-                          <input type="number" step="0.01" value={kronoPrice} onChange={(e) => setKronoPrice(e.target.value)} placeholder="Ej. 4.50 (Deja vacío para usar precio normal)" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                    {editingProduct && (
-                      <button type="button" className="btn-secondary" onClick={resetProductForm} style={{ flex: 1 }}>Cancelar</button>
-                    )}
-                    <button type="submit" className="btn-primary" disabled={loading} style={{ flex: 2 }}>
-                      <Package size={18} /> {loading ? 'Guardando...' : (editingProduct ? 'Actualizar' : 'Guardar')}
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-              <div className="product-list-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                  <h3 style={{ margin: 0 }}>Inventario Registrado ({products.length})</h3>
-                  <button className="btn-secondary" onClick={() => setShowPrintCatalog(true)} style={{ fontSize: '12px', padding: '6px 12px' }}>🖨️ Imprimir Catálogo</button>
-                </div>
-                <div className="table-responsive">
-                  <table className="fiskal-table">
-                    <thead>
-                      <tr>
-                        <th>Producto</th>
-                        <th>Precio / Costo</th>
-                        <th>Categoría</th>
-                        <th>Stock</th>
-                        <th style={{ textAlign: 'center' }}>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {products.length === 0 ? (
-                        <tr><td colSpan="5" className="empty-text">No hay productos registrados.</td></tr>
-                      ) : (
-                        products.map((prod) => (
-                          <tr key={prod.id}>
-                            <td>
-                              <strong>{prod.name}</strong><br/>
-                              <span style={{ fontSize: '11px', color: '#6c757d' }}>{prod.barcode ? `SKU: ${prod.barcode}` : 'Sin SKU'}</span>
-                              {prod.show_in_krono && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#ecfdf5', color: '#10b981', padding: '2px 6px', borderRadius: '4px', border: '1px solid #10b981' }}>🛒 Krono</span>}
-                            </td>
-                            <td>
-                              <strong>${prod.price.toFixed(2)}</strong><br/>
-                              <span style={{ fontSize: '11px', color: '#6c757d' }}>Costo: ${prod.cost ? prod.cost.toFixed(2) : '0.00'}</span>
-                            </td>
-                            <td><span style={{ background: '#f8f9fa', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', border: '1px solid #dee2e6' }}>{prod.category || 'General'}</span></td>
-                            <td>
-                              <span style={{ fontWeight: 'bold', color: prod.stock <= 5 ? '#fa5252' : '#212529' }}>
-                                {prod.stock !== undefined ? prod.stock : 0}
-                              </span>
-                            </td>
-                            <td className="action-cell">
-                              <div className="action-buttons" style={{ justifyContent: 'center' }}>
-                                <button className="btn-icon-primary" onClick={() => handleOpenLabel(prod)} title="Ver Etiqueta QR"><QrCode size={16} /></button>
-                                <button className="btn-icon-edit" onClick={() => handleStartEditProduct(prod)} title="Editar"><Edit2 size={16} /></button>
-                                <button className="btn-icon-danger" onClick={() => handleDeleteProduct(prod.id)} title="Eliminar"><Trash2 size={16} /></button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'settings' && (currentUserRole === 'owner' || currentUserRole === 'super_admin' || currentUserRole === 'system_vendor') && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', alignItems: 'stretch' }}>
-              
-              {/* 1. Datos Fiscales y Configuración de Comercio */}
-              <div className="product-form-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#2b8a3e' }}>
-                  <Store size={20} /> Datos Fiscales y Configuración
-                </h3>
-                <form onSubmit={handleSaveFiscalSettings} className="fiskal-form" style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                  <div className="form-group">
-                    <label>RIF / NIT / Documento del Comercio</label>
-                    <input type="text" value={currentStoreRif} onChange={(e) => setCurrentStoreRif(e.target.value)} placeholder="Ej. J-12345678-9" />
-                  </div>
-                  <div className="form-group">
-                    <label>Dirección Física en Facturas</label>
-                    <textarea value={currentStoreAddress} onChange={(e) => setCurrentStoreAddress(e.target.value)} placeholder="Ej. Av. Principal, Local 4..." rows="2" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', outline: 'none' }} />
-                  </div>
-                  
-                  <div style={{ borderTop: '1px solid #dee2e6', margin: '16px 0', paddingTop: '16px' }}>
-                    <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                      <input type="checkbox" id="taxEnabled" checked={currentStoreTaxEnabled} onChange={(e) => setCurrentStoreTaxEnabled(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
-                      <label htmlFor="taxEnabled" style={{ cursor: 'pointer', fontWeight: 'bold', margin: 0 }}>Habilitar Cálculo de Impuestos (IVA/ITBMS)</label>
-                    </div>
-                    
-                    {currentStoreTaxEnabled && (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#f8f9fa', padding: '12px', borderRadius: '6px', border: '1px solid #ced4da' }}>
-                        <div className="form-group" style={{ margin: 0 }}>
-                          <label>Tasa de Impuesto (%)</label>
-                          <input type="number" step="0.1" value={currentStoreTaxRate} onChange={(e) => setCurrentStoreTaxRate(e.target.value)} />
-                        </div>
-                        <div className="form-group" style={{ margin: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0 }}>
-                            <input type="checkbox" checked={currentStoreTaxInclusive} onChange={(e) => setCurrentStoreTaxInclusive(e.target.checked)} />
-                            <span style={{ fontSize: '12px' }}>Impuesto incluido en el precio de los productos</span>
-                          </label>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <button type="submit" className="btn-primary" disabled={savingFiscal} style={{ marginTop: 'auto' }}>
-                    <Check size={18} /> {savingFiscal ? 'Guardando...' : 'Guardar Configuración'}
-                  </button>
-                </form>
-              </div>
-
-              {/* 2. Mapa GPS */}
-              <div className="product-form-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#e64980' }}>
-                  📍 Ubicación GPS para Krono Delivery
-                </h3>
-                <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '16px' }}>
-                  Fija la ubicación exacta de tu local para los motorizados. Arrastra el marcador o usa tu GPS.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleGetLocation}
-                  style={{ width: '100%', marginBottom: '16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: '#fff', border: '1px solid #e64980', color: '#e64980', padding: '10px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
-                >
-                  🎯 Ubicar con GPS
-                </button>
-                <div style={{ flex: 1, minHeight: '250px', width: '100%', borderRadius: '6px', overflow: 'hidden', border: '1px solid #ced4da' }}>
-                  <MapContainer 
-                    center={[currentStoreLat || 10.3755, currentStoreLng || -66.9587]} 
-                    zoom={15} 
-                    style={{ height: '100%', width: '100%' }}
-                  >
-                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    <MapUpdater center={[currentStoreLat || 10.3755, currentStoreLng || -66.9587]} />
-                    <Marker 
-                      position={[currentStoreLat || 10.3755, currentStoreLng || -66.9587]} 
-                      icon={customIcon}
-                      draggable={true}
-                      eventHandlers={{
-                        dragend: (e) => {
-                          const marker = e.target;
-                          const position = marker.getLatLng();
-                          setCurrentStoreLat(position.lat);
-                          setCurrentStoreLng(position.lng);
-                        },
-                      }}
-                    >
-                      <Popup>Ubicación de tu comercio</Popup>
-                    </Marker>
-                  </MapContainer>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', fontSize: '12px', color: '#495057', background: '#f8f9fa', padding: '8px', borderRadius: '4px' }}>
-                  <span><strong>Lat:</strong> {currentStoreLat ? currentStoreLat.toFixed(6) : 'N/A'}</span>
-                  <span><strong>Lng:</strong> {currentStoreLng ? currentStoreLng.toFixed(6) : 'N/A'}</span>
-                </div>
-              </div>
-
-              {/* 3. Crear Empleados */}
-              <div className="product-form-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#1c7ed6' }}>
-                  <UserPlus size={20} /> Registrar Cajero / Empleado
-                </h3>
-                <form onSubmit={handleCreateEmployee} className="fiskal-form">
-                  <div className="form-group">
-                    <label>Nombre Completo</label>
-                    <input type="text" value={newEmpName} onChange={(e) => setNewEmpName(e.target.value)} required placeholder="Ej. Juan Pérez" />
-                  </div>
-                  <div className="form-group">
-                    <label>Correo Electrónico</label>
-                    <input type="email" value={newEmpEmail} onChange={(e) => setNewEmpEmail(e.target.value)} required placeholder="juan@ejemplo.com" />
-                  </div>
-                  <div className="form-group">
-                    <label>Contraseña</label>
-                    <input type="password" value={newEmpPass} onChange={(e) => setNewEmpPass(e.target.value)} required placeholder="Mínimo 6 caracteres" />
-                  </div>
-                  <button type="submit" className="btn-primary" disabled={creatingEmployee} style={{ background: '#1c7ed6' }}>
-                    <User size={18} /> {creatingEmployee ? 'Registrando...' : 'Registrar Empleado'}
-                  </button>
-                </form>
-
-                <div style={{ marginTop: '24px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <h4 style={{ fontSize: '13px', color: '#495057', marginBottom: '8px', borderBottom: '1px solid #dee2e6', paddingBottom: '4px' }}>Equipo de Trabajo</h4>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, overflowY: 'auto', flex: 1 }}>
-                    {employees.map(emp => (
-                      <li key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', background: '#f8f9fa', marginBottom: '4px', borderRadius: '4px', fontSize: '12px' }}>
-                        <span><strong>{emp.full_name}</strong></span>
-                        <span style={{ color: '#6c757d' }}>Rol: {emp.role}</span>
-                      </li>
-                    ))}
-                    {employees.length === 0 && <li style={{ fontSize: '12px', color: '#adb5bd' }}>No hay empleados registrados.</li>}
-                  </ul>
-                </div>
-              </div>
-
-{/* 4. Columna Derecha: Cajas y Plantillas apiladas */}
-<div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-  
-  {/* --- TARJETA 1: GESTIÓN DE CAJAS FÍSICAS --- */}
-  <div className="product-form-card" style={{ margin: 0 }}>
-    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#d9480f' }}>
-      <HardDrive size={20} /> Gestión de Cajas Físicas
-    </h3>
-    <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '16px' }}>
-      Agrega terminales para aperturar turnos separados.
-    </p>
-    <form onSubmit={handleAddRegister} className="fiskal-form">
-      <div className="form-group">
-        <label>Nombre de la Caja</label>
-        <input 
-          type="text" 
-          value={newRegisterName} 
-          onChange={(e) => setNewRegisterName(e.target.value)} 
-          required 
-          placeholder="Ej. Caja Principal" 
-        />
-      </div>
-      <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-        <input 
-          type="checkbox" 
-          id="isMainReg" 
-          checked={isMainRegister} 
-          onChange={(e) => setIsMainRegister(e.target.checked)} 
-          style={{ width: '16px', height: '16px' }} 
-        />
-        <label htmlFor="isMainReg" style={{ margin: 0, cursor: 'pointer', fontSize: '13px' }}>
-          Establecer como Caja Principal
-        </label>
-      </div>
-      <button type="submit" className="btn-primary" style={{ background: '#d9480f' }}>
-        <Plus size={18} /> Registrar Caja
-      </button>
-    </form>
-    <div style={{ marginTop: '24px' }}>
-      <h4 style={{ fontSize: '13px', color: '#495057', marginBottom: '8px', borderBottom: '1px solid #dee2e6', paddingBottom: '4px' }}>
-        Cajas Registradas
-      </h4>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-        {registers.map(reg => (
-          <li key={reg.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: reg.is_main ? '#fff4e6' : '#f8f9fa', marginBottom: '4px', borderRadius: '4px', fontSize: '12px', border: reg.is_main ? '1px solid #ffd8a8' : 'none' }}>
-            <span>
-              <strong>{reg.name}</strong> 
-              {reg.is_main && <span style={{ color: '#d9480f', fontSize: '10px', marginLeft: '4px' }}>(Principal)</span>}
-            </span>
-            <button onClick={() => handleDeleteRegister(reg.id)} style={{ background: 'none', border: 'none', color: '#fa5252', cursor: 'pointer' }}>
-              <Trash2 size={14}/>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  </div>
-
-  {/* --- TARJETA 2: PLANTILLAS DE WHATSAPP --- */}
-  <div className="product-form-card" style={{ margin: 0 }}>
-    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#2b8a3e', marginBottom: '16px' }}>
-      <MessageCircle size={20} /> Plantillas de WhatsApp
-    </h3>
-
-    {/* Selectores de Cliente y Producto en una sola fila (Única vez) */}
-    <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
-      <div className="form-group" style={{ flex: 1, margin: 0 }}>
-        <label style={{ fontSize: '12px', marginBottom: '4px', display: 'block', fontWeight: 'bold' }}>CLIENTE DESTINO</label>
-        <select 
-          value={clienteSeleccionado} 
-          onChange={(e) => setClienteSeleccionado(e.target.value)}
-          style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '12px', outline: 'none' }}
-        >
-          <option value="">Selecciona un cliente...</option>
-          {clientes.map(cliente => (
-            <option key={cliente.id} value={cliente.id}>
-              {cliente.name} {cliente.phone ? `(${cliente.phone})` : ''}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="form-group" style={{ flex: 1, margin: 0 }}>
-        <label style={{ fontSize: '12px', marginBottom: '4px', display: 'block', fontWeight: 'bold' }}>PRODUCTO A ENVIAR</label>
-        <select 
-          value={productoSeleccionado} 
-          onChange={(e) => setProductoSeleccionado(e.target.value)}
-          style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '12px', outline: 'none' }}
-        >
-          <option value="">Selecciona un producto...</option>
-          {productos.map(producto => (
-            <option key={producto.id} value={producto.id}>{producto.name}</option>
-          ))}
-        </select>
-      </div>
-    </div>
-
-    {/* Selector de Plantilla a Editar y Botón Nueva Plantilla */}
-    <div className="form-group" style={{ marginBottom: '12px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-        <label style={{ fontSize: '12px', fontWeight: 'bold', margin: 0 }}>PLANTILLA A EDITAR</label>
-        <button 
-          type="button"
-          onClick={() => setMostrarNuevaPlantilla(!mostrarNuevaPlantilla)} 
-          style={{ background: 'none', border: 'none', color: '#2b8a3e', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-        >
-          <Plus size={14} /> Nueva Plantilla
-        </button>
-      </div>
-
-      {mostrarNuevaPlantilla ? (
-        <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-          <input 
-            type="text" 
-            value={nombreNuevaPlantilla} 
-            onChange={(e) => setNombreNuevaPlantilla(e.target.value)} 
-            placeholder="Ej. Recordatorio de Pago" 
-            style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '12px', outline: 'none' }}
-          />
-          <button onClick={handleCrearPlantilla} type="button" className="btn-primary" style={{ background: '#2b8a3e', padding: '0 12px', fontSize: '12px' }}>Crear</button>
-          <button onClick={() => setMostrarNuevaPlantilla(false)} type="button" style={{ background: '#f8f9fa', border: '1px solid #ced4da', padding: '0 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}>Cancelar</button>
-        </div>
-      ) : (
-        <select 
-          value={plantillaActiva} 
-          onChange={(e) => setPlantillaActiva(e.target.value)}
-          style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '12px', outline: 'none', backgroundColor: '#f8f9fa' }}
-        >
-          {Object.keys(plantillas).map(clave => (
-            <option key={clave} value={clave}>
-              {clave.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-            </option>
-          ))}
-        </select>
-      )}
-    </div>
-
-    {/* Área de texto única con Botones de Variables */}
-    <div className="form-group" style={{ marginBottom: '16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-        <label style={{ fontSize: '12px', color: '#6c757d', fontWeight: 'bold', margin: 0 }}>CONTENIDO DE LA PLANTILLA</label>
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <button type="button" onClick={() => insertarVariable('{cliente}')} style={{ background: '#e9ecef', border: '1px solid #ced4da', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', cursor: 'pointer', color: '#495057' }}>+ Cliente</button>
-          <button type="button" onClick={() => insertarVariable('{producto}')} style={{ background: '#e9ecef', border: '1px solid #ced4da', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', cursor: 'pointer', color: '#495057' }}>+ Producto</button>
-          <button type="button" onClick={() => insertarVariable('{comercio}')} style={{ background: '#e9ecef', border: '1px solid #ced4da', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', cursor: 'pointer', color: '#495057' }}>+ Comercio</button>
-        </div>
-      </div>
-      <textarea 
-        ref={textareaRef}
-        value={plantillas[plantillaActiva] || ''} 
-        onChange={(e) => setPlantillas({...plantillas, [plantillaActiva]: e.target.value})} 
-        rows="4" 
-        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '12px', outline: 'none', resize: 'vertical' }} 
-        placeholder="Ejemplo: ¡Hola {cliente}! Ya tenemos el {producto} en stock."
-      />
-    </div>
-
-    {/* Botones de Acción */}
-    <div style={{ display: 'flex', gap: '10px' }}>
-      <button 
-        onClick={handleGuardarPlantillas} 
-        className="btn-primary" 
-        style={{ background: '#f8f9fa', color: '#2b8a3e', border: '1px solid #2b8a3e', width: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
-      >
-        <Check size={18} /> Guardar Cambios
-      </button>
-
-      <button 
-        onClick={handleEnviarWhatsApp} 
-        className="btn-primary" 
-        style={{ background: '#25D366', color: '#fff', border: 'none', width: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
-      >
-        <MessageCircle size={18} /> Enviar por WhatsApp
-      </button>
-    </div>
-  </div>
-</div>
-
-            </div>
-          )}
-
-          {activeTab === 'delivery' && currentStoreKronoEnabled && (
-            <DeliveryDashboard storeId={currentStoreId} isOnline={isOnline} />
-          )}
-
-          {activeTab === 'kds' && (
-  <div 
-    id="kds-panel"
-    style={{ padding: '24px', background: '#f8f9fa', minHeight: '100vh', width: '100%', boxSizing: 'border-box', overflowY: 'auto' }}
-  >
-    
-
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
-      <div>
-        <h2 style={{ margin: 0, color: '#212529', letterSpacing: '-0.5px' }}>Panel de Cocina (KDS)</h2>
-        <p style={{ fontSize: '13px', color: '#868e96', margin: '4px 0 0 0' }}>Gestión de comandas en tiempo real</p>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-        <button 
-          onClick={() => {
-            const panel = document.getElementById('kds-panel');
-            if (!document.fullscreenElement) {
-              if (panel && panel.requestFullscreen) {
-                panel.requestFullscreen().catch(err => console.error("Error fullscreen:", err));
-              }
-            } else {
-              if (document.exitFullscreen) document.exitFullscreen();
-            }
-          }}
-          style={{ background: '#212529', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-        >
-          🖥️ Pantalla Completa
-        </button>
-
-        <span style={{ background: '#2b8a3e', color: '#fff', padding: '8px 16px', borderRadius: '4px', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ width: '8px', height: '8px', background: '#51cf66', borderRadius: '50%', display: 'inline-block' }}></span> En Vivo
-        </span>
-      </div>
-    </div>
-
-    {(() => {
-      try {
-        const rawOrders = (typeof sales !== 'undefined' && Array.isArray(sales)) ? sales : [];
-        
-        const getItems = (s) => {
-          if (!s) return [];
-          if (Array.isArray(s.items)) return s.items;
-          if (typeof s.items === 'string') { try { return JSON.parse(s.items); } catch(e){} }
-          if (Array.isArray(s.cart)) return s.cart;
-          if (typeof s.cart === 'string') { try { return JSON.parse(s.cart); } catch(e){} }
-          return [];
-        };
-
-        const generalKeywords = ['toddy', 'harina', 'azucar', 'galletas', 'citrato', 'disco duro', 'cronch', 'palitos', 'pepsi', 'coca cola', 'refresco', 'agua', 'cerveza'];
-
-        const waitingOrders = rawOrders.filter(s => {
-          if (!s) return false;
-          const status = String(s.status || s.estatus || s.state || '').trim().toLowerCase();
-          
-          if (['completed', 'pagada', 'paid', 'credit', 'crédito'].includes(status)) return false;
-          
-          const validKitchenStates = ['pending', 'en espera', 'pendiente', 'preparando', 'en preparación', 'ready', 'listo', 'espera_pago'];
-          if (!validKitchenStates.includes(status)) return false;
-
-          const itemsList = getItems(s);
-          if (itemsList.length === 0) return false;
-
-          const kitchenItems = itemsList.filter(item => {
-            const name = String(item.name || '').toLowerCase();
-            return !generalKeywords.some(gk => name.includes(gk));
-          });
-
-          return kitchenItems.length > 0;
-        });
-
-        if (waitingOrders.length === 0) {
-          return (
-            <div style={{ textAlign: 'center', padding: '60px', background: '#fff', borderRadius: '4px', border: '1px solid #dee2e6' }}>
-              <p style={{ color: '#868e96', fontSize: '15px', margin: 0 }}>
-                No hay comandas pendientes en este momento.
-              </p>
-            </div>
-          );
-        }
-
-        return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-            {waitingOrders.map((order, index) => {
-              const orderId = order && order.id ? order.id.toString() : String(index + 1);
-              
-              const itemsList = getItems(order).filter(item => {
-                const name = String(item.name || '').toLowerCase();
-                return !generalKeywords.some(gk => name.includes(gk));
-              });
-              
-              const currentStatus = String(order.status || order.estatus || 'pending').trim().toLowerCase();
-              const isPreparing = currentStatus === 'preparando' || currentStatus === 'en preparación';
-              const isReady = currentStatus === 'ready' || currentStatus === 'listo' || currentStatus === 'espera_pago';
-
-              let headerBg = '#e03131'; 
-              let headerColor = '#fff';
-              let borderColor = '#e03131';
-              let statusText = 'PENDIENTE';
-
-              if (isPreparing) {
-                headerBg = '#fab005'; 
-                headerColor = '#212529';
-                borderColor = '#fab005';
-                statusText = 'PREPARANDO';
-              } else if (isReady) {
-                headerBg = '#2b8a3e'; 
-                headerColor = '#fff';
-                borderColor = '#2b8a3e';
-                statusText = 'LISTO PARA ENTREGAR';
-              }
-
-              const timeStr = order.created_at ? new Date(order.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--';
-
-              return (
-                <div key={order && order.id ? order.id : index} style={{ background: '#fff', borderRadius: '4px', border: `1px solid ${borderColor}`, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
-                  
-                  <div style={{ background: headerBg, color: headerColor, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <strong style={{ fontSize: '18px', lineHeight: 1 }}>#{orderId.slice(-4)}</strong>
-                      <span style={{ fontSize: '11px', opacity: 0.9 }}>{timeStr}</span>
-                    </div>
-                    <span style={{ fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.5px' }}>{statusText}</span>
-                  </div>
-
-                  <div style={{ padding: '16px', flex: 1 }}>
-                    {itemsList.map((item, i) => {
-                      const itemName = item && item.name ? item.name : 'Producto';
-                      const itemQty = item && item.quantity ? item.quantity : 1;
-                      
-                      // Leemos exactamente lo que el cajero marcó en el POS
-                      const customizationText = item.customization || item.customNote || '';
-
-                      return (
-                        <div key={i} style={{ paddingBottom: '12px', marginBottom: '12px', borderBottom: i === itemsList.length - 1 ? 'none' : '1px dashed #e9ecef' }}>
-                          <div style={{ fontWeight: '600', fontSize: '16px', color: '#212529' }}>{itemQty} x {itemName}</div>
-                          
-                          {customizationText && (
-                            <div style={{ 
-                              fontSize: '14px', 
-                              color: customizationText === 'Con todo' ? '#1c7ed6' : '#e03131', 
-                              marginTop: '4px', 
-                              display: 'flex', 
-                              flexDirection: 'column', 
-                              gap: '2px', 
-                              paddingLeft: '8px', 
-                              borderLeft: `2px solid ${customizationText === 'Con todo' ? '#a5d8ff' : '#ffc9c9'}` 
-                            }}>
-                              <span style={{ fontWeight: 'bold' }}>• {customizationText}</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div style={{ display: 'flex', borderTop: `1px solid ${borderColor}` }}>
-                    {!isPreparing && !isReady && (
-                      <button 
-                        onClick={async (e) => {
-                          e.currentTarget.blur();
-                          if (typeof setSales === 'function') {
-                            setSales(sales.map(s => s.id === order.id ? { ...s, status: 'preparando' } : s));
-                          }
-                          try {
-                            if (typeof supabase !== 'undefined') {
-                              await supabase.from('sales').update({ status: 'preparando' }).eq('id', order.id);
-                            }
-                          } catch (err) { console.error("Error al actualizar estatus:", err); }
-                        }}
-                        style={{ flex: 1, background: '#fff', color: '#e03131', border: 'none', padding: '14px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', transition: 'background 0.2s' }}
-                        onMouseOver={e => e.currentTarget.style.background = '#fff5f5'}
-                        onMouseOut={e => e.currentTarget.style.background = '#fff'}
-                      >
-                        Preparar
-                      </button>
-                    )}
-
-                    {!isReady && (
-                      <button 
-                        onClick={async (e) => {
-                          e.currentTarget.blur();
-
-                          if (typeof setSales === 'function') {
-                            setSales(sales.map(s => s.id === order.id ? { ...s, status: 'ready' } : s));
-                          }
-                          try {
-                            if (typeof supabase !== 'undefined') {
-                              await supabase.from('sales').update({ status: 'ready' }).eq('id', order.id);
-                            }
-                          } catch (err) { console.error("Error al actualizar estatus:", err); }
-                        }}
-                        style={{ flex: 1, background: isPreparing ? '#fab005' : '#f8f9fa', color: isPreparing ? '#212529' : '#868e96', border: 'none', borderLeft: isPreparing ? 'none' : '1px solid #dee2e6', padding: '14px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' }}
-                      >
-                        Despachar
-                      </button>
-                    )}
-
-                    {isReady && (
-                      <div style={{ width: '100%', textAlign: 'center', padding: '14px', background: '#2b8a3e', color: '#fff', fontSize: '13px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        Esperando Mesonero
-                      </div>
-                    )}
-                  </div>
-                  
-                </div>
-              );
-            })}
-          </div>
-        );
-      } catch (err) {
-        return (
-          <div style={{ padding: '20px', background: '#ffe3e3', color: '#c92a2a', borderRadius: '4px', border: '1px solid #ffc9c9' }}>
-            <strong>Error:</strong> {err.message}
-          </div>
-        );
-      }
-    })()}
-  </div>
+{activeTab === 'kds' && (
+  <KitchenDashboard sales={sales} setSales={setSales} currentStoreId={currentStoreId} />
 )}
         </section>
       </main>
 
-      {/* ---------------- MODALES GLOBALES ---------------- */}
+{/* ========================================================================== */}
+      {/*                           MODALES GLOBALES                                 */}
+      {/* ========================================================================== */}
 
+
+      {/* -------------------------------------------------------------------------- */}
+      {/* GRUPO 1: OPERACIONES DE VENTA Y POS                                       */}
+      {/* -------------------------------------------------------------------------- */}
+
+      {/* 1.1 MODAL: PERSONALIZAR PLATILLO (MODIFICADORES E INGREDIENTES) */}
       {showModifierModal && productForModifiers && (
         <div className="modal-overlay" style={{ zIndex: 10006 }}>
           <div className="modal-content" style={{ width: '400px' }}>
             <div className="modal-header">
               <h3>Personalizar: {productForModifiers.name}</h3>
-              <button className="btn-close-modal" onClick={() => setShowModifierModal(false)}><X size={20} /></button>
+              <button className="btn-close-modal" onClick={() => setShowModifierModal(false)}>
+                <X size={20} />
+              </button>
             </div>
             <div className="modal-body fiskal-form">
               <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '16px' }}>
@@ -6151,7 +4405,6 @@ return (
                   ))
                 )}
 
-                {/* NUEVO CHECK: PARA LLEVAR (SEPARA DEL RESTO VISUALMENTE) */}
                 <hr style={{ border: '0', borderTop: '1px solid #dee2e6', margin: '6px 0' }} />
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', color: '#1c7ed6' }}>
                   <input 
@@ -6174,14 +4427,15 @@ return (
         </div>
       )}
 
-
-      {/* Modal de Venta por Peso */}
+      {/* 1.2 MODAL: VENTA POR PESO (BALANZA DIGITAL) */}
       {showWeightModal && productForWeight && (
         <div className="modal-overlay" style={{ zIndex: 10007 }}>
           <div className="modal-content" style={{ width: '380px', textAlign: 'center' }}>
             <div className="modal-header">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>⚖️ Balanza: {productForWeight.name}</h3>
-              <button className="btn-close-modal" onClick={() => setShowWeightModal(false)}><X size={20} /></button>
+              <button className="btn-close-modal" onClick={() => setShowWeightModal(false)}>
+                <X size={20} />
+              </button>
             </div>
             <div className="modal-body fiskal-form" style={{ textAlign: 'left' }}>
               <p style={{ fontSize: '13px', color: '#6c757d', marginBottom: '16px' }}>
@@ -6228,8 +4482,205 @@ return (
         </div>
       )}
 
+      {/* 1.3 MODAL: PASARELA DE COBRO Y PAGOS MIXTOS */}
+      {showPaymentModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>{settlingSale ? 'Abonar / Pagar Crédito' : 'Pasarela de Pagos'}</h3>
+              <button className="btn-close-modal" onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="payment-summary-box">
+                <div>
+                  <span>Total a Pagar:</span>
+                  <h2>${totalUSD.toFixed(2)}</h2>
+                  {currentStoreCountry === 'venezuela' && (
+                    <span style={{ fontSize: '13px', color: '#6c757d', fontWeight: '600' }}>
+                      Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  )}
+                </div>
+              </div>
 
-{/* Modal Cierre de Caja / Reporte Z */}
+              <div className="payment-status-box" style={{ marginBottom: '16px' }}>
+                <div className="status-row">
+                  <span>Total Pagado:</span>
+                  <strong>${totalPaidUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${(totalPaidUSD * bcvRate).toFixed(2)})`}</strong>
+                </div>
+                <div className="status-row">
+                  <span>Restante / Falta:</span>
+                  <strong style={{ color: remainingUSD > 0 ? '#fa5252' : '#2b8a3e' }}>
+                    ${remainingUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${remainingBs.toFixed(2)})`}
+                  </strong>
+                </div>
+                {changeUSD > 0 && (
+                  <div className="status-row highlight" style={{ color: '#2b8a3e' }}>
+                    <span>Cambio / Vuelto:</span>
+                    <strong>${changeUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${changeBs.toFixed(2)})`}</strong>
+                  </div>
+                )}
+              </div>
+
+              <div className="payment-inputs-grid">
+                <div className="form-group">
+                  <label>Efectivo ($ USD)</label>
+                  <input type="number" step="0.01" value={payCashUSD} onChange={(e) => setPayCashUSD(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
+                </div>
+                <div className="form-group">
+                  <label>
+                    {currentStoreCountry === 'panama' ? 'Yappy ($)' : currentStoreCountry === 'el_salvador' ? 'Transferencia / Chivo ($)' : 'Zelle ($)'}
+                  </label>
+                  <input type="number" step="0.01" value={payZelle} onChange={(e) => setPayZelle(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
+                </div>
+                
+                {currentStoreCountry === 'venezuela' && (
+                  <>
+                    <div className="form-group">
+                      <label>Efectivo (Bs)</label>
+                      <input type="number" step="0.01" value={payCashBs} onChange={(e) => setPayCashBs(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
+                    </div>
+                    <div className="form-group">
+                      <label>Pago Móvil / Transf. (Bs)</label>
+                      <input type="number" step="0.01" value={payPagoMovil} onChange={(e) => setPayPagoMovil(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
+                    </div>
+                  </>
+                )}
+                
+                <div className="form-group">
+                  <label>Punto de Venta / Débito {currentStoreCountry === 'venezuela' ? '(Bs)' : '($ USD)'}</label>
+                  <input type="number" step="0.01" value={payDebit} onChange={(e) => setPayDebit(e.target.value)} onBlur={updateCalculations} placeholder="0.00" />
+                </div>
+                <div className="form-group">
+                  <label>Referencia Bancaria (Opcional)</label>
+                  <input 
+                    type="text" 
+                    value={paymentRef} 
+                    onChange={(e) => setPaymentRef(e.target.value)} 
+                    placeholder={currentStoreCountry === 'panama' ? 'Teléfono Yappy o Ref' : 'Últimos 4 dígitos o ref'} 
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {!settlingSale && (
+                <button className="btn-secondary" onClick={handleCreditCheckout} style={{ borderColor: '#fa5252', color: '#fa5252' }}>Pasar a Crédito</button>
+              )}
+              <div style={{ display: 'flex', gap: '8px', marginLeft: settlingSale ? 'auto' : '0' }}>
+                <button className="btn-secondary" onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}>Cancelar</button>
+                <button className="btn-primary" onClick={handleCheckoutSubmit} disabled={totalPaidUSD <= 0 || processing}>
+                  {processing ? 'Procesando...' : 'Confirmar Pago'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1.4 MODAL: ESCÁNER CON CÁMARA EN VIVO */}
+      {showCameraScannerModal && (
+        <div className="modal-overlay" style={{ zIndex: 10005 }}>
+          <div className="modal-content" style={{ width: '380px', textAlign: 'center', padding: '20px' }}>
+            <div className="modal-header" style={{ borderBottom: 'none', paddingBottom: '0' }}>
+              <h3>Escáner en Vivo</h3>
+              <button className="btn-close-modal" onClick={stopCameraScanner}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: '12px 0' }}>
+              <div ref={typeof scannerContainerRef !== 'undefined' ? scannerContainerRef : null} id="fiskal-qr-reader" style={{ width: '100%', minHeight: '250px', background: '#000', borderRadius: '8px', overflow: 'hidden' }}></div>
+              {cameraScanError ? (
+                <p style={{ color: '#fa5252', fontSize: '12px', marginTop: '8px' }}>{cameraScanError}</p>
+              ) : (
+                <p style={{ color: '#6c757d', fontSize: '12px', marginTop: '8px' }}>Apunta al código para escanear automáticamente</p>
+              )}
+            </div>
+            <div className="modal-footer" style={{ borderTop: 'none', justifyContent: 'center' }}>
+              <button type="button" className="btn-secondary" onClick={stopCameraScanner} style={{ width: '100%' }}>Cancelar Escáner</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* -------------------------------------------------------------------------- */}
+      {/* GRUPO 2: CAJA Y TURNOS                                                    */}
+      {/* -------------------------------------------------------------------------- */}
+
+      {/* 2.1 MODAL: APERTURA DE CAJA (REPORTE X) */}
+      {showOpenShiftModal && (
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+          <div className="modal-content" style={{ width: '400px' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                <Unlock size={18} /> Apertura de Turno (Reporte X)
+              </h3>
+              <button className="btn-close-modal" onClick={() => setShowOpenShiftModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body fiskal-form">
+              <div className="form-group" style={{ marginTop: '4px' }}>
+                <label>Caja Física a Operar</label>
+                <select 
+                  value={selectedRegisterIdForOpen} 
+                  onChange={(e) => setSelectedRegisterIdForOpen(e.target.value)} 
+                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px', background: '#fff' }}
+                >
+                  {registers.map(r => (
+                    <option key={r.id} value={r.id}>{r.name} {r.is_main ? '(Principal)' : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Fondo Inicial de Caja / Sencillo ($ USD)</label>
+                <div style={{ position: 'relative' }}>
+                  <DollarSign size={16} style={{ position: 'absolute', left: '10px', top: '12px', color: '#6c757d' }} />
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={openingFloat} 
+                    onChange={(e) => setOpeningFloat(e.target.value)} 
+                    style={{ paddingLeft: '32px' }} 
+                    placeholder="0.00" 
+                    autoFocus 
+                  />
+                </div>
+              </div>
+
+              {currentStoreCountry === 'venezuela' && (
+                <div className="form-group">
+                  <label>Fondo Inicial (Bs. Físico)</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '10px', top: '10px', color: '#6c757d', fontWeight: 'bold', fontSize: '13px' }}>Bs</span>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      value={openingFloatVes} 
+                      onChange={(e) => setOpeningFloatVes(e.target.value)} 
+                      style={{ paddingLeft: '32px' }} 
+                      placeholder="0.00" 
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button className="btn-secondary" onClick={() => setShowOpenShiftModal(false)}>Cancelar</button>
+              <button className="btn-primary" onClick={handleOpenShift}>
+                <Check size={16} /> Iniciar Turno
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2.2 MODAL: CIERRE DE CAJA Y ARQUEO (REPORTE Z) */}
       {showCloseShiftModal && currentShift && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
           <div className="modal-content" style={{ width: '450px' }}>
@@ -6318,390 +4769,295 @@ return (
         </div>
       )}
 
-      {/* Modal Apertura de Caja */}
-      {showOpenShiftModal && (
+      {/* 2.3 MODAL: AUDITORÍA DETALLADA DE REPORTE Z ANTERIOR */}
+      {showShiftReportModal && selectedShiftReport && (
+        <div className="modal-overlay" style={{ zIndex: 10000, padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-content" style={{ width: '100%', maxWidth: '600px', maxHeight: '90vh', background: '#fff', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '20px', overflowY: 'auto' }}>
+              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                <h3 style={{ margin: '0 0 10px 0', color: '#212529', fontSize: '18px' }}>Detalle de Reporte Z (Auditoría)</h3>
+                <p style={{ margin: '2px 0', fontSize: '12px', color: '#6c757d' }}>
+                  <strong>Apertura:</strong> {new Date(selectedShiftReport.opened_at).toLocaleString()}
+                </p>
+                <p style={{ margin: '2px 0', fontSize: '12px', color: '#6c757d' }}>
+                  <strong>Cierre:</strong> {selectedShiftReport.closed_at ? new Date(selectedShiftReport.closed_at).toLocaleString() : 'Turno Abierto'}
+                </p>
+                <p style={{ margin: '8px 0 0 0', fontSize: '14px', color: '#212529' }}>
+                  <strong>Responsable:</strong> {employees.find(e => e.id === selectedShiftReport.user_id)?.full_name || 'Cajero'}
+                </p>
+              </div>
+
+              <hr style={{ border: 'none', borderTop: '1px dashed #dee2e6', marginBottom: '20px' }} />
+
+              <div style={{ marginBottom: '24px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#212529' }}>Desglose de Ingresos Calculados:</h4>
+                {(() => {
+                  const shiftSales = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
+                  let tUsd = 0, tBs = 0, tZelle = 0, tDebit = 0, tPm = 0;
+                  shiftSales.forEach(s => {
+                    const pd = s.payment_details || {};
+                    tUsd += (pd.cash_usd || 0);
+                    tBs += (pd.cash_bs || 0);
+                    tZelle += (pd.zelle || 0);
+                    tDebit += (pd.debit || pd.debit_bs || 0);
+                    tPm += (pd.pago_movil || pd.pago_movil_bs || 0);
+                  });
+                  
+                  const floatUsd = Number(selectedShiftReport?.opening_float_usd || selectedShiftReport?.opening_float || 0);
+                  const match = selectedShiftReport?.notes?.match(/FondoBs:([0-9.]+)/);
+                  const floatBs = match ? parseFloat(match[1]) : 0;
+
+                  return (
+                    <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#f8f9fa', padding: '16px', borderRadius: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Fondo Inicial USD:</span> <strong>${floatUsd.toFixed(2)}</strong></div>
+                      {currentStoreCountry === 'venezuela' && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Fondo Inicial Bs:</span> <strong>Bs. {floatBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
+                      )}
+                      <hr style={{ border: 'none', borderTop: '1px dashed #dee2e6', margin: '4px 0' }} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Efectivo USD:</span> <strong>${tUsd.toFixed(2)}</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Zelle:</span> <strong>${tZelle.toFixed(2)}</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Punto Venta:</span> <strong>Bs. {tDebit.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Pago Móvil:</span> <strong>Bs. {tPm.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Efectivo Bs:</span> <strong>Bs. {tBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#212529' }}>Detalle de Facturas y Productos Vendidos:</h4>
+                {(() => {
+                  const shiftSalesList = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
+                  
+                  if (shiftSalesList.length === 0) {
+                    return <p style={{ fontSize: '13px', color: '#6c757d', textAlign: 'center', padding: '20px 0' }}>Sin ventas registradas en este turno</p>;
+                  }
+
+                  return shiftSalesList.map((sale, index) => (
+                    <div key={sale.id || index} style={{ border: '1px solid #e9ecef', borderRadius: '8px', padding: '12px', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', borderBottom: '1px solid #f1f3f5', paddingBottom: '8px' }}>
+                        <strong style={{ fontSize: '13px', color: '#1971c2' }}>Factura #{sale.receipt_number || `A-00${index + 1}`} - {sale.client_name || 'Cliente General'}</strong>
+                        <strong style={{ fontSize: '13px', color: '#1971c2' }}>${(sale.total_usd || 0).toFixed(2)} USD</strong>
+                      </div>
+                      
+                      <table style={{ width: '100%', fontSize: '12px', color: '#495057' }}>
+                        <thead>
+                          <tr style={{ textAlign: 'left', color: '#adb5bd' }}>
+                            <th style={{ paddingBottom: '4px', fontWeight: 'normal', width: '40px' }}>Cant</th>
+                            <th style={{ paddingBottom: '4px', fontWeight: 'normal' }}>Producto</th>
+                            <th style={{ paddingBottom: '4px', fontWeight: 'normal', textAlign: 'right' }}>Subtotal</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sale.items && sale.items.map((item, idx) => (
+                            <tr key={idx}>
+                              <td style={{ padding: '2px 0', verticalAlign: 'top' }}>{item.quantity}</td>
+                              <td style={{ padding: '2px 0' }}>{item.name}</td>
+                              <td style={{ padding: '2px 0', textAlign: 'right' }}>
+                                ${((item.price || item.price_usd || item.unit_price || 0) * item.quantity).toFixed(2)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div style={{ textAlign: 'right', marginTop: '6px', fontSize: '11px', color: '#adb5bd' }}>
+                        Hora: {new Date(sale.created_at).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 20px', borderTop: '1px solid #e9ecef', background: '#f8f9fa', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button className="btn-primary" style={{ width: '100%', padding: '10px', background: '#1971c2', border: 'none', borderRadius: '6px', color: '#fff', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                🖨️ Imprimir / Guardar PDF Detallado
+              </button>
+              <button className="btn-secondary" onClick={() => setShowShiftReportModal(false)} style={{ width: '100%', padding: '10px', background: '#fff', border: '1px solid #ced4da', borderRadius: '6px', color: '#495057', cursor: 'pointer' }}>
+                Cerrar Reporte
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* -------------------------------------------------------------------------- */}
+      {/* GRUPO 3: CLIENTES Y COMUNICACIÓN                                          */}
+      {/* -------------------------------------------------------------------------- */}
+
+      {/* 3.1 MODAL: REGISTRO RÁPIDO DE CLIENTE (DESDE EL POS) */}
+      {showQuickClientModal && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
           <div className="modal-content" style={{ width: '400px' }}>
-            
             <div className="modal-header">
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                <Unlock size={18} /> Apertura de Turno (Reporte X)
-              </h3>
-              <button className="btn-close-modal" onClick={() => setShowOpenShiftModal(false)}>
+              <h3>Registro Rápido de Cliente</h3>
+              <button className="btn-close-modal" onClick={() => { setShowQuickClientModal(false); setClientDoc(''); setClientName(''); }}>
                 <X size={20} />
               </button>
             </div>
+            <form onSubmit={(e) => handleAddClient(e, true)}>
+              <div className="modal-body fiskal-form">
+                <div className="form-group">
+                  <label>Nombre y Apellido / Razón Social</label>
+                  <input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} required placeholder="Ej. Inversiones C.A." autoFocus />
+                </div>
+                <div className="form-group">
+                  <label>Cédula / RIF</label>
+                  <input type="text" value={clientDoc} onChange={(e) => setClientDoc(e.target.value)} required placeholder="Ej. V-12345678" />
+                </div>
+                <div className="form-group">
+                  <label>Teléfono</label>
+                  <input type="text" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder="Ej. 0414-1234567" />
+                </div>
+                <div className="form-group">
+                  <label>Correo Electrónico (Opcional)</label>
+                  <input type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="correo@ejemplo.com" />
+                </div>
+              </div>
+              <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn-secondary" onClick={() => { setShowQuickClientModal(false); setClientDoc(''); setClientName(''); }}>Cancelar</button>
+                <button type="submit" className="btn-primary" disabled={loadingClient}>
+                  {loadingClient ? 'Guardando...' : 'Guardar y Asociar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
-            <div className="modal-body fiskal-form">
-              <div className="form-group" style={{ marginTop: '4px' }}>
-                <label>Caja Física a Operar</label>
-                <select 
-                  value={selectedRegisterIdForOpen} 
-                  onChange={(e) => setSelectedRegisterIdForOpen(e.target.value)} 
-                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px', background: '#fff' }}
-                >
-                  {registers.map(r => (
-                    <option key={r.id} value={r.id}>{r.name} {r.is_main ? '(Principal)' : ''}</option>
-                  ))}
-                </select>
+      {/* 3.2 MODAL: DETALLE, HISTORIAL Y NOTAS DE CLIENTE */}
+      {selectedClientDetail && (
+        <div className="modal-overlay" style={{ zIndex: 10002 }}>
+          <div className="modal-content" style={{ width: '600px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h3>Detalle de Cliente: {selectedClientDetail.name}</h3>
+              <button className="btn-close-modal" onClick={() => setSelectedClientDetail(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body fiskal-form" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
+                <div><span>Cédula / RIF:</span><br/><strong>{selectedClientDetail.document || 'No registrada'}</strong></div>
+                <div><span>Teléfono:</span><br/><strong>{selectedClientDetail.phone || 'No registrado'}</strong></div>
+                <div><span>Total Facturado:</span><br/><strong style={{ color: '#2b8a3e' }}>${selectedClientDetail.totalBilled.toFixed(2)}</strong></div>
+                <div><span>Saldo Pendiente:</span><br/><strong style={{ color: selectedClientDetail.totalPending > 0 ? '#fa5252' : '#2b8a3e' }}>${selectedClientDetail.totalPending.toFixed(2)}</strong></div>
               </div>
 
               <div className="form-group">
-                <label>Fondo Inicial de Caja / Sencillo ($ USD)</label>
-                <div style={{ position: 'relative' }}>
-                  <DollarSign size={16} style={{ position: 'absolute', left: '10px', top: '12px', color: '#6c757d' }} />
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={openingFloat} 
-                    onChange={(e) => setOpeningFloat(e.target.value)} 
-                    style={{ paddingLeft: '32px' }} 
-                    placeholder="0.00" 
-                    autoFocus 
-                  />
-                </div>
-              </div>
-
-              {currentStoreCountry === 'venezuela' && (
-                <div className="form-group">
-                  <label>Fondo Inicial (Bs. Físico)</label>
-                  <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: '10px', top: '10px', color: '#6c757d', fontWeight: 'bold', fontSize: '13px' }}>Bs</span>
-                    <input 
-                      type="number" 
-                      step="0.01" 
-                      value={openingFloatVes} 
-                      onChange={(e) => setOpeningFloatVes(e.target.value)} 
-                      style={{ paddingLeft: '32px' }} 
-                      placeholder="0.00" 
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button className="btn-secondary" onClick={() => setShowOpenShiftModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleOpenShift}>
-                <Check size={16} /> Iniciar Turno
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* Modal Pagos */}
-      {showPaymentModal && (
-        <div className="modal-overlay" style={{ zIndex: 10000, padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-content" style={{ width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
-            
-            {/* Header */}
-            <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid #e9ecef', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', color: '#212529' }}>
-                {settlingSale ? 'Abonar / Pagar Crédito' : 'Pasarela de Pagos'}
-              </h3>
-              <button 
-                className="btn-close-modal" 
-                onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-              >
-                <X size={20} color="#6c757d" />
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="modal-body fiskal-form" style={{ padding: '20px' }}>
-              
-              {/* Total a Pagar Principal */}
-              <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '6px', marginBottom: '16px', border: '1px solid #dee2e6', textAlign: 'center' }}>
-                <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>Total Efectivo Esperado en Caja</p>
-                <h2 style={{ color: '#212529', margin: 0, fontSize: '22px' }}>
-                  ${(currentShift.opening_float_usd + shiftCashUSD).toFixed(2)} USD
-                </h2>
-                {currentStoreCountry === 'venezuela' && (
-                  <h3 style={{ margin: '5px 0 0 0', color: '#2b8a3e', fontSize: '18px' }}>
-                    Bs. {((currentShift.opening_float_ves || currentShift.opening_float_bs || 0) + shiftCashBs).toFixed(2)}
-                  </h3>
-                )}
-              </div>
-
-              {/* Estado del Pago (Pagado, Restante, Cambio) */}
-              <div style={{ background: '#e7f5ff', padding: '12px 16px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #74c0fc', fontSize: '13px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ color: '#495057' }}>Total Ingresado:</span>
-                  <strong style={{ color: '#1971c2' }}>${totalPaidUSD.toFixed(2)}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ color: '#495057' }}>Resta por pagar:</span>
-                  <strong style={{ color: remainingUSD > 0 ? '#fa5252' : '#2b8a3e' }}>
-                    ${remainingUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${remainingBs.toFixed(2)})`}
-                  </strong>
-                </div>
-                {changeUSD > 0 && (
-                  <div style={{ marginTop: '8px', borderTop: '1px solid #a5d8ff', paddingTop: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2b8a3e', fontWeight: 'bold', marginBottom: '6px' }}>
-                      <span>Vuelto / Cambio Total:</span>
-                      <span>${changeUSD.toFixed(2)} {currentStoreCountry === 'venezuela' && `(Bs. ${changeBs.toFixed(2)})`}</span>
-                    </div>
-
-                    {currentStoreCountry === 'venezuela' && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', padding: '6px 8px', borderRadius: '4px', border: '1px solid #b2f2bb' }}>
-                        <span style={{ fontSize: '12px', color: '#2b8a3e', fontWeight: 'bold' }}>¿Cómo entregaste el vuelto?</span>
-                        <select 
-                          value={changeCurrencyType}
-                          onChange={(e) => setChangeCurrencyType(e.target.value)}
-                          style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #2b8a3e', fontSize: '12px', fontWeight: 'bold', color: '#2b8a3e', background: '#f4fce3', cursor: 'pointer' }}
-                        >
-                          <option value="USD">Efectivo USD</option>
-                          <option value="BS">Efectivo Bs (Físico en Caja)</option>
-                          <option value="PAGO_MOVIL">Pago Móvil (Vuelto Electrónico)</option>
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Inputs de Métodos de Pago (Se adaptan automáticamente en celulares y PC) */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-                
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Efectivo ($ USD)</label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={payCashUSD} 
-                    onChange={(e) => setPayCashUSD(e.target.value)} 
-                    onBlur={updateCalculations} 
-                    placeholder="0.00" 
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
-                  />
-                </div>
-
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>
-                    {currentStoreCountry === 'panama' ? 'Yappy ($)' : currentStoreCountry === 'el_salvador' ? 'Transferencia ($)' : 'Zelle ($)'}
-                  </label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={payZelle} 
-                    onChange={(e) => setPayZelle(e.target.value)} 
-                    onBlur={updateCalculations} 
-                    placeholder="0.00" 
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
-                  />
-                </div>
-
-                {currentStoreCountry === 'venezuela' && (
-                  <>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Efectivo (Bs)</label>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        value={payCashBs} 
-                        onChange={(e) => setPayCashBs(e.target.value)} 
-                        onBlur={updateCalculations} 
-                        placeholder="0.00" 
-                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
-                      />
-                    </div>
-
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Pago Móvil (Bs)</label>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        value={payPagoMovil} 
-                        onChange={(e) => setPayPagoMovil(e.target.value)} 
-                        onBlur={updateCalculations} 
-                        placeholder="0.00" 
-                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
-                      />
-                    </div>
-                  </>
-                )}
-
-                <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>
-                    Punto de Venta / Tarjeta {currentStoreCountry === 'venezuela' ? '(Bs)' : '($ USD)'}
-                  </label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={payDebit} 
-                    onChange={(e) => setPayDebit(e.target.value)} 
-                    onBlur={updateCalculations} 
-                    placeholder="0.00" 
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group" style={{ margin: 0 }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Referencia Bancaria (Opcional)</label>
-                <input 
-                  type="text" 
-                  value={paymentRef} 
-                  onChange={(e) => setPaymentRef(e.target.value)} 
-                  placeholder="Últimos 4 dígitos o referencia" 
-                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '14px' }}
+                <label style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Edit2 size={14}/> Comentario / Nota Personalizada
+                </label>
+                <textarea 
+                  rows="3" 
+                  value={tempClientNote} 
+                  onChange={(e) => setTempClientNote(e.target.value)} 
+                  placeholder="Escribe notas sobre este cliente..."
+                  style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}
                 />
-              </div>
-
-            </div>
-
-            {/* Footer */}
-            <div className="modal-footer" style={{ padding: '16px 20px', borderTop: '1px solid #e9ecef', background: '#f8f9fa', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              
-              <button 
-                type="button"
-                className="btn-primary" 
-                onClick={handleCheckoutSubmit} 
-                disabled={totalPaidUSD <= 0 || processing}
-                style={{ width: '100%', padding: '12px', fontSize: '15px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: '#212529', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
-              >
-                {processing ? 'Procesando...' : (remainingUSD > 0 ? 'Registrar Abono / Pago Parcial' : 'Confirmar y Procesar Factura')}
-              </button>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                {!settlingSale && (
-                  <button 
-                    type="button"
-                    className="btn-secondary" 
-                    onClick={handleCreditCheckout} 
-                    style={{ background: 'none', border: 'none', color: '#fa5252', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
-                  >
-                    Dejar a Crédito
-                  </button>
-                )}
                 <button 
-                  type="button"
-                  className="btn-secondary" 
-                  onClick={() => { setShowPaymentModal(false); setSettlingSale(null); }}
-                  style={{ marginLeft: 'auto', background: '#fff', border: '1px solid #ced4da', color: '#495057', padding: '6px 14px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}
+                  type="button" 
+                  onClick={() => handleSaveClientNote(selectedClientDetail.id)}
+                  style={{ marginTop: '6px', background: '#1c7ed6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
                 >
-                  Cancelar
+                  Guardar Nota
                 </button>
               </div>
 
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* ==========================================
-          MODALES RESTAURADOS (ESCÁNER, ETIQUETAS, CLIENTES, FACTURAS)
-          ========================================== */}
-
-      {showLabelModal && labelProduct && (
-        <div className="modal-overlay" style={{ zIndex: 10005 }}>
-          <div className="modal-content label-modal-content" style={{ width: '380px' }}>
-            <div className="modal-header">
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><QrCode size={18} /> Etiqueta de Producto</h3>
-              <button className="btn-close-modal" onClick={() => setShowLabelModal(false)}><X size={20} /></button>
-            </div>
-            <div className="modal-body label-print-area" style={{ textAlign: 'center', padding: '24px' }}>
-              <div className="store-tag-header">{currentStoreName.toUpperCase()}</div>
-              <h2 className="tag-product-name">{labelProduct.name}</h2>
-              <div className="tag-qr-container">
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`ID:${labelProduct.id}|PROD:${labelProduct.name}|PRECIO:$${labelProduct.price.toFixed(2)}`)}`} 
-                  alt="QR Producto" style={{ width: '160px', height: '160px', margin: '12px auto', display: 'block' }}
-                />
+              <div>
+                <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Productos Más Comprados</h4>
+                <div className="table-responsive" style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                  <table className="fiskal-table" style={{ fontSize: '12px' }}>
+                    <thead>
+                      <tr><th>Producto</th><th>Cant. Total</th><th>Total USD</th></tr>
+                    </thead>
+                    <tbody>
+                      {getClientHistoryAndTopProducts(selectedClientDetail.name).topProducts.length === 0 ? (
+                        <tr><td colSpan="3" className="empty-text">Sin compras registradas aún.</td></tr>
+                      ) : (
+                        getClientHistoryAndTopProducts(selectedClientDetail.name).topProducts.map((p, idx) => (
+                          <tr key={idx}>
+                            <td><strong>{p.name}</strong></td>
+                            <td>{p.qty} ud.</td>
+                            <td>${p.total.toFixed(2)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div className="tag-price-box">
-                <span className="tag-currency">USD</span>
-                <span className="tag-price-value">${labelProduct.price.toFixed(2)}</span>
-              </div>
-              <div style={{ fontSize: '11px', color: '#6c757d', marginTop: '6px' }}>Escanea para consultar o pagar referencialmente</div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowLabelModal(false)}>Cerrar</button>
-              <button className="btn-primary" onClick={() => window.print()}>Imprimir Etiqueta</button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {showPrintCatalog && (
-        <div className="modal-overlay" style={{ zIndex: 10001 }}>
-          <div className="modal-content letter-print" style={{ width: '800px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div className="modal-header">
-              <h3>Catálogo de Etiquetas QR para Impresión (Carta / A4)</h3>
-              <button className="btn-close-modal" onClick={() => setShowPrintCatalog(false)}>
-                <X size={20} />
-              </button>
-            </div>
-            <div className="modal-body" style={{ background: '#f8f9fa' }}>
-              <div className="catalog-print-grid">
-                {products.length === 0 ? (
-                  <p style={{ gridColumn: 'span 2', textAlign: 'center', padding: '20px' }}>No hay productos registrados para imprimir.</p>
-                ) : (
-                  products.map(prod => (
-                    <div key={prod.id} className="print-label-item">
-                      <div className="store-tag-header">{currentStoreName.toUpperCase()}</div>
-                      <h4 style={{ fontSize: '14px', margin: '4px 0', color: '#212529', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
-                        {prod.name}
-                      </h4>
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`ID:${prod.id}|PROD:${prod.name}|PRECIO:$${prod.price.toFixed(2)}`)}`}
-                        alt="QR"
-                        style={{ width: '100px', height: '100px', margin: '8px auto' }}
-                      />
-                      <div className="tag-price-box" style={{ padding: '4px 12px', marginTop: '4px' }}>
-                        <span className="tag-currency" style={{ fontSize: '10px' }}>USD</span>
-                        <span className="tag-price-value" style={{ fontSize: '16px' }}>${prod.price.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
+              <div>
+                <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Historial de Facturas del Cliente</h4>
+                <div className="table-responsive" style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                  <table className="fiskal-table" style={{ fontSize: '12px' }}>
+                    <thead>
+                      <tr><th>Factura</th><th>Fecha</th><th>Total</th><th>Estatus</th></tr>
+                    </thead>
+                    <tbody>
+                      {getClientHistoryAndTopProducts(selectedClientDetail.name).cliSales.length === 0 ? (
+                        <tr><td colSpan="4" className="empty-text">No hay facturas asociadas.</td></tr>
+                      ) : (
+                        getClientHistoryAndTopProducts(selectedClientDetail.name).cliSales.map(s => (
+                          <tr key={s.id}>
+                            <td>#{s.id}</td>
+                            <td>{new Date(s.created_at).toLocaleDateString()}</td>
+                            <td><strong>${s.total_usd.toFixed(2)}</strong></td>
+                            <td>{s.status.toUpperCase()}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowPrintCatalog(false)}>Cerrar</button>
-              <button className="btn-primary" onClick={() => window.print()} disabled={products.length === 0}>
-                Imprimir (Tamaño Carta / A4)
-              </button>
+              <button className="btn-secondary" onClick={() => setSelectedClientDetail(null)}>Cerrar</button>
             </div>
           </div>
         </div>
       )}
 
-      {showCameraScannerModal && (
-        <div className="modal-overlay" style={{ zIndex: 10005 }}>
-          <div className="modal-content" style={{ width: '380px', textAlign: 'center', padding: '20px' }}>
-            <div className="modal-header" style={{ borderBottom: 'none', paddingBottom: '0' }}>
-              <h3>Escáner en Vivo</h3>
-              <button className="btn-close-modal" onClick={stopCameraScanner}>
+      {/* 3.3 MODAL: ENVÍO RÁPIDO DE MENSAJES POR WHATSAPP */}
+      {modalWhatsAppOpen && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }}>
+          <div className="modal-content" style={{ width: '560px' }}>
+            <div className="modal-header">
+              <h3>Envío de Mensaje por WhatsApp</h3>
+              <button className="btn-close-modal" onClick={() => setModalWhatsAppOpen(false)}>
                 <X size={20} />
               </button>
             </div>
-            <div className="modal-body" style={{ padding: '12px 0' }}>
-              {/* Contenedor actualizado con ref para evitar el crash del ID */}
-              <div ref={typeof scannerContainerRef !== 'undefined' ? scannerContainerRef : null} id="fiskal-qr-reader" style={{ width: '100%', minHeight: '250px', background: '#000', borderRadius: '8px', overflow: 'hidden' }}></div>
-              {cameraScanError ? (
-                <p style={{ color: '#fa5252', fontSize: '12px', marginTop: '8px' }}>{cameraScanError}</p>
-              ) : (
-                <p style={{ color: '#6c757d', fontSize: '12px', marginTop: '8px' }}>Apunta al código para escanear automáticamente</p>
-              )}
+            <div className="modal-body fiskal-form" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div className="form-group">
+                <label>Mensaje Personalizado</label>
+                <textarea rows="4" value={mensajePersonalizadoTemp} onChange={(e) => setMensajePersonalizadoTemp(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da' }} />
+              </div>
             </div>
-            <div className="modal-footer" style={{ borderTop: 'none', justifyContent: 'center' }}>
-              <button type="button" className="btn-secondary" onClick={stopCameraScanner} style={{ width: '100%' }}>Cancelar Escáner</button>
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setModalWhatsAppOpen(false)}>Cancelar</button>
+              <button type="button" className="btn-primary" onClick={enviarMensajeWhatsAppFinal} style={{ background: '#2b8a3e' }}>Abrir WhatsApp</button>
             </div>
           </div>
         </div>
       )}
 
-{showInvoiceModal && selectedInvoice && (
+
+      {/* -------------------------------------------------------------------------- */}
+      {/* GRUPO 4: FACTURAS, RECIBOS Y ETIQUETAS                                    */}
+      {/* -------------------------------------------------------------------------- */}
+
+      {/* 4.1 MODAL: FACTURA / RECIBO DETALLADO DEL CLIENTE */}
+      {showInvoiceModal && selectedInvoice && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
           <div className="modal-content" style={{ width: '500px' }}>
             <div className="modal-header">
               <h3>Factura #{String(selectedInvoice.id).startsWith('local') ? 'Pendiente' : selectedInvoice.invoice_number || `A-${String(selectedInvoice.id).padStart(3, '0')}`}</h3>
-              <button className="btn-close-modal" onClick={() => setShowInvoiceModal(false)}><X size={20} /></button>
+              <button className="btn-close-modal" onClick={() => setShowInvoiceModal(false)}>
+                <X size={20} />
+              </button>
             </div>
             
             <div className="modal-body fiskal-form" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
@@ -6824,7 +5180,7 @@ return (
                       )}
                     </div>
 
-                    {/* DESGLOSE DETALLADO DE PAGOS Y VUELTO (NUEVO) */}
+                    {/* Desglose de Pago y Vuelto */}
                     {selectedInvoice.payment_details && (
                       <div style={{ background: '#e7f5ff', padding: '12px', borderRadius: '6px', border: '1px solid #74c0fc', marginBottom: '16px', fontSize: '13px' }}>
                         <h4 style={{ fontSize: '13px', color: '#1864ab', marginBottom: '8px', textTransform: 'uppercase', borderBottom: '1px solid #a5d8ff', paddingBottom: '4px' }}>Desglose de Pago y Vuelto</h4>
@@ -6905,161 +5261,100 @@ return (
         </div>
       )}
 
-      {selectedClientDetail && (
-        <div className="modal-overlay" style={{ zIndex: 10002 }}>
-          <div className="modal-content" style={{ width: '600px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+      {/* 4.2 MODAL: ETIQUETA QR INDIVIDUAL DE PRODUCTO */}
+      {showLabelModal && labelProduct && (
+        <div className="modal-overlay" style={{ zIndex: 10005 }}>
+          <div className="modal-content label-modal-content" style={{ width: '380px' }}>
             <div className="modal-header">
-              <h3>Detalle de Cliente: {selectedClientDetail.name}</h3>
-              <button className="btn-close-modal" onClick={() => setSelectedClientDetail(null)}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <QrCode size={18} /> Etiqueta de Producto
+              </h3>
+              <button className="btn-close-modal" onClick={() => setShowLabelModal(false)}>
                 <X size={20} />
               </button>
             </div>
-            <div className="modal-body fiskal-form" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
-                <div><span>Cédula / RIF:</span><br/><strong>{selectedClientDetail.document || 'No registrada'}</strong></div>
-                <div><span>Teléfono:</span><br/><strong>{selectedClientDetail.phone || 'No registrado'}</strong></div>
-                <div><span>Total Facturado:</span><br/><strong style={{ color: '#2b8a3e' }}>${selectedClientDetail.totalBilled.toFixed(2)}</strong></div>
-                <div><span>Saldo Pendiente:</span><br/><strong style={{ color: selectedClientDetail.totalPending > 0 ? '#fa5252' : '#2b8a3e' }}>${selectedClientDetail.totalPending.toFixed(2)}</strong></div>
-              </div>
-
-              <div className="form-group">
-                <label style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}><Edit2 size={14}/> Comentario / Nota Personalizada</label>
-                <textarea 
-                  rows="3" 
-                  value={tempClientNote} 
-                  onChange={(e) => setTempClientNote(e.target.value)} 
-                  placeholder="Escribe notas sobre este cliente..."
-                  style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px' }}
+            <div className="modal-body label-print-area" style={{ textAlign: 'center', padding: '24px' }}>
+              <div className="store-tag-header">{currentStoreName.toUpperCase()}</div>
+              <h2 className="tag-product-name">{labelProduct.name}</h2>
+              <div className="tag-qr-container">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`ID:${labelProduct.id}|PROD:${labelProduct.name}|PRECIO:$${labelProduct.price.toFixed(2)}`)}`} 
+                  alt="QR Producto" style={{ width: '160px', height: '160px', margin: '12px auto', display: 'block' }}
                 />
-                <button 
-                  type="button" 
-                  onClick={() => handleSaveClientNote(selectedClientDetail.id)}
-                  style={{ marginTop: '6px', background: '#1c7ed6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-                >
-                  Guardar Nota
-                </button>
               </div>
-
-              <div>
-                <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Productos Más Comprados</h4>
-                <div className="table-responsive" style={{ maxHeight: '150px', overflowY: 'auto' }}>
-                  <table className="fiskal-table" style={{ fontSize: '12px' }}>
-                    <thead>
-                      <tr><th>Producto</th><th>Cant. Total</th><th>Total USD</th></tr>
-                    </thead>
-                    <tbody>
-                      {getClientHistoryAndTopProducts(selectedClientDetail.name).topProducts.length === 0 ? (
-                        <tr><td colSpan="3" className="empty-text">Sin compras registradas aún.</td></tr>
-                      ) : (
-                        getClientHistoryAndTopProducts(selectedClientDetail.name).topProducts.map((p, idx) => (
-                          <tr key={idx}>
-                            <td><strong>{p.name}</strong></td>
-                            <td>{p.qty} ud.</td>
-                            <td>${p.total.toFixed(2)}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+              <div className="tag-price-box">
+                <span className="tag-currency">USD</span>
+                <span className="tag-price-value">${labelProduct.price.toFixed(2)}</span>
               </div>
+              <div style={{ fontSize: '11px', color: '#6c757d', marginTop: '6px' }}>Escanea para consultar o pagar referencialmente</div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowLabelModal(false)}>Cerrar</button>
+              <button className="btn-primary" onClick={() => window.print()}>Imprimir Etiqueta</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-              <div>
-                <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#212529' }}>Historial de Facturas del Cliente</h4>
-                <div className="table-responsive" style={{ maxHeight: '180px', overflowY: 'auto' }}>
-                  <table className="fiskal-table" style={{ fontSize: '12px' }}>
-                    <thead>
-                      <tr><th>Factura</th><th>Fecha</th><th>Total</th><th>Estatus</th></tr>
-                    </thead>
-                    <tbody>
-                      {getClientHistoryAndTopProducts(selectedClientDetail.name).cliSales.length === 0 ? (
-                        <tr><td colSpan="4" className="empty-text">No hay facturas asociadas.</td></tr>
-                      ) : (
-                        getClientHistoryAndTopProducts(selectedClientDetail.name).cliSales.map(s => (
-                          <tr key={s.id}>
-                            <td>#{s.id}</td>
-                            <td>{new Date(s.created_at).toLocaleDateString()}</td>
-                            <td><strong>${s.total_usd.toFixed(2)}</strong></td>
-                            <td>{s.status.toUpperCase()}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+      {/* 4.3 MODAL: CATÁLOGO COMPLETO DE ETIQUETAS PARA IMPRESIÓN (CARTA / A4) */}
+      {showPrintCatalog && (
+        <div className="modal-overlay" style={{ zIndex: 10001 }}>
+          <div className="modal-content letter-print" style={{ width: '800px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h3>Catálogo de Etiquetas QR para Impresión (Carta / A4)</h3>
+              <button className="btn-close-modal" onClick={() => setShowPrintCatalog(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ background: '#f8f9fa' }}>
+              <div className="catalog-print-grid">
+                {products.length === 0 ? (
+                  <p style={{ gridColumn: 'span 2', textAlign: 'center', padding: '20px' }}>No hay productos registrados para imprimir.</p>
+                ) : (
+                  products.map(prod => (
+                    <div key={prod.id} className="print-label-item">
+                      <div className="store-tag-header">{currentStoreName.toUpperCase()}</div>
+                      <h4 style={{ fontSize: '14px', margin: '4px 0', color: '#212529', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                        {prod.name}
+                      </h4>
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`ID:${prod.id}|PROD:${prod.name}|PRECIO:$${prod.price.toFixed(2)}`)}`}
+                        alt="QR"
+                        style={{ width: '100px', height: '100px', margin: '8px auto' }}
+                      />
+                      <div className="tag-price-box" style={{ padding: '4px 12px', marginTop: '4px' }}>
+                        <span className="tag-currency" style={{ fontSize: '10px' }}>USD</span>
+                        <span className="tag-price-value" style={{ fontSize: '16px' }}>${prod.price.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setSelectedClientDetail(null)}>Cerrar</button>
+              <button className="btn-secondary" onClick={() => setShowPrintCatalog(false)}>Cerrar</button>
+              <button className="btn-primary" onClick={() => window.print()} disabled={products.length === 0}>
+                Imprimir (Tamaño Carta / A4)
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {showQuickClientModal && (
-        <div className="modal-overlay" style={{ zIndex: 10000 }}>
-          <div className="modal-content" style={{ width: '400px' }}>
-            <div className="modal-header">
-              <h3>Registro Rápido de Cliente</h3>
-              <button className="btn-close-modal" onClick={() => { setShowQuickClientModal(false); setClientDoc(''); setClientName(''); }}><X size={20} /></button>
-            </div>
-            <form onSubmit={(e) => handleAddClient(e, true)}>
-              <div className="modal-body fiskal-form">
-                <div className="form-group">
-                  <label>Nombre y Apellido / Razón Social</label>
-                  <input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} required placeholder="Ej. Inversiones C.A." autoFocus />
-                </div>
-                <div className="form-group">
-                  <label>Cédula / RIF</label>
-                  <input type="text" value={clientDoc} onChange={(e) => setClientDoc(e.target.value)} required placeholder="Ej. V-12345678" />
-                </div>
-                <div className="form-group">
-                  <label>Teléfono</label>
-                  <input type="text" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder="Ej. 0414-1234567" />
-                </div>
-                <div className="form-group">
-                  <label>Correo Electrónico (Opcional)</label>
-                  <input type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="correo@ejemplo.com" />
-                </div>
-              </div>
-              <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn-secondary" onClick={() => { setShowQuickClientModal(false); setClientDoc(''); setClientName(''); }}>Cancelar</button>
-                <button type="submit" className="btn-primary" disabled={loadingClient}>
-                  {loadingClient ? 'Guardando...' : 'Guardar y Asociar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {modalWhatsAppOpen && (
-        <div className="modal-overlay" style={{ zIndex: 9999 }}>
-          <div className="modal-content" style={{ width: '560px' }}>
-            <div className="modal-header">
-              <h3>Envío de Mensaje por WhatsApp</h3>
-              <button className="btn-close-modal" onClick={() => setModalWhatsAppOpen(false)}><X size={20} /></button>
-            </div>
-            <div className="modal-body fiskal-form" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div className="form-group">
-                <label>Mensaje Personalizado</label>
-                <textarea rows="4" value={mensajePersonalizadoTemp} onChange={(e) => setMensajePersonalizadoTemp(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da' }} />
-              </div>
-            </div>
-            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn-secondary" onClick={() => setModalWhatsAppOpen(false)}>Cancelar</button>
-              <button type="button" className="btn-primary" onClick={enviarMensajeWhatsAppFinal} style={{ background: '#2b8a3e' }}>Abrir WhatsApp</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* -------------------------------------------------------------------------- */}
+      {/* GRUPO 5: ADMINISTRACIÓN SAAS                                              */}
+      {/* -------------------------------------------------------------------------- */}
 
+      {/* 5.1 MODAL: PRE-FACTURACIÓN Y RECIBO SAAS */}
       {showPreInvoiceModal && preInvoiceStore && (
         <div className="modal-overlay" style={{ zIndex: 10005 }}>
           <div className="modal-content" style={{ width: '650px', padding: '0' }}>
             <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid #dee2e6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0 }}>Generar Recibo SaaS</h3>
-              <button className="btn-close-modal" onClick={() => setShowPreInvoiceModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+              <button className="btn-close-modal" onClick={() => setShowPreInvoiceModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
             </div>
             <div className="modal-body" style={{ maxHeight: '65vh', overflowY: 'auto', background: '#f8f9fa' }}>
               <div id="saas-invoice-print-area" style={{ padding: '40px', background: '#fff', margin: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
@@ -7141,12 +5436,15 @@ return (
         </div>
       )}
 
+      {/* 5.2 MODAL: CREAR ACCESO DE DUEÑO (SUPER ADMIN) */}
       {showOwnerModal && targetStoreForOwner && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
           <div className="modal-content" style={{ width: '440px' }}>
             <div className="modal-header">
               <h3>Crear Acceso de Dueño</h3>
-              <button className="btn-close-modal" onClick={() => setShowOwnerModal(false)}><X size={20} /></button>
+              <button className="btn-close-modal" onClick={() => setShowOwnerModal(false)}>
+                <X size={20} />
+              </button>
             </div>
             <form onSubmit={handleCreateStoreOwnerSubmit}>
               <div className="modal-body fiskal-form">
@@ -7174,124 +5472,6 @@ return (
           </div>
         </div>
       )}
-
-      
-      
-{/* Modal Detalle de Reporte Z */}
-          {showShiftReportModal && selectedShiftReport && (
-            <div className="modal-overlay" style={{ zIndex: 10000, padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div className="modal-content" style={{ width: '100%', maxWidth: '600px', maxHeight: '90vh', background: '#fff', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column' }}>
-                
-                <div style={{ padding: '20px', overflowY: 'auto' }}>
-                  <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                    <h3 style={{ margin: '0 0 10px 0', color: '#212529', fontSize: '18px' }}>Detalle de Reporte Z (Auditoría)</h3>
-                    <p style={{ margin: '2px 0', fontSize: '12px', color: '#6c757d' }}>
-                      <strong>Apertura:</strong> {new Date(selectedShiftReport.opened_at).toLocaleString()}
-                    </p>
-                    <p style={{ margin: '2px 0', fontSize: '12px', color: '#6c757d' }}>
-                      <strong>Cierre:</strong> {selectedShiftReport.closed_at ? new Date(selectedShiftReport.closed_at).toLocaleString() : 'Turno Abierto'}
-                    </p>
-                    <p style={{ margin: '8px 0 0 0', fontSize: '14px', color: '#212529' }}>
-                      <strong>Responsable:</strong> {employees.find(e => e.id === selectedShiftReport.user_id)?.full_name || 'Cajero'}
-                    </p>
-                  </div>
-
-                  <hr style={{ border: 'none', borderTop: '1px dashed #dee2e6', marginBottom: '20px' }} />
-
-                  {/* DESGLOSE DE INGRESOS */}
-                  <div style={{ marginBottom: '24px' }}>
-                    <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#212529' }}>Desglose de Ingresos Calculados:</h4>
-                    {(() => {
-                      const shiftSales = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
-                      let tUsd = 0, tBs = 0, tZelle = 0, tDebit = 0, tPm = 0;
-                      shiftSales.forEach(s => {
-                        const pd = s.payment_details || {};
-                        tUsd += (pd.cash_usd || 0);
-                        tBs += (pd.cash_bs || 0);
-                        tZelle += (pd.zelle || 0);
-                        tDebit += (pd.debit || pd.debit_bs || 0);
-                        tPm += (pd.pago_movil || pd.pago_movil_bs || 0);
-                      });
-                      
-                      const floatUsd = Number(selectedShiftReport?.opening_float_usd || selectedShiftReport?.opening_float || 0);
-                      
-                      const match = selectedShiftReport?.notes?.match(/FondoBs:([0-9.]+)/);
-                      const floatBs = match ? parseFloat(match[1]) : 0;
-
-                      return (
-                        <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#f8f9fa', padding: '16px', borderRadius: '8px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Fondo Inicial USD:</span> <strong>${floatUsd.toFixed(2)}</strong></div>
-                          {currentStoreCountry === 'venezuela' && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Fondo Inicial Bs:</span> <strong>Bs. {floatBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
-                          )}
-                          <hr style={{ border: 'none', borderTop: '1px dashed #dee2e6', margin: '4px 0' }} />
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Efectivo USD:</span> <strong>${tUsd.toFixed(2)}</strong></div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Zelle:</span> <strong>${tZelle.toFixed(2)}</strong></div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Punto Venta:</span> <strong>Bs. {tDebit.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Pago Móvil:</span> <strong>Bs. {tPm.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Efectivo Bs:</span> <strong>Bs. {tBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* DETALLE DE FACTURAS */}
-                  <div>
-                    <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#212529' }}>Detalle de Facturas y Productos Vendidos:</h4>
-                    {(() => {
-                      const shiftSalesList = (typeof sales !== 'undefined' ? sales : []).filter(sale => sale.shift_id === selectedShiftReport.id && sale.status === 'completed');
-                      
-                      if (shiftSalesList.length === 0) {
-                        return <p style={{ fontSize: '13px', color: '#6c757d', textAlign: 'center', padding: '20px 0' }}>Sin ventas registradas en este turno</p>;
-                      }
-
-                      return shiftSalesList.map((sale, index) => (
-                        <div key={sale.id || index} style={{ border: '1px solid #e9ecef', borderRadius: '8px', padding: '12px', marginBottom: '12px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', borderBottom: '1px solid #f1f3f5', paddingBottom: '8px' }}>
-                            <strong style={{ fontSize: '13px', color: '#1971c2' }}>Factura #{sale.receipt_number || `A-00${index + 1}`} - {sale.client_name || 'Cliente General'}</strong>
-                            <strong style={{ fontSize: '13px', color: '#1971c2' }}>${(sale.total_usd || 0).toFixed(2)} USD</strong>
-                          </div>
-                          
-                          <table style={{ width: '100%', fontSize: '12px', color: '#495057' }}>
-                            <thead>
-                              <tr style={{ textAlign: 'left', color: '#adb5bd' }}>
-                                <th style={{ paddingBottom: '4px', fontWeight: 'normal', width: '40px' }}>Cant</th>
-                                <th style={{ paddingBottom: '4px', fontWeight: 'normal' }}>Producto</th>
-                                <th style={{ paddingBottom: '4px', fontWeight: 'normal', textAlign: 'right' }}>Subtotal</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {sale.items && sale.items.map((item, idx) => (
-                                <tr key={idx}>
-                                  <td style={{ padding: '2px 0', verticalAlign: 'top' }}>{item.quantity}</td>
-                                  <td style={{ padding: '2px 0' }}>{item.name}</td>
-                                  <td style={{ padding: '2px 0', textAlign: 'right' }}>
-                                    ${((item.price || item.price_usd || item.unit_price || 0) * item.quantity).toFixed(2)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          <div style={{ textAlign: 'right', marginTop: '6px', fontSize: '11px', color: '#adb5bd' }}>
-                            Hora: {new Date(sale.created_at).toLocaleTimeString()}
-                          </div>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </div>
-
-                <div style={{ padding: '16px 20px', borderTop: '1px solid #e9ecef', background: '#f8f9fa', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <button className="btn-primary" style={{ width: '100%', padding: '10px', background: '#1971c2', border: 'none', borderRadius: '6px', color: '#fff', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                    🖨️ Imprimir / Guardar PDF Detallado
-                  </button>
-                  <button className="btn-secondary" onClick={() => setShowShiftReportModal(false)} style={{ width: '100%', padding: '10px', background: '#fff', border: '1px solid #ced4da', borderRadius: '6px', color: '#495057', cursor: 'pointer' }}>
-                    Cerrar Reporte
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
     </div>
   );

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase'; 
 import { Bell, Clock, ChefHat, Truck, Check, XCircle, CreditCard, FileText } from 'lucide-react';
 
-export default function DeliveryDashboard({ storeId }) {
+export default function DeliveryDashboard({ storeId, isOnline, bcvRate }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newOrderNotification, setNewOrderNotification] = useState(null);
@@ -104,13 +104,19 @@ export default function DeliveryDashboard({ storeId }) {
           cost: item.cost || 0
         }));
 
+        // Tasa real del BCV con respaldo de seguridad
+        const effectiveRate = Number(bcvRate) > 0 ? Number(bcvRate) : 1;
+        const totalAmountUsd = Number(currentOrder.total_amount) || 0;
+        const totalAmountBs = totalAmountUsd * effectiveRate;
+
         const payMethod = currentOrder.payment_method || 'efectivo';
         const paymentDetailsObj = {
-          cash_usd: payMethod === 'efectivo' ? Number(currentOrder.total_amount) : 0,
+          cash_usd: payMethod === 'efectivo' ? totalAmountUsd : 0,
           cash_bs: 0,
-          zelle: payMethod === 'zelle' ? Number(currentOrder.total_amount) : 0,
-          debit: payMethod === 'pago_movil' ? Number(currentOrder.total_amount) : 0,
-          reference: currentOrder.payment_reference || ''
+          zelle: payMethod === 'zelle' ? totalAmountUsd : 0,
+          debit: payMethod === 'pago_movil' ? totalAmountUsd : 0,
+          reference: currentOrder.payment_reference || '',
+          applied_bcv_rate: effectiveRate
         };
 
         const { error: saleError } = await supabase
@@ -119,8 +125,8 @@ export default function DeliveryDashboard({ storeId }) {
             store_id: storeId,
             client_name: clientDisplayName,
             items: formattedSalesItems,
-            total_usd: Number(currentOrder.total_amount),
-            total_bs: Number(currentOrder.total_amount) * 35,
+            total_usd: totalAmountUsd,
+            total_bs: totalAmountBs,
             payment_details: paymentDetailsObj,
             status: 'completed'
           }]);
