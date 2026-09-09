@@ -3193,32 +3193,19 @@ const updateCalculations = () => {
     setProcessing(false);
   };
 
-  const handleResumeOrder = async (sale) => {
+  const handleResumeOrder = (sale) => {
     if (cart.length > 0) {
-      if (!window.confirm("Tienes productos en el carrito actual. ¿Deseas reemplazarlos?")) {
+      if (!window.confirm("Tienes productos en el carrito actual. ¿Deseas reemplazarlos por esta comanda?")) {
         return;
       }
     }
 
-    setCart(sale.items);
+    // Cargamos los productos y el cliente
+    setCart(sale.items || []);
     setSelectedClient(sale.client_name || 'Cliente General');
 
-    if (!isOnline) {
-      if (sale.id.toString().startsWith('local_')) {
-        const actions = await getOfflineActions();
-        const insertAction = actions.find(a => a.type === 'INSERT_SALE' && a.tempId === sale.id);
-        if (insertAction) await clearOfflineAction(insertAction.local_id);
-      } else {
-        await queueOfflineAction({ type: 'DELETE_SALE', saleId: sale.id });
-      }
-      setSales(sales.filter(s => s.id !== sale.id));
-      checkPendingSales();
-    } else {
-      if (!String(sale.id).startsWith('local_')) {
-        await supabase.from('sales').delete().eq('id', sale.id).eq('store_id', currentStoreId);
-      }
-      fetchSales(currentStoreId);
-    }
+    // VINCULAMOS la comanda para cobrarla sin borrarla de la base de datos
+    setSettlingSale(sale);
 
     setActiveTab('pos');
   };
