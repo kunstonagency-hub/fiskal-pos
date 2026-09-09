@@ -1,11 +1,12 @@
 import React from 'react';
-import { Image as ImageIcon, Package, QrCode, Edit2, Trash2 } from 'lucide-react';
+import { Image as ImageIcon, Package, QrCode, Edit2, Trash2, Copy } from 'lucide-react';
 
 function ProductsView({
   editingProduct,
   currentStoreType,
   handleUpdateProduct,
   handleAddProduct,
+  handleDuplicateProduct,
   imagePreview,
   handleImageSelect,
   name,
@@ -70,7 +71,13 @@ function ProductsView({
   return (
     <div className="products-layout">
       <div className="product-form-card">
-        <h3>{editingProduct ? `Editando: ${editingProduct.name}` : `Agregar Nuevo ${currentStoreType === 'restaurant' ? 'Platillo / Ítem' : 'Producto'}`}</h3>
+        <h3>
+          {editingProduct 
+            ? `Editando: ${editingProduct.name}` 
+            : name.includes('(Copia)') 
+              ? `Duplicando: ${name}` 
+              : `Agregar Nuevo ${currentStoreType === 'restaurant' ? 'Platillo / Ítem' : 'Producto'}`}
+        </h3>
         <form onSubmit={editingProduct ? handleUpdateProduct : handleAddProduct} className="fiskal-form">
           <div className="form-group">
             <label>Fotografía {currentStoreType === 'restaurant' ? 'del Platillo' : 'del Producto'}</label>
@@ -94,7 +101,7 @@ function ProductsView({
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder={currentStoreType === 'restaurant' ? "Ej. Hamburguesa Doble" : "Ej. Harina PAN"} />
           </div>
           <div className="form-group">
-            <label>Código de Barras / SKU</label>
+            <label>Código de Barras / SKU (Autogenerado al duplicar)</label>
             <input type="text" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="SKU-001" />
           </div>
           <div className="form-group">
@@ -162,7 +169,7 @@ function ProductsView({
             </div>
           )}
 
-          {/* ETIQUETAS DE INGREDIENTES BASE (CON TODO) */}
+          {/* ETIQUETAS DE INGREDIENTES BASE */}
           {currentStoreType === 'restaurant' && (
             <div className="form-group" style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '16px' }}>
               <label style={{ fontWeight: '800', color: '#111827', marginBottom: '6px', display: 'block', fontSize: '12px', textTransform: 'uppercase' }}>
@@ -202,7 +209,7 @@ function ProductsView({
             </div>
           )}
 
-          {/* NUEVA SECCIÓN: EXTRAS CON PRECIO (DESMARCADOS POR DEFECTO) */}
+          {/* EXTRAS CON PRECIO */}
           {currentStoreType === 'restaurant' && (
             <div className="form-group" style={{ background: '#f9fafb', padding: '14px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '16px' }}>
               <label style={{ fontWeight: '800', color: '#16a34a', marginBottom: '6px', display: 'block', fontSize: '12px', textTransform: 'uppercase' }}>
@@ -236,7 +243,7 @@ function ProductsView({
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {(productExtras || []).length === 0 ? (
-                  <span style={{ fontSize: '11px', color: '#9ca3af', fontStyle: 'italic' }}>No hay extras con precio configurados para este platillo.</span>
+                  <span style={{ fontSize: '11px', color: '#9ca3af', fontStyle: 'italic' }}>No hay extras configurados.</span>
                 ) : (
                   productExtras.map((ex, idx) => (
                     <span key={idx} style={{ background: '#ebfbee', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #b2f2bb', color: '#16a34a', fontWeight: '700' }}>
@@ -274,7 +281,7 @@ function ProductsView({
           )}
 
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-            {editingProduct && (
+            {(editingProduct || name.includes('(Copia)')) && (
               <button type="button" className="btn-secondary" onClick={resetProductForm} style={{ flex: 1 }}>Cancelar</button>
             )}
             <button type="submit" className="btn-primary" disabled={loading} style={{ flex: 2, background: '#111827', color: '#fff', border: 'none', fontWeight: '700' }}>
@@ -323,6 +330,17 @@ function ProductsView({
                     </td>
                     <td className="action-cell">
                       <div className="action-buttons" style={{ justifyContent: 'center' }}>
+                        
+                        {/* NUEVO BOTÓN DUPLICAR PRODUCTO */}
+                        <button 
+                          className="btn-icon-primary" 
+                          onClick={() => handleDuplicateProduct(prod)} 
+                          title="Duplicar Platillo (Clonar ingredientes, extras y generar nuevo SKU)"
+                          style={{ background: '#f8f9fa', border: '1px solid #ced4da', color: '#111827' }}
+                        >
+                          <Copy size={16} />
+                        </button>
+
                         <button className="btn-icon-primary" onClick={() => handleOpenLabel(prod)} title="Ver Etiqueta QR"><QrCode size={16} /></button>
                         <button className="btn-icon-edit" onClick={() => handleStartEditProduct(prod)} title="Editar"><Edit2 size={16} /></button>
                         <button className="btn-icon-danger" onClick={() => handleDeleteProduct(prod.id)} title="Eliminar"><Trash2 size={16} /></button>

@@ -2604,6 +2604,9 @@ const syncRate = async (type, storeId, manualValue = null) => {
         } else {
           alert("Aviso: Como estás Offline, la imagen no se subirá temporalmente.");
         }
+      } else if (imagePreview && !imagePreview.startsWith('blob:')) {
+        // Mantiene la foto existente al duplicar
+        imageUrl = imagePreview;
       }
 
       const newProduct = { 
@@ -2698,10 +2701,80 @@ const syncRate = async (type, storeId, manualValue = null) => {
     }
   };
 
+  // NUEVO: Generador inteligente de correlativo de SKU / Código de Barras
+  const generateDuplicateSku = (originalSku) => {
+    if (!originalSku || !originalSku.trim()) {
+      return `SKU-${Date.now().toString().slice(-4)}`;
+    }
+    const clean = originalSku.trim();
+    // Si termina en guion con número: ej. PROD-1 o SKU-001
+    const match = clean.match(/^(.*?)[-_](\d+)$/);
+    if (match) {
+      const prefix = match[1];
+      const numStr = match[2];
+      const nextNum = parseInt(numStr, 10) + 1;
+      const paddedNum = String(nextNum).padStart(numStr.length, '0');
+      const separator = clean.includes('_') ? '_' : '-';
+      return `${prefix}${separator}${paddedNum}`;
+    }
+    // Si es un número puro: ej. 75910001 -> 75910002
+    if (/^\d+$/.test(clean)) {
+      try {
+        const nextNum = BigInt(clean) + 1n;
+        return nextNum.toString();
+      } catch(e) {
+        return `${clean}-1`;
+      }
+    }
+    // Si es solo texto: ej. HAMBURGUESA -> HAMBURGUESA-1
+    return `${clean}-1`;
+  };
+
+  // NUEVO: Duplicador completo de producto
+  const handleDuplicateProduct = (prod) => {
+    setEditingProduct(null); // Modo nuevo producto (Insertar)
+    setName(`${prod.name} (Copia)`);
+    setPrice(prod.price !== undefined ? prod.price.toString() : '');
+    setCost(prod.cost !== undefined ? prod.cost.toString() : '');
+    setStock(prod.stock !== undefined ? prod.stock.toString() : '0');
+    setCategory(prod.category || 'General');
+    
+    // Generar nuevo SKU correlativo automático
+    setBarcode(generateDuplicateSku(prod.barcode));
+
+    // Mantener la foto existente si no se sube una nueva
+    setImagePreview(prod.image_url || null);
+    setImageFile(null);
+
+    setShowInKrono(prod.show_in_krono || false);
+    setKronoPrice(prod.krono_preferential_price ? prod.krono_preferential_price.toString() : '');
+
+    // Copiar todos los modificadores/ingredientes
+    if (prod.modifiers) {
+      const arr = typeof prod.modifiers === 'string' 
+        ? prod.modifiers.split(',').map(s => s.trim()).filter(Boolean) 
+        : prod.modifiers;
+      setProductModifiers(arr);
+    } else {
+      setProductModifiers(['Cebolla', 'Papa', 'Queso', 'Salsas']);
+    }
+
+    // Copiar todos los extras con sus precios
+    if (prod.extras) {
+      try {
+        setProductExtras(typeof prod.extras === 'string' ? JSON.parse(prod.extras) : prod.extras);
+      } catch(e) { setProductExtras([]); }
+    } else {
+      setProductExtras([]);
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleStartEditProduct = (prod) => {
     setEditingProduct(prod);
     setName(prod.name);
-    setPrice(prod.price.toString());
+    setPrice(prod.price !== undefined ? prod.price.toString() : '');
     setCost(prod.cost !== undefined ? prod.cost.toString() : '');
     setStock(prod.stock !== undefined ? prod.stock.toString() : '');
     setCategory(prod.category || 'General');
@@ -2722,14 +2795,12 @@ const syncRate = async (type, storeId, manualValue = null) => {
     }
 
     if (prod.extras) {
-      const arr = typeof prod.extras === 'string' 
-        ? prod.extras.split(',').map(s => s.trim()).filter(Boolean) 
-        : prod.extras;
-      setProductExtras(arr);
+      try {
+        setProductExtras(typeof prod.extras === 'string' ? JSON.parse(prod.extras) : prod.extras);
+      } catch(e) { setProductExtras([]); }
     } else {
       setProductExtras([]);
     }
-
   };
 
   const resetProductForm = () => {
@@ -4360,6 +4431,7 @@ return (
 
 {activeTab === 'products' && (
   <ProductsView 
+    handleDuplicateProduct={handleDuplicateProduct}
     editingProduct={editingProduct}
     currentStoreType={currentStoreType}
     handleUpdateProduct={handleUpdateProduct}
