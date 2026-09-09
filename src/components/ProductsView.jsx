@@ -85,7 +85,7 @@ function ProductsView({
                   <span style={{ fontSize: '12px' }}>Sube una foto</span>
                 </div>
               )}
-              <input type="file" accept="image/*" capture="environment" onChange={handleImageSelect} style={{ fontSize: '12px', width: '100%' }} />
+              <input type="file" accept="image/*" onChange={handleImageSelect} style={{ fontSize: '12px', width: '100%' }} />
             </div>
           </div>
 

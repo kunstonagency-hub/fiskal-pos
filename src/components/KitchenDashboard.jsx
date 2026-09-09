@@ -177,20 +177,6 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 99999, background: '#0a0f1d', width: '100vw', height: '100vh', overflow: 'hidden' }}>
         
-        {/* BOTÓN SUPERIOR PARA VOLVER A COCINA */}
-        <button 
-          onClick={() => setIsPublicMode(false)}
-          style={{
-            position: 'absolute', top: '16px', right: '20px',
-            background: 'rgba(0,0,0,0.65)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)',
-            padding: '8px 16px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold',
-            cursor: 'pointer', zIndex: 1000, display: 'flex', alignItems: 'center', gap: '6px',
-            backdropFilter: 'blur(10px)'
-          }}
-        >
-          <X size={14} /> Salir a Cocina
-        </button>
-
         {/* FASE A: PRESENTACIÓN DE IMÁGENES CON FUNDIDO SUAVE (CROSSFADE) */}
         {activeBanners.map((banner, idx) => {
           const imgUrl = typeof banner === 'string' ? banner : banner?.url;
