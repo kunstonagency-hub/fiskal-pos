@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image as ImageIcon, Package, QrCode, Edit2, Trash2, Copy } from 'lucide-react';
 
 function ProductsView({
@@ -45,6 +45,16 @@ function ProductsView({
   handleDeleteProduct
 }) {
 
+  // Estado local para sumar unidades de reabastecimiento al editar
+  const [addedUnits, setAddedUnits] = useState('');
+
+  const handleAddUnitsChange = (val) => {
+    setAddedUnits(val);
+    const add = parseInt(val) || 0;
+    const baseStock = editingProduct ? (editingProduct.stock || 0) : 0;
+    setStock((baseStock + add).toString());
+  };
+
   const handleAddExtraTag = () => {
     if (!newExtraName.trim() || !newExtraPrice) return;
     const priceNum = parseFloat(newExtraPrice);
@@ -66,6 +76,11 @@ function ProductsView({
 
   const handleRemoveExtraTag = (extraNameToRemove) => {
     setProductExtras((productExtras || []).filter(e => e.name !== extraNameToRemove));
+  };
+
+  const customResetForm = () => {
+    setAddedUnits('');
+    resetProductForm();
   };
 
   return (
@@ -108,10 +123,36 @@ function ProductsView({
             <label>Precio de Venta ($ USD)</label>
             <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required placeholder="0.00" />
           </div>
+
+          {/* STOCK Y CAJA DE REABASTECIMIENTO RÁPIDO */}
           <div className="form-group">
-            <label>Stock (Unidades)</label>
+            <label>Stock (Unidades Totales)</label>
             <input type="number" value={stock} onChange={(e) => setStock(e.target.value)} required placeholder="0" />
+            
+            {editingProduct && (
+              <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0', marginTop: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: '800', color: '#16a34a', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
+                  📦 Reabastecer (Entrada de mercancía)
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input 
+                    type="number" 
+                    value={addedUnits} 
+                    onChange={(e) => handleAddUnitsChange(e.target.value)} 
+                    placeholder="Ej. 24 (lo que llegó)" 
+                    style={{ flex: 1, padding: '8px 10px', fontSize: '13px', borderRadius: '6px', border: '1px solid #16a34a', outline: 'none', background: '#fff' }} 
+                  />
+                  <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                    {addedUnits ? `Total: ${stock} ud.` : `Actual: ${editingProduct.stock || 0}`}
+                  </span>
+                </div>
+                <span style={{ fontSize: '10px', color: '#64748b', display: 'block', marginTop: '4px' }}>
+                  Escribe cuántas unidades llegaron y se sumarán automáticamente.
+                </span>
+              </div>
+            )}
           </div>
+
           <div className="form-group">
             <label>Categoría</label>
             <select 
@@ -198,7 +239,7 @@ function ProductsView({
                     {mod}
                     <button 
                       type="button" 
-                      onClick={() => removeProductModifierTag(mod)} 
+                      onClick={() => removeModifierTag(mod)} 
                       style={{ background: 'none', border: 'none', color: '#e05d5d', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', padding: 0, lineHeight: 1 }}
                     >
                       ×
@@ -213,7 +254,7 @@ function ProductsView({
           {currentStoreType === 'restaurant' && (
             <div className="form-group" style={{ background: '#f9fafb', padding: '14px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '16px' }}>
               <label style={{ fontWeight: '800', color: '#16a34a', marginBottom: '6px', display: 'block', fontSize: '12px', textTransform: 'uppercase' }}>
-                ⭐ 2. Adicionales / Extras con Precio (Opcionales con costo)
+                ⭐ 2. Adicionales / Extras con Costo (Opcionales con costo)
               </label>
               
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '6px', marginBottom: '8px' }}>
@@ -282,7 +323,7 @@ function ProductsView({
 
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
             {(editingProduct || name.includes('(Copia)')) && (
-              <button type="button" className="btn-secondary" onClick={resetProductForm} style={{ flex: 1 }}>Cancelar</button>
+              <button type="button" className="btn-secondary" onClick={customResetForm} style={{ flex: 1 }}>Cancelar</button>
             )}
             <button type="submit" className="btn-primary" disabled={loading} style={{ flex: 2, background: '#111827', color: '#fff', border: 'none', fontWeight: '700' }}>
               <Package size={18} /> {loading ? 'Guardando...' : (editingProduct ? 'Actualizar' : 'Guardar')}
@@ -331,11 +372,11 @@ function ProductsView({
                     <td className="action-cell">
                       <div className="action-buttons" style={{ justifyContent: 'center' }}>
                         
-                        {/* NUEVO BOTÓN DUPLICAR PRODUCTO */}
+                        {/* BOTÓN DUPLICAR PRODUCTO */}
                         <button 
                           className="btn-icon-primary" 
                           onClick={() => handleDuplicateProduct(prod)} 
-                          title="Duplicar Platillo (Clonar ingredientes, extras y generar nuevo SKU)"
+                          title="Duplicar Platillo"
                           style={{ background: '#f8f9fa', border: '1px solid #ced4da', color: '#111827' }}
                         >
                           <Copy size={16} />
