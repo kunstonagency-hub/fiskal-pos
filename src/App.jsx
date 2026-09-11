@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, Settings, Package, Users, PlusCircle, Trash2, Minus, Plus, RefreshCw, History, UserCheck, CreditCard, X, FileText, Eye, Clock, AlertCircle, CheckCircle, Play, DollarSign, AlertTriangle, Edit2, QrCode, Lock, Unlock, ShieldAlert, Barcode, Image as ImageIcon, Wifi, WifiOff, UploadCloud, Search, Store, MapPin, Phone, Mail, LogOut, Key, User, MessageCircle, Award, HardDrive, UserPlus, Camera, DollarSign as DollarIcon, Percent, TrendingUp, Activity, PieChart, Check, FileCheck } from 'lucide-react';
+import { ShoppingCart, Settings, Package, Users, PlusCircle, Trash2, Minus, Plus, RefreshCw, History, UserCheck, CreditCard, X, FileText, Eye, Clock, AlertCircle, CheckCircle, Play, DollarSign, AlertTriangle, Edit2, QrCode, Lock, Unlock, ShieldAlert, Barcode, Image as ImageIcon, Wifi, WifiOff, UploadCloud, Search, Store, MapPin, Phone, Mail, LogOut, Key, User, MessageCircle, Award, HardDrive, UserPlus, Camera, DollarSign as DollarIcon, Percent, TrendingUp, Activity, PieChart, Check, FileCheck, ChefHat } from 'lucide-react';
 import { supabase } from './supabase';
 import { initDB, queueOfflineAction, getOfflineActions, clearOfflineAction, getOfflineSales, clearOfflineSale } from './db';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -21,6 +21,7 @@ import VendorPortalView from './components/VendorPortalView';
 import AdminMasterView from './components/AdminMasterView';
 import SettingsView from './components/SettingsView';
 import PosTerminalView from './components/PosTerminalView';
+import RecipesCostView from './components/RecipesCostView';
 
 
 
@@ -4177,6 +4178,16 @@ return (
             </button>
           )}
 
+          {currentStoreType === 'restaurant' && (
+            <button 
+              className={activeTab === 'recipes' ? 'nav-btn active' : 'nav-btn'} 
+              onClick={(e) => { e.stopPropagation(); setActiveTab('recipes'); setIsSidebarExpanded(false); }}
+              style={{ color: '#16a34a', fontWeight: 'bold' }}
+            >
+              <ChefHat size={20} /> <span>Costos & Recetas</span>
+            </button>
+          )}
+          
           {(currentUserRole === 'owner' || currentUserRole === 'super_admin' || currentUserRole === 'system_vendor') && (
             <button className={activeTab === 'settings' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('settings'); setIsSidebarExpanded(false); }}>
               <Settings size={20} /> <span>Configuración</span>
@@ -4612,6 +4623,15 @@ return (
     setNewExtraPrice={setNewExtraPrice}
   />
 )}
+
+{activeTab === 'recipes' && currentStoreType === 'restaurant' && (
+            <RecipesCostView 
+              currentStoreId={currentStoreId}
+              products={products}
+              fetchProducts={fetchProducts}
+              bcvRate={bcvRate}
+            />
+          )}
 
 {activeTab === 'settings' && (currentUserRole === 'owner' || currentUserRole === 'super_admin' || currentUserRole === 'system_vendor') && (
             <SettingsView 
