@@ -136,70 +136,72 @@ function SettingsView({
         </form>
       </div>
 
-      {/* 2. NUEVA TARJETA: CARGA DE BANNERS PARA PANTALLA CLIENTES (1920x1080) */}
-      <div className="product-form-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a' }}>
-          <Monitor size={20} /> Cartelera Digital KDS (Pantalla Clientes)
-        </h3>
-        <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '14px' }}>
-          Sube aquí las fotos de tus promociones o combos (formato horizontal recomendado <strong>1920x1080</strong>). Rotarán cada 5 segundos en el televisor del salón.
-        </p>
+      {/* 2. TARJETA DE CARTELERA DIGITAL KDS (SÓLO PARA RESTAURANTES) */}
+      {currentStoreType === 'restaurant' && (
+        <div className="product-form-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a' }}>
+            <Monitor size={20} /> Cartelera Digital KDS (Pantalla Clientes)
+          </h3>
+          <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '14px' }}>
+            Sube aquí las fotos de tus promociones o combos (formato horizontal recomendado <strong>1920x1080</strong>). Rotarán cada 5 segundos en el televisor del salón.
+          </p>
 
-        <input 
-          type="file" 
-          ref={fileInputRef}
-          accept="image/*"
-          onChange={handleFileChange}
-          style={{ display: 'none' }}
-        />
+          <input 
+            type="file" 
+            ref={fileInputRef}
+            accept="image/*"
+            onChange={handleFileChange}
+            style={{ display: 'none' }}
+          />
 
-        <button
-          type="button"
-          onClick={() => fileInputRef.current && fileInputRef.current.click()}
-          disabled={uploadingBanner}
-          style={{
-            width: '100%', padding: '12px', background: '#111827', color: '#fff',
-            border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-            marginBottom: '16px'
-          }}
-        >
-          <UploadCloud size={18} /> {uploadingBanner ? 'Subiendo imagen...' : '+ Subir Nueva Foto (1920x1080)'}
-        </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            disabled={uploadingBanner}
+            style={{
+              width: '100%', padding: '12px', background: '#111827', color: '#fff',
+              border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              marginBottom: '16px'
+            }}
+          >
+            <UploadCloud size={18} /> {uploadingBanner ? 'Subiendo imagen...' : '+ Subir Nueva Foto (1920x1080)'}
+          </button>
 
-        <div style={{ flex: 1, minHeight: '180px', background: '#f8f9fa', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '12px', overflowY: 'auto' }}>
-          <span style={{ fontSize: '11px', fontWeight: '800', color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
-            Fotos Activas en la Pantalla ({kdsBanners.length}):
-          </span>
+          <div style={{ flex: 1, minHeight: '180px', background: '#f8f9fa', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '12px', overflowY: 'auto' }}>
+            <span style={{ fontSize: '11px', fontWeight: '800', color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+              Fotos Activas en la Pantalla ({kdsBanners.length}):
+            </span>
 
-          {kdsBanners.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 10px', color: '#9ca3af' }}>
-              <ImageIcon size={36} style={{ margin: '0 auto 6px auto', display: 'block', opacity: 0.5 }} />
-              <span style={{ fontSize: '12px' }}>No has subido fotos. Se mostrarán los banners de cortesía de Fiskal.</span>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px' }}>
-              {kdsBanners.map((bannerUrl, idx) => (
-                <div key={idx} style={{ position: 'relative', borderRadius: '6px', overflow: 'hidden', height: '80px', border: '1px solid #dee2e6', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                  <img src={bannerUrl} alt={`Banner ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteKdsBanner(bannerUrl)}
-                    style={{
-                      position: 'absolute', top: '4px', right: '4px', background: 'rgba(239, 68, 68, 0.9)',
-                      color: '#fff', border: 'none', width: '22px', height: '22px', borderRadius: '50%',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}
-                    title="Eliminar de la pantalla"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+            {kdsBanners.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px 10px', color: '#9ca3af' }}>
+                <ImageIcon size={36} style={{ margin: '0 auto 6px auto', display: 'block', opacity: 0.5 }} />
+                <span style={{ fontSize: '12px' }}>No has subido fotos. Se mostrarán los banners de cortesía de Fiskal.</span>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px' }}>
+                {kdsBanners.map((bannerUrl, idx) => (
+                  <div key={idx} style={{ position: 'relative', borderRadius: '6px', overflow: 'hidden', height: '80px', border: '1px solid #dee2e6', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                    <img src={bannerUrl} alt={`Banner ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteKdsBanner(bannerUrl)}
+                      style={{
+                        position: 'absolute', top: '4px', right: '4px', background: 'rgba(239, 68, 68, 0.9)',
+                        color: '#fff', border: 'none', width: '22px', height: '22px', borderRadius: '50%',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}
+                      title="Eliminar de la pantalla"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 3. Mapa GPS Krono */}
       <div className="product-form-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
