@@ -9,60 +9,29 @@ export default function DeliveryDashboard({ storeId, isOnline, bcvRate }) {
 
   useEffect(() => {
     if (!storeId) return;
-
     fetchActiveOrders();
 
     const channel = supabase
       .channel(`krono-orders-${storeId}`)
-      .on(
-        'postgres_changes',
-        { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'orders',
-          filter: `store_id=eq.${storeId}` 
-        },
-        (payload) => {
-          try {
-            const bell = new Audio('https://upload.wikimedia.org/wikipedia/commons/3/34/Sound_Effect_-_Door_Bell.ogg');
-            bell.play().catch(err => console.log("Audio bloqueado por el navegador:", err));
-          } catch(e) {}
-
-          const orderIdStr = String(payload.new.id);
-          const orderNumber = orderIdStr.slice(-4).toUpperCase();
-          setNewOrderNotification(`¡Nuevo pedido web Krono #${orderNumber}!`);
-
-          setTimeout(() => {
-            setNewOrderNotification(null);
-          }, 6000);
-
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders', filter: `store_id=eq.${storeId}` }, (payload) => {
+          try { new Audio('https://upload.wikimedia.org/wikipedia/commons/3/34/Sound_Effect_-_Door_Bell.ogg').play(); } catch(e) {}
+          const orderNum = String(payload.new.id).slice(-4).toUpperCase();
+          setNewOrderNotification(`¡Nuevo pedido Krono #${orderNum}!`);
+          setTimeout(() => setNewOrderNotification(null), 6000);
           setOrders((prev) => [payload.new, ...prev]);
         }
       )
-      .on(
-        'postgres_changes',
-        { 
-          event: 'UPDATE', 
-          schema: 'public', 
-          table: 'orders',
-          filter: `store_id=eq.${storeId}` 
-        },
-        (payload) => {
-          setOrders((prev) =>
-            prev.map((order) => (order.id === payload.new.id ? payload.new : order))
-          );
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `store_id=eq.${storeId}` }, (payload) => {
+          setOrders((prev) => prev.map((order) => (order.id === payload.new.id ? { ...order, ...payload.new } : order)));
         }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => supabase.removeChannel(channel);
   }, [storeId]);
 
   const fetchActiveOrders = async () => {
     if (!storeId) return;
-
     const { data, error } = await supabase
       .from('orders')
       .select('*')
@@ -71,176 +40,107 @@ export default function DeliveryDashboard({ storeId, isOnline, bcvRate }) {
       .order('created_at', { ascending: false });
     
     if (data) setOrders(data);
-    if (error) console.error("Error cargando pedidos:", error);
     setLoading(false);
   };
 
   const updateOrderStatus = async (id, newStatus) => {
     const currentOrder = orders.find(o => o.id === id);
-    
     setOrders((prev) => prev.map((order) => (order.id === id ? { ...order, status: newStatus } : order)));
 
     try {
-      // 1. Cuando el comercio le da a "Aceptar Venta / Cocinar":
-      // Registra la venta fiscal Y alerta al radar de los motorizados de inmediato
+      // 1. CUANDO EL RESTAURANTE ACEPTA EL PEDIDO (PREPARANDO)
       if (newStatus === 'Preparando' && currentOrder) {
-        let clientDisplayName = "Cliente Krono";
+        
+        // A) Llama al Motorizado Inmediatamente (Para que viaje mientras cocinas)
+        try {
+          const { data: storeData } = await supabase.from('stores').select('name, address, lat, lng').eq('id', storeId).single();
+          
+          const pLat = parseFloat(storeData?.lat) || 10.3755;
+          const pLng = parseFloat(storeData?.lng) || -66.9587;
+          const dropoffCoords = currentOrder.customer_info?.coordenadas || { lat: 10.3700, lng: -66.9600 };
+          const clientName = `${currentOrder.customer_info?.nombre || ''} ${currentOrder.customer_info?.apellido || ''}`.trim() || 'Cliente Krono';
 
-        if (currentOrder.customer_info) {
-          const { nombre, apellido } = currentOrder.customer_info;
-          clientDisplayName = `${nombre} ${apellido} (Krono)`.trim();
-        }
+          const { error: riderErr } = await supabase.from('krono_deliveries').insert([{
+            order_id: String(currentOrder.id),
+            store_id: storeId,
+            pickup_name: storeData?.name || 'Restaurante',
+            pickup_address: storeData?.address || 'Local del comercio',
+            pickup_lat: pLat,
+            pickup_lng: pLng,
+            customer_name: clientName,
+            customer_phone: currentOrder.customer_info?.telefono || '',
+            customer_address: currentOrder.customer_info?.direccion || 'Dirección de entrega',
+            dropoff_lat: parseFloat(dropoffCoords.lat) || 10.3700,
+            dropoff_lng: parseFloat(dropoffCoords.lng) || -66.9600,
+            delivery_pin: String(currentOrder.delivery_pin || '0000'),
+            delivery_fee: 3.00,
+            status: 'buscando_motorizado'
+          }]);
 
-        let parsedItems = [];
-        if (typeof currentOrder.items === 'string') {
-          try { parsedItems = JSON.parse(currentOrder.items); } catch(e) { parsedItems = []; }
-        } else if (Array.isArray(currentOrder.items)) {
-          parsedItems = currentOrder.items;
-        }
+          if (riderErr) console.error("Error alertando al rider:", riderErr);
+          else alert("¡Motorizado llamado con éxito! En camino al local.");
+        } catch (e) { console.error("Fallo al llamar moto:", e); }
 
-        const formattedSalesItems = parsedItems.map(item => ({
-          id: item.id || 0,
-          name: item.name,
-          price: Number(item.price),
-          quantity: item.quantity || 1,
-          cost: item.cost || 0
-        }));
-
-        const effectiveRate = Number(bcvRate) > 0 ? Number(bcvRate) : 1;
-        const totalAmountUsd = Number(currentOrder.total_amount) || 0;
-        const totalAmountBs = totalAmountUsd * effectiveRate;
-
-        const payMethod = currentOrder.payment_method || 'efectivo';
-        const paymentDetailsObj = {
-          cash_usd: payMethod === 'efectivo' ? totalAmountUsd : 0,
-          cash_bs: 0,
-          zelle: payMethod === 'zelle' ? totalAmountUsd : 0,
-          debit: payMethod === 'pago_movil' ? totalAmountUsd : 0,
-          reference: currentOrder.payment_reference || '',
-          applied_bcv_rate: effectiveRate
-        };
-
-        // Guardar venta fiscal
-        await supabase.from('sales').insert([{
-          store_id: storeId,
-          client_name: clientDisplayName,
-          items: formattedSalesItems,
-          total_usd: totalAmountUsd,
-          total_bs: totalAmountBs,
-          payment_details: paymentDetailsObj,
-          status: 'completed'
-        }]);
-
-        // ALERTA AL MOTORIZADO DE INMEDIATO (Mientras cocinan, el rider viaja al local)
-        const { data: storeData } = await supabase.from('stores').select('name, address, lat, lng').eq('id', storeId).single();
-        const pickupLat = parseFloat(storeData?.lat) || 10.3755;
-        const pickupLng = parseFloat(storeData?.lng) || -66.9587;
-        const dropoff = currentOrder.customer_info?.coordenadas || { lat: 10.4850, lng: -66.5900 };
-
-        await supabase.from('krono_deliveries').insert([{
-          order_id: String(currentOrder.id), // Formato texto compatible con UUID
-          store_id: storeId,
-          pickup_name: storeData?.name || 'Restaurante',
-          pickup_address: storeData?.address || 'Local del comercio',
-          pickup_lat: pickupLat,
-          pickup_lng: pickupLng,
-          customer_name: clientDisplayName,
-          customer_phone: currentOrder.customer_info?.telefono || '',
-          customer_address: currentOrder.customer_info?.direccion || 'Dirección de entrega',
-          dropoff_lat: parseFloat(dropoff.lat) || 10.4850,
-          dropoff_lng: parseFloat(dropoff.lng) || -66.5900,
-          delivery_pin: String(currentOrder.delivery_pin || '0000'),
-          delivery_fee: 3.00,
-          status: 'buscando_motorizado'
-        }]);
+        // B) Registrar la Venta Fiscal de forma segura
+        try {
+          const effectiveRate = Number(bcvRate) > 0 ? Number(bcvRate) : 1;
+          let parsedItems = typeof currentOrder.items === 'string' ? JSON.parse(currentOrder.items) : currentOrder.items;
+          const formattedSalesItems = (parsedItems || []).map(item => ({ id: item.id || 0, name: item.name, price: Number(item.price), quantity: item.quantity || 1 }));
+          const totalUsd = Number(currentOrder.total_amount) || 0;
+          
+          await supabase.from('sales').insert([{
+            store_id: storeId,
+            client_name: `${currentOrder.customer_info?.nombre || ''} (Krono)`.trim(),
+            items: formattedSalesItems,
+            total_usd: totalUsd,
+            total_bs: totalUsd * effectiveRate,
+            payment_details: {
+              cash_usd: currentOrder.payment_method === 'efectivo' ? totalUsd : 0,
+              cash_bs: 0,
+              zelle: currentOrder.payment_method === 'zelle' ? totalUsd : 0,
+              debit: currentOrder.payment_method === 'pago_movil' ? totalUsd : 0,
+              reference: currentOrder.payment_reference || '',
+              applied_bcv_rate: effectiveRate
+            },
+            status: 'completed'
+          }]);
+        } catch (e) { console.error("Fallo al guardar venta fiscal:", e); }
       }
 
-      // Actualizar la orden en Supabase
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: newStatus })
-        .eq('id', id);
-      
+      // 2. Actualizar el estado de la orden en Supabase
+      const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', id);
       if (error) throw error;
 
     } catch (error) {
-      alert('Error al actualizar pedido: ' + error.message);
+      alert('Error al actualizar el pedido: ' + error.message);
       fetchActiveOrders();
     }
   };
 
   const handleWhatsAppContact = (order) => {
-    if (!order.customer_info?.telefono) {
-      alert("El cliente no ha proporcionado un número de teléfono.");
-      return;
-    }
-
+    if (!order.customer_info?.telefono) return alert("El cliente no ha proporcionado teléfono.");
     let phone = order.customer_info.telefono.replace(/\D/g, ''); 
-
-    if (phone.startsWith('0')) {
-      phone = '58' + phone.substring(1);
-    } else if (phone.startsWith('580')) {
-      phone = '58' + phone.substring(3);
-    } else if (phone.length === 10 && !phone.startsWith('58')) {
-      phone = '58' + phone;
-    }
-
-    const customerName = `${order.customer_info.nombre} ${order.customer_info.apellido}`;
-
-    let parsedItems = [];
-    if (typeof order.items === 'string') {
-      try { parsedItems = JSON.parse(order.items); } catch(e) { parsedItems = []; }
-    } else if (Array.isArray(order.items)) {
-      parsedItems = order.items;
-    }
-
-    const itemsSummary = parsedItems
-      .map(item => `• ${item.quantity || 1}x ${item.name} ($${Number(item.price).toFixed(2)})`)
-      .join('\n');
-
-    const paymentText = order.payment_method?.replace('_', ' ').toUpperCase() || 'No definido';
-    const refText = order.payment_reference ? ` (Ref: ${order.payment_reference})` : '';
-
-    const message = `¡Hola ${customerName}! 👋 Te escribimos desde el comercio para confirmar los detalles de tu pedido en Krono:\n\n${itemsSummary}\n\n💰 *Total a pagar:* $${Number(order.total_amount).toFixed(2)}\n💳 *Método de pago:* ${paymentText}${refText}\n\n¿Nos confirmas si todo está correcto para proceder? ¡Gracias!`;
-
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+    if (phone.startsWith('0')) phone = '58' + phone.substring(1);
+    const msg = `¡Hola ${order.customer_info.nombre}! 👋 Tu pedido Krono por $${Number(order.total_amount).toFixed(2)} está en preparación.`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   const getStatusColor = (status) => {
-    switch(status) {
-      case 'Pendiente': return { bg: '#fee2e2', text: '#ef4444', icon: <Bell size={16} /> };
-      case 'Preparando': return { bg: '#fef3c7', text: '#d97706', icon: <ChefHat size={16} /> };
-      case 'En camino': return { bg: '#dbeafe', text: '#3b82f6', icon: <Truck size={16} /> };
-      default: return { bg: '#f1f5f9', text: '#64748b', icon: <Clock size={16} /> };
-    }
+    const st = String(status || '').toLowerCase();
+    if (st === 'pendiente') return { bg: '#fee2e2', text: '#ef4444', icon: <Bell size={16} /> };
+    if (st === 'preparando') return { bg: '#fef3c7', text: '#d97706', icon: <ChefHat size={16} /> };
+    if (st === 'en_comercio') return { bg: '#ede9fe', text: '#7c3aed', icon: <Truck size={16} /> };
+    if (st === 'en camino') return { bg: '#dbeafe', text: '#3b82f6', icon: <Truck size={16} /> };
+    return { bg: '#f1f5f9', text: '#64748b', icon: <Clock size={16} /> };
   };
 
-  if (loading) {
-    return <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Cargando pedidos en vivo...</div>;
-  }
+  if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Cargando pedidos en vivo...</div>;
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'system-ui, sans-serif', position: 'relative' }}>
-      
+    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', position: 'relative' }}>
       {newOrderNotification && (
-        <div style={{
-          position: 'fixed',
-          top: '24px',
-          right: '24px',
-          background: '#10b981',
-          color: '#fff',
-          padding: '16px 24px',
-          borderRadius: '12px',
-          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          fontWeight: 'bold',
-          zIndex: 9999,
-        }}>
-          <Bell size={24} />
-          {newOrderNotification}
+        <div style={{ position: 'fixed', top: '24px', right: '24px', background: '#10b981', color: '#fff', padding: '16px 24px', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', display: 'flex', alignItems: 'center', gap: '12px', fontWeight: 'bold', zIndex: 9999 }}>
+          <Bell size={24} /> {newOrderNotification}
         </div>
       )}
 
@@ -248,10 +148,6 @@ export default function DeliveryDashboard({ storeId, isOnline, bcvRate }) {
         <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Bell color="#10b981" /> Pedidos Web (Krono)
         </h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#10b981', animation: 'pulse 2s infinite' }}></span>
-          <span style={{ color: '#64748b', fontSize: '14px', fontWeight: '500' }}>Conexión Activa</span>
-        </div>
       </div>
 
       {orders.length === 0 ? (
@@ -264,68 +160,36 @@ export default function DeliveryDashboard({ storeId, isOnline, bcvRate }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '24px' }}>
           {orders.map((order) => {
             const statusStyle = getStatusColor(order.status);
-            
-            let parsedItems = [];
-            if (typeof order.items === 'string') {
-              try { parsedItems = JSON.parse(order.items); } catch(e) { parsedItems = []; }
-            } else if (Array.isArray(order.items)) {
-              parsedItems = order.items;
-            }
+            let parsedItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
 
             return (
               <div key={order.id} style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
-                
                 <div style={{ padding: '16px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
                   <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <FileText size={14} /> TICKET #{order.id.slice(0, 6).toUpperCase()}
+                    <FileText size={14} /> TICKET #{String(order.id).slice(-4).toUpperCase()}
                   </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: statusStyle.bg, color: statusStyle.text, padding: '6px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: statusStyle.bg, color: statusStyle.text, padding: '6px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>
                     {statusStyle.icon} {order.status}
                   </div>
                 </div>
 
                 <div style={{ padding: '16px', minHeight: '120px' }}>
-                  {order.customer_info && (
-                    <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px dashed #cbd5e1', fontSize: '13px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                          <div style={{ fontWeight: 'bold', color: '#0f172a', marginBottom: '4px' }}>
-                            {order.customer_info.nombre} {order.customer_info.apellido} (Krono)
-                          </div>
-                          <div style={{ color: '#64748b' }}>C.I: {order.customer_info.cedula}</div>
-                          <div style={{ color: '#64748b' }}>Tel: {order.customer_info.telefono}</div>
-                        </div>
-                        <button 
-                          onClick={() => handleWhatsAppContact(order)}
-                          style={{
-                            background: '#25D366',
-                            color: '#fff',
-                            border: 'none',
-                            padding: '6px 10px',
-                            borderRadius: '8px',
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                          }}
-                          title="Enviar resumen por WhatsApp"
-                        >
-                          💬 WhatsApp
-                        </button>
-                      </div>
+                  <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px dashed #cbd5e1', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontWeight: 'bold', color: '#0f172a', marginBottom: '4px' }}>{order.customer_info?.nombre} {order.customer_info?.apellido}</div>
+                      <div style={{ color: '#64748b' }}>Tel: {order.customer_info?.telefono}</div>
                     </div>
-                  )}
+                    <button onClick={() => handleWhatsAppContact(order)} style={{ background: '#25D366', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>WhatsApp</button>
+                  </div>
 
-                  {parsedItems.map((item, idx) => (
+                  {(parsedItems || []).map((item, idx) => (
                     <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <span style={{ fontWeight: 'bold', color: '#0f172a' }}>{item.quantity || 1}x</span>
-                        <span style={{ color: '#334155' }}>{item.name}</span>
+                      <div>
+                        <span style={{ fontWeight: 'bold', color: '#10b981', marginRight: '6px' }}>{item.quantity || 1}x</span>
+                        <span style={{ color: '#334155', fontWeight: 'bold' }}>{item.name}</span>
+                        {item.customization && <span style={{ display: 'block', fontSize: '11px', color: '#d97706', marginTop: '2px' }}>📌 {item.customization}</span>}
                       </div>
-                      <span style={{ fontWeight: '500', color: '#0f172a' }}>${Number(item.price).toFixed(2)}</span>
+                      <span style={{ fontWeight: '500', color: '#0f172a' }}>${Number(item.price * (item.quantity || 1)).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>
@@ -337,38 +201,23 @@ export default function DeliveryDashboard({ storeId, isOnline, bcvRate }) {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569' }}>
                     <CreditCard size={14} />
-                    <span style={{ textTransform: 'capitalize' }}>{order.payment_method?.replace('_', ' ') || 'No definido'}</span>
-                    {order.payment_reference && (
-                      <span style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
-                        Ref: {order.payment_reference}
-                      </span>
-                    )}
+                    <span style={{ textTransform: 'capitalize', fontWeight: 'bold' }}>{order.payment_method?.replace('_', ' ') || 'No definido'}</span>
                   </div>
                 </div>
 
                 <div style={{ padding: '16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {order.status === 'Pendiente' && (
                     <>
-                      <button onClick={() => updateOrderStatus(order.id, 'Preparando')} style={{ flex: 1, background: '#10b981', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
-                        <Check size={16} /> Aceptar Venta
-                      </button>
-                      <button onClick={() => updateOrderStatus(order.id, 'Rechazado')} style={{ flex: 1, background: '#fee2e2', color: '#ef4444', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
-                        <XCircle size={16} /> Rechazar
-                      </button>
+                      <button onClick={() => updateOrderStatus(order.id, 'Rechazado')} style={{ flex: 1, background: '#fee2e2', color: '#ef4444', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Rechazar</button>
+                      <button onClick={() => updateOrderStatus(order.id, 'Preparando')} style={{ flex: 2, background: '#10b981', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Aceptar y Cocinar</button>
                     </>
                   )}
-                  {order.status === 'Preparando' && (
-                    <button onClick={() => updateOrderStatus(order.id, 'En camino')} style={{ width: '100%', background: '#3b82f6', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
-                      <Truck size={16} /> Despachar (En Camino)
-                    </button>
-                  )}
-                  {order.status === 'En camino' && (
-                    <button onClick={() => updateOrderStatus(order.id, 'Entregado')} style={{ width: '100%', background: '#0f172a', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
-                      <Check size={16} /> Marcar Entregado
-                    </button>
+                  {['Preparando', 'en_comercio'].includes(order.status) && (
+                    <div style={{ width: '100%', textAlign: 'center', padding: '12px', background: '#f1f5f9', color: '#64748b', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px' }}>
+                      ⏳ Esperando retiro del Motorizado...
+                    </div>
                   )}
                 </div>
-
               </div>
             );
           })}
