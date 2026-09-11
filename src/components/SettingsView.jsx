@@ -23,6 +23,7 @@ function MapUpdater({ center }) {
 }
 
 function SettingsView({
+  currentStoreType, 
   currentStoreRif,
   setCurrentStoreRif,
   currentStoreAddress,
