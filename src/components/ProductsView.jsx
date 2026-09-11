@@ -45,14 +45,38 @@ function ProductsView({
   handleDeleteProduct
 }) {
 
-  // Estado local para sumar unidades de reabastecimiento al editar
   const [addedUnits, setAddedUnits] = useState('');
 
   const handleAddUnitsChange = (val) => {
     setAddedUnits(val);
-    const add = parseInt(val) || 0;
-    const baseStock = editingProduct ? (editingProduct.stock || 0) : 0;
-    setStock((baseStock + add).toString());
+    
+    if (val === '') {
+      setStock(editingProduct ? Number(editingProduct.stock || 0) : 0);
+      return;
+    }
+
+    const add = parseInt(val, 10) || 0;
+    const baseStock = editingProduct ? parseInt(editingProduct.stock || 0, 10) : 0;
+    
+    setStock(baseStock + add);
+  };
+
+  const handleFormSubmit = (e) => {
+    e.preventDefault();
+    
+    if (typeof stock === 'string' && stock !== '') {
+      setStock(Number(stock));
+    }
+
+    if (editingProduct) {
+      handleUpdateProduct(e);
+    } else {
+      handleAddProduct(e);
+    }
+    
+    setTimeout(() => {
+      setAddedUnits('');
+    }, 300);
   };
 
   const handleAddExtraTag = () => {
@@ -93,7 +117,8 @@ function ProductsView({
               ? `Duplicando: ${name}` 
               : `Agregar Nuevo ${currentStoreType === 'restaurant' ? 'Platillo / Ítem' : 'Producto'}`}
         </h3>
-        <form onSubmit={editingProduct ? handleUpdateProduct : handleAddProduct} className="fiskal-form">
+        
+        <form onSubmit={handleFormSubmit} className="fiskal-form">
           <div className="form-group">
             <label>Fotografía {currentStoreType === 'restaurant' ? 'del Platillo' : 'del Producto'}</label>
             <div style={{ border: '2px dashed #ced4da', padding: '16px', textAlign: 'center', borderRadius: '6px', background: '#f8f9fa' }}>
@@ -107,27 +132,36 @@ function ProductsView({
                   <span style={{ fontSize: '12px' }}>Sube una foto</span>
                 </div>
               )}
-              <input type="file" accept="image/*" onChange={handleImageSelect} style={{ fontSize: '12px', width: '100%' }} />
+              <input name="image" type="file" accept="image/*" onChange={handleImageSelect} style={{ fontSize: '12px', width: '100%' }} />
             </div>
           </div>
 
           <div className="form-group">
             <label>Nombre {currentStoreType === 'restaurant' ? 'del Platillo' : 'del Producto'}</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder={currentStoreType === 'restaurant' ? "Ej. Hamburguesa Doble" : "Ej. Harina PAN"} />
+            <input name="name" type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder={currentStoreType === 'restaurant' ? "Ej. Hamburguesa Doble" : "Ej. Harina PAN"} />
           </div>
           <div className="form-group">
             <label>Código de Barras / SKU (Autogenerado al duplicar)</label>
-            <input type="text" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="SKU-001" />
+            <input name="barcode" type="text" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="SKU-001" />
           </div>
           <div className="form-group">
             <label>Precio de Venta ($ USD)</label>
-            <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required placeholder="0.00" />
+            <input name="price" type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required placeholder="0.00" />
           </div>
 
-          {/* STOCK Y CAJA DE REABASTECIMIENTO RÁPIDO */}
           <div className="form-group">
             <label>Stock (Unidades Totales)</label>
-            <input type="number" value={stock} onChange={(e) => setStock(e.target.value)} required placeholder="0" />
+            <input 
+              name="stock"
+              type="number" 
+              value={stock} 
+              onChange={(e) => {
+                const val = e.target.value;
+                setStock(val === '' ? '' : Number(val));
+              }} 
+              required 
+              placeholder="0" 
+            />
             
             {editingProduct && (
               <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0', marginTop: '8px' }}>
@@ -136,6 +170,7 @@ function ProductsView({
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <input 
+                    name="addedUnits"
                     type="number" 
                     value={addedUnits} 
                     onChange={(e) => handleAddUnitsChange(e.target.value)} 
@@ -156,6 +191,7 @@ function ProductsView({
           <div className="form-group">
             <label>Categoría</label>
             <select 
+              name="category_select"
               value={
                 ['General', 'Por Peso', ...products.map(p => (p.category || '').trim())].includes(category) 
                   ? category 
@@ -183,6 +219,7 @@ function ProductsView({
 
             {!['General', 'Por Peso', ...products.map(p => (p.category || '').trim())].includes(category) && (
               <input 
+                name="category_input"
                 type="text" 
                 value={category} 
                 onChange={(e) => setCategory(e.target.value)} 
@@ -197,6 +234,7 @@ function ProductsView({
             <div className="form-group" style={{ background: '#e7f5ff', padding: '12px', borderRadius: '6px', border: '1px solid #74c0fc', marginBottom: '16px', marginTop: '12px' }}>
               <label style={{ color: '#1971c2', fontWeight: 'bold' }}>Unidad de Medida Base</label>
               <select 
+                name="measure_unit"
                 value={productModifiers[0] || 'kg'} 
                 onChange={(e) => setProductModifiers([e.target.value])}
                 style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px' }}
@@ -210,7 +248,6 @@ function ProductsView({
             </div>
           )}
 
-          {/* ETIQUETAS DE INGREDIENTES BASE */}
           {currentStoreType === 'restaurant' && (
             <div className="form-group" style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '16px' }}>
               <label style={{ fontWeight: '800', color: '#111827', marginBottom: '6px', display: 'block', fontSize: '12px', textTransform: 'uppercase' }}>
@@ -218,6 +255,7 @@ function ProductsView({
               </label>
               <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
                 <input 
+                  name="base_ingredient"
                   type="text" 
                   value={newModifierText} 
                   onChange={(e) => setNewModifierText(e.target.value)} 
@@ -239,7 +277,7 @@ function ProductsView({
                     {mod}
                     <button 
                       type="button" 
-                      onClick={() => removeModifierTag(mod)} 
+                      onClick={() => removeProductModifierTag(mod)} 
                       style={{ background: 'none', border: 'none', color: '#e05d5d', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', padding: 0, lineHeight: 1 }}
                     >
                       ×
@@ -250,7 +288,6 @@ function ProductsView({
             </div>
           )}
 
-          {/* EXTRAS CON PRECIO */}
           {currentStoreType === 'restaurant' && (
             <div className="form-group" style={{ background: '#f9fafb', padding: '14px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '16px' }}>
               <label style={{ fontWeight: '800', color: '#16a34a', marginBottom: '6px', display: 'block', fontSize: '12px', textTransform: 'uppercase' }}>
@@ -259,6 +296,7 @@ function ProductsView({
               
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '6px', marginBottom: '8px' }}>
                 <input 
+                  name="extra_name"
                   type="text" 
                   value={newExtraName} 
                   onChange={(e) => setNewExtraName(e.target.value)} 
@@ -266,6 +304,7 @@ function ProductsView({
                   style={{ padding: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da' }}
                 />
                 <input 
+                  name="extra_price"
                   type="number"
                   step="0.01" 
                   value={newExtraPrice} 
@@ -303,11 +342,10 @@ function ProductsView({
             </div>
           )}
 
-          {/* INTEGRACIÓN KRONO MARKET */}
           {currentStoreKronoEnabled && (
             <div className="form-group" style={{ background: showInKrono ? '#ecfdf5' : '#f8fafc', padding: '12px', borderRadius: '6px', border: showInKrono ? '1px solid #10b981' : '1px solid #e2e8f0', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: showInKrono ? '12px' : '0' }}>
-                <input type="checkbox" id="showInKrono" checked={showInKrono} onChange={(e) => setShowInKrono(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                <input name="showInKrono" type="checkbox" id="showInKrono" checked={showInKrono} onChange={(e) => setShowInKrono(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
                 <label htmlFor="showInKrono" style={{ margin: 0, cursor: 'pointer', fontWeight: 'bold', color: '#0f766e' }}>
                   🛒 Publicar en Krono Market (App de Delivery)
                 </label>
@@ -315,7 +353,7 @@ function ProductsView({
               {showInKrono && (
                 <div style={{ marginLeft: '24px' }}>
                   <label style={{ fontSize: '12px', color: '#475569', marginBottom: '4px', display: 'block' }}>Precio Preferencial en Krono ($ USD) - Opcional</label>
-                  <input type="number" step="0.01" value={kronoPrice} onChange={(e) => setKronoPrice(e.target.value)} placeholder="Ej. 4.50 (Deja vacío para usar precio normal)" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
+                  <input name="kronoPrice" type="number" step="0.01" value={kronoPrice} onChange={(e) => setKronoPrice(e.target.value)} placeholder="Ej. 4.50 (Deja vacío para usar precio normal)" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
                 </div>
               )}
             </div>
@@ -326,19 +364,12 @@ function ProductsView({
               <button type="button" className="btn-secondary" onClick={customResetForm} style={{ flex: 1 }}>Cancelar</button>
             )}
             <button 
-  type="submit" 
-  disabled={loading} 
-  onClick={() => {
-    // Forzamos a recalcular el stock sumado antes de enviar si hay unidades ingresadas
-    const add = parseInt(addedUnits) || 0;
-    if (editingProduct && add > 0) {
-      setStock(( (editingProduct.stock || 0) + add ).toString());
-    }
-  }}
-  style={{ flex: 2, background: '#111827', color: '#fff', border: 'none', fontWeight: '700', padding: '12px', borderRadius: '8px', cursor: 'pointer' }}
->
-  <Package size={18} /> {loading ? 'Guardando...' : (editingProduct ? 'Actualizar' : 'Guardar')}
-</button>
+              type="submit" 
+              disabled={loading} 
+              style={{ flex: 2, background: '#111827', color: '#fff', border: 'none', fontWeight: '700', padding: '12px', borderRadius: '8px', cursor: 'pointer' }}
+            >
+              <Package size={18} /> {loading ? 'Guardando...' : (editingProduct ? 'Actualizar' : 'Guardar')}
+            </button>
           </div>
         </form>
       </div>
@@ -383,7 +414,6 @@ function ProductsView({
                     <td className="action-cell">
                       <div className="action-buttons" style={{ justifyContent: 'center' }}>
                         
-                        {/* BOTÓN DUPLICAR PRODUCTO */}
                         <button 
                           className="btn-icon-primary" 
                           onClick={() => handleDuplicateProduct(prod)} 

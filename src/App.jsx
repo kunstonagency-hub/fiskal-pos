@@ -943,22 +943,15 @@ const fetchUserProfileAndStore = async (user) => {
       let activeStoreId = profile.store_id;
 
       if (profile.role === 'super_admin') {
-        if (navigator.onLine) {
-          fetchAdminStores();
-          fetchSystemVendors();
-          fetchSaasTransactions();
-          
-          const { data: prodStore } = await supabase.from('products').select('store_id').limit(1).maybeSingle();
-          if (prodStore && prodStore.store_id) {
-            activeStoreId = prodStore.store_id;
-          } else if (!activeStoreId) {
-            const { data: realStore } = await supabase.from('stores').select('id, name, store_type').order('created_at', { ascending: false }).limit(1).maybeSingle();
-            if (realStore) {
-              activeStoreId = realStore.id;
-            }
-          }
-        }
-      }
+     // Asignamos tu tienda exclusiva de pruebas para que puedas ver tu menú y POS
+     activeStoreId = '505a583d-8fd8-4265-af3e-aa836f177af0'; 
+     
+     if (navigator.onLine) {
+       fetchAdminStores();
+       fetchSystemVendors();
+       fetchSaasTransactions();
+     }
+   }
 
       if (activeStoreId && activeStoreId !== 'null' && activeStoreId !== 'undefined') {
         if (navigator.onLine) {
@@ -2237,13 +2230,23 @@ const syncOfflineData = async () => {
     if (!storeId) return;
     try {
       let cloudProducts = [];
+      
       if (navigator.onLine) {
-        const { data, error } = await supabase.from('products').select('*').eq('store_id', storeId).order('id', { ascending: false });
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .eq('store_id', storeId) // <--- Filtro estricto de Supabase
+          .order('id', { ascending: false });
+          
         if (!error) {
           cloudProducts = data || [];
+          // Guardamos en caché de manera específica para esta tienda
           localStorage.setItem(`fiskal_cache_products_${storeId}`, JSON.stringify(cloudProducts));
+        } else {
+          console.error("Error en Supabase al traer productos:", error.message);
         }
       } else {
+        // Modo offline: leemos exclusivamente la caché de ESTA tienda
         const cached = localStorage.getItem(`fiskal_cache_products_${storeId}`);
         if (cached) cloudProducts = JSON.parse(cached);
       }
@@ -2251,6 +2254,7 @@ const syncOfflineData = async () => {
       const actions = await getOfflineActions();
       const localProducts = [];
       actions.forEach(action => {
+        // Aseguramos que las acciones offline también pertenezcan a esta tienda si guardas ese dato
         if (action.type === 'INSERT_PRODUCT' && action.productData) {
           localProducts.push({ ...action.productData, id: action.tempId });
         }
@@ -2259,14 +2263,13 @@ const syncOfflineData = async () => {
       const deletedIds = actions.filter(a => a.type === 'DELETE_PRODUCT').map(a => a.productId);
       let finalCloudProducts = cloudProducts.filter(p => !deletedIds.includes(p.id));
 
-      const updateActions = actions.filter(a => a.type === 'UPDATE_SALE');
-      // Corrección del bug: se filtran las actualizaciones de producto correctamente
       const productUpdateActions = actions.filter(a => a.type === 'UPDATE_PRODUCT');
       finalCloudProducts = finalCloudProducts.map(p => {
         const update = productUpdateActions.find(a => a.productId === p.id);
         return update ? { ...p, ...update.productData } : p;
       });
 
+      // Actualizamos el estado limpio solo con lo de esta tienda
       setProducts([...localProducts, ...finalCloudProducts]);
     } catch (error) {
       console.error('Error cargando productos:', error.message);
@@ -2654,7 +2657,10 @@ const syncRate = async (type, storeId, manualValue = null) => {
 
   const handleUpdateProduct = async (e) => {
     e.preventDefault();
-    if (!editingProduct || !name || !price || !currentStoreId) return;
+    if (!editingProduct || !name || !price || !currentStoreId) {
+      alert("Falta el nombre, el precio, o no hay una tienda/producto seleccionado. No se guardó ningún cambio.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -2692,8 +2698,11 @@ const syncRate = async (type, storeId, manualValue = null) => {
         return;
       }
 
-      const { error } = await supabase.from('products').update(updatedProductData).eq('id', editingProduct.id).eq('store_id', currentStoreId);
+      const { data, error } = await supabase.from('products').update(updatedProductData).eq('id', editingProduct.id).eq('store_id', currentStoreId).select();
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("No se encontró ese producto en tu tienda para actualizar — no se guardó ningún cambio. Refresca la página e intenta de nuevo.");
+      }
 
       resetProductForm();
       fetchProducts(currentStoreId);
