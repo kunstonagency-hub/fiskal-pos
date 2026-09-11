@@ -81,6 +81,8 @@ export default function DeliveryDashboard({ storeId, isOnline, bcvRate }) {
     setOrders((prev) => prev.map((order) => (order.id === id ? { ...order, status: newStatus } : order)));
 
     try {
+      // 1. Cuando el comercio le da a "Aceptar Venta / Cocinar":
+      // Registra la venta fiscal Y alerta al radar de los motorizados de inmediato
       if (newStatus === 'Preparando' && currentOrder) {
         let clientDisplayName = "Cliente Krono";
 
@@ -104,7 +106,6 @@ export default function DeliveryDashboard({ storeId, isOnline, bcvRate }) {
           cost: item.cost || 0
         }));
 
-        // Tasa real del BCV con respaldo de seguridad
         const effectiveRate = Number(bcvRate) > 0 ? Number(bcvRate) : 1;
         const totalAmountUsd = Number(currentOrder.total_amount) || 0;
         const totalAmountBs = totalAmountUsd * effectiveRate;
@@ -119,81 +120,51 @@ export default function DeliveryDashboard({ storeId, isOnline, bcvRate }) {
           applied_bcv_rate: effectiveRate
         };
 
-        const { error: saleError } = await supabase
-          .from('sales')
-          .insert([{
-            store_id: storeId,
-            client_name: clientDisplayName,
-            items: formattedSalesItems,
-            total_usd: totalAmountUsd,
-            total_bs: totalAmountBs,
-            payment_details: paymentDetailsObj,
-            status: 'completed'
-          }]);
+        // Guardar venta fiscal
+        await supabase.from('sales').insert([{
+          store_id: storeId,
+          client_name: clientDisplayName,
+          items: formattedSalesItems,
+          total_usd: totalAmountUsd,
+          total_bs: totalAmountBs,
+          payment_details: paymentDetailsObj,
+          status: 'completed'
+        }]);
 
-        if (saleError) {
-          console.error("Error registrando la venta en Fiskal:", saleError);
-        }
-      }
+        // ALERTA AL MOTORIZADO DE INMEDIATO (Mientras cocinan, el rider viaja al local)
+        const { data: storeData } = await supabase.from('stores').select('name, address, lat, lng').eq('id', storeId).single();
+        const pickupLat = parseFloat(storeData?.lat) || 10.3755;
+        const pickupLng = parseFloat(storeData?.lng) || -66.9587;
+        const dropoff = currentOrder.customer_info?.coordenadas || { lat: 10.4850, lng: -66.5900 };
 
-      // --- EMISIÓN AL MOTORIZADO CON COORDENADAS REALES DEL COMERCIO ---
-      if (newStatus === 'En camino' && currentOrder) {
-        console.log("Intentando enviar alerta al motorizado con coordenadas reales...");
-        
-        // Consultar las coordenadas actualizadas de la tienda en Supabase
-        const { data: storeData } = await supabase
-          .from('stores')
-          .select('lat, lng')
-          .eq('id', storeId)
-          .single();
-
-        const pickupLat = storeData?.lat || 10.3755;
-        const pickupLng = storeData?.lng || -66.9587;
-
-        const dropoff = currentOrder.customer_info?.coordenadas || { lat: 10.4850, lng: -66.5900 }; 
-        const customerName = currentOrder.customer_info ? `${currentOrder.customer_info.nombre} ${currentOrder.customer_info.apellido}` : 'Cliente Web';
-        const customerAddress = currentOrder.customer_info?.direccion || 'Dirección no especificada';
-
-        const payloadRider = {
-          order_id: currentOrder.id,
+        await supabase.from('krono_deliveries').insert([{
+          order_id: String(currentOrder.id), // Formato texto compatible con UUID
           store_id: storeId,
           pickup_name: storeData?.name || 'Restaurante',
           pickup_address: storeData?.address || 'Local del comercio',
           pickup_lat: pickupLat,
           pickup_lng: pickupLng,
-          customer_name: customerName,
+          customer_name: clientDisplayName,
           customer_phone: currentOrder.customer_info?.telefono || '',
-          customer_address: customerAddress,
-          dropoff_lat: dropoff.lat,
-          dropoff_lng: dropoff.lng,
-          delivery_pin: currentOrder.delivery_pin || '0000', // ¡PIN REAL DEL CLIENTE!
+          customer_address: currentOrder.customer_info?.direccion || 'Dirección de entrega',
+          dropoff_lat: parseFloat(dropoff.lat) || 10.4850,
+          dropoff_lng: parseFloat(dropoff.lng) || -66.5900,
+          delivery_pin: String(currentOrder.delivery_pin || '0000'),
           delivery_fee: 3.00,
           status: 'buscando_motorizado'
-        };
-
-        const { error: deliveryError } = await supabase
-          .from('krono_deliveries')
-          .insert([payloadRider]);
-
-        if (deliveryError) {
-          console.error("Error de Supabase al insertar en krono_deliveries:", deliveryError);
-          alert("Error al alertar al motorizado: " + deliveryError.message);
-        } else {
-          console.log("¡Viaje inyectado exitosamente con las coordenadas reales del comercio!");
-        }
+        }]);
       }
-      // ---------------------------------------------
 
+      // Actualizar la orden en Supabase
       const { error } = await supabase
         .from('orders')
         .update({ status: newStatus })
-        .eq('id', id)
-        .eq('store_id', storeId);
+        .eq('id', id);
       
       if (error) throw error;
 
     } catch (error) {
-      alert('Error al actualizar el pedido: ' + error.message);
+      alert('Error al actualizar pedido: ' + error.message);
       fetchActiveOrders();
     }
   };
