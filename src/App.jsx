@@ -4490,6 +4490,7 @@ return (
 
 {activeTab === 'settings' && (currentUserRole === 'owner' || currentUserRole === 'super_admin' || currentUserRole === 'system_vendor') && (
   <SettingsView
+    currentStoreType={currentStoreType}
     kdsBanners={currentStoreKdsBanners}
     handleUploadKdsBanner={handleUploadKdsBanner}
     handleDeleteKdsBanner={handleDeleteKdsBanner}
