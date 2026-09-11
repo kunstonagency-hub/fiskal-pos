@@ -155,12 +155,18 @@ export default function DeliveryDashboard({ storeId, isOnline, bcvRate }) {
         const customerAddress = currentOrder.customer_info?.direccion || 'Dirección no especificada';
 
         const payloadRider = {
-          customer_name: customerName,
-          customer_address: customerAddress,
+          order_id: currentOrder.id,
+          store_id: storeId,
+          pickup_name: storeData?.name || 'Restaurante',
+          pickup_address: storeData?.address || 'Local del comercio',
           pickup_lat: pickupLat,
           pickup_lng: pickupLng,
+          customer_name: customerName,
+          customer_phone: currentOrder.customer_info?.telefono || '',
+          customer_address: customerAddress,
           dropoff_lat: dropoff.lat,
           dropoff_lng: dropoff.lng,
+          delivery_pin: currentOrder.delivery_pin || '0000', // ¡PIN REAL DEL CLIENTE!
           delivery_fee: 3.00,
           status: 'buscando_motorizado'
         };
