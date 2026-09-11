@@ -325,9 +325,20 @@ function ProductsView({
             {(editingProduct || name.includes('(Copia)')) && (
               <button type="button" className="btn-secondary" onClick={customResetForm} style={{ flex: 1 }}>Cancelar</button>
             )}
-            <button type="submit" className="btn-primary" disabled={loading} style={{ flex: 2, background: '#111827', color: '#fff', border: 'none', fontWeight: '700' }}>
-              <Package size={18} /> {loading ? 'Guardando...' : (editingProduct ? 'Actualizar' : 'Guardar')}
-            </button>
+            <button 
+  type="submit" 
+  disabled={loading} 
+  onClick={() => {
+    // Forzamos a recalcular el stock sumado antes de enviar si hay unidades ingresadas
+    const add = parseInt(addedUnits) || 0;
+    if (editingProduct && add > 0) {
+      setStock(( (editingProduct.stock || 0) + add ).toString());
+    }
+  }}
+  style={{ flex: 2, background: '#111827', color: '#fff', border: 'none', fontWeight: '700', padding: '12px', borderRadius: '8px', cursor: 'pointer' }}
+>
+  <Package size={18} /> {loading ? 'Guardando...' : (editingProduct ? 'Actualizar' : 'Guardar')}
+</button>
           </div>
         </form>
       </div>
