@@ -169,6 +169,36 @@ function App() {
   const isVzla = (currentStoreCountry || 'venezuela').trim().toLowerCase().includes('venezuela'); // Detección unificada y blindada de Venezuela para todo el sistema
   const [storeCountry, setStoreCountry] = useState('venezuela'); // Para formularios de configuración/admin
   const [vendorStoreCountry, setVendorStoreCountry] = useState('venezuela');
+
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMessage, setResetMessage] = useState('');
+
+  const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+
+  const handleUpdatePassword = async (e) => {
+  e.preventDefault();
+  if (!newPassword || newPassword.length < 6) {
+    alert("La contraseña debe tener al menos 6 caracteres.");
+    return;
+  }
+  setUpdatingPassword(true);
+  try {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    alert("¡Contraseña actualizada con éxito! Ya puedes iniciar sesión con tu nueva clave.");
+    setIsRecoveringPassword(false);
+    setNewPassword('');
+    await supabase.auth.signOut(); // Cierra sesión para forzar login limpio
+  } catch (err) {
+    alert("Error actualizando contraseña: " + err.message);
+  } finally {
+    setUpdatingPassword(false);
+  }
+};
   
   // NUEVOS ESTADOS: Máscaras y Tipos de Comercio
   const [currentStoreType, setCurrentStoreType] = useState('standard'); // 'standard' | 'restaurant'
@@ -787,11 +817,18 @@ const confirmAddToCartWithModifiers = () => {
       if (session) fetchUserProfileAndStore(session.user);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // 1. Detectar si el usuario viene del enlace del correo de recuperación
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoveringPassword(true);
+      }
+
       setSession(session);
-      if (session) {
+      
+      // 2. Solo cargar la tienda si no está en proceso de cambiar contraseña
+      if (session && event !== 'PASSWORD_RECOVERY') {
         fetchUserProfileAndStore(session.user);
-      } else {
+      } else if (!session) {
         setCurrentStoreId(null);
         setCurrentStoreName('Fiskal Store');
         setCurrentStoreType('standard');
@@ -1314,6 +1351,25 @@ const handleVendorRegisterStoreSubmit = async (e) => {
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
+
+  const handleForgotPasswordSubmit = async (e) => {
+  e.preventDefault();
+  if (!resetEmail.trim()) return;
+  setResetLoading(true);
+  setResetMessage('');
+
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
+      redirectTo: window.location.origin,
+    });
+    if (error) throw error;
+    setResetMessage('¡Correo enviado con éxito! Revisa tu bandeja de entrada y spam para restablecer tu contraseña.');
+  } catch (err) {
+    setResetMessage('Error: ' + err.message);
+  } finally {
+    setResetLoading(false);
+  }
+};
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -3881,72 +3937,141 @@ const currentShiftSales = currentShift ? sales.filter(s => s.shift_id === curren
   };
 
 // =================== FIN DEL BLOQUE 3 ===================
+
+// --- PANTALLA DE NUEVA CONTRASEÑA (DESDE EL CORREO) ---
+  if (isRecoveringPassword) {
+    return (
+      <div className="fiskal-login-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', width: '100%', background: '#f8f9fa', padding: '20px', boxSizing: 'border-box' }}>
+        <div className="product-form-card" style={{ width: '400px', maxWidth: '100%', padding: '32px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', background: '#fff', borderRadius: '8px', textAlign: 'center' }}>
+          <h2 style={{ marginBottom: '8px', color: '#111827', fontSize: '20px', fontWeight: '900' }}>Nueva Contraseña</h2>
+          <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '24px' }}>Ingresa tu nueva contraseña para acceder a Fiskal.</p>
+          
+          <form onSubmit={handleUpdatePassword} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <input 
+              type="password" 
+              value={newPassword} 
+              onChange={e => setNewPassword(e.target.value)} 
+              placeholder="Mínimo 6 caracteres" 
+              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', outline: 'none' }}
+              required 
+              minLength={6}
+              autoFocus
+            />
+            <button 
+              type="submit" 
+              disabled={updatingPassword}
+              style={{ width: '100%', padding: '14px', background: '#111827', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', fontSize: '14px' }}
+            >
+              {updatingPassword ? 'Actualizando...' : 'Guardar Nueva Contraseña'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
 if (!session) {
     return (
       <div className="fiskal-login-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', width: '100%', background: '#f8f9fa', padding: '20px', boxSizing: 'border-box' }}>
-  <div className="product-form-card" style={{ width: '400px', maxWidth: '100%', padding: '32px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', background: '#fff', borderRadius: '8px' }}>
-    <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-      <img src={logoDark} alt="Fiskal Logo" style={{ height: '38px', objectFit: 'contain', marginBottom: '4px' }} />
-      <p style={{ fontSize: '13px', color: '#6c757d', margin: 0 }}>Sistema de Gestión Comercial y POS</p>
-    </div>
+        <div className="product-form-card" style={{ width: '400px', maxWidth: '100%', padding: '32px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', background: '#fff', borderRadius: '8px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+            <img src={logoDark} alt="Fiskal Logo" style={{ height: '38px', objectFit: 'contain', marginBottom: '4px' }} />
+            <p style={{ fontSize: '13px', color: '#6c757d', margin: 0 }}>Sistema de Gestión Comercial y POS</p>
+          </div>
 
-    {authError && (
-      <div style={{ background: '#ffe3e3', color: '#c92a2a', padding: '10px', borderRadius: '6px', fontSize: '13px', marginBottom: '16px' }}>
-        {authError}
-      </div>
-    )}
+          {authError && (
+            <div style={{ background: '#ffe3e3', color: '#c92a2a', padding: '10px', borderRadius: '6px', fontSize: '13px', marginBottom: '16px' }}>
+              {authError}
+            </div>
+          )}
 
-    <form onSubmit={handleLoginSubmit} className="fiskal-form">
-      <div className="form-group" style={{ marginBottom: '16px' }}>
-        <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#495057' }}>Correo Electrónico</label>
-        <div style={{ position: 'relative' }}>
-          <User size={16} style={{ position: 'absolute', left: '10px', top: '11px', color: '#adb5bd' }} />
-          <input 
-            type="email" 
-            value={authEmail} 
-            onChange={(e) => setAuthEmail(e.target.value)} 
-            placeholder="tu@correo.com" 
-            style={{ paddingLeft: '34px', width: '100%', padding: '10px 10px 10px 34px', border: '1px solid #ced4da', borderRadius: '4px', outline: 'none' }}
-            required 
-          />
+          <form onSubmit={handleLoginSubmit} className="fiskal-form">
+            <div className="form-group" style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#495057' }}>Correo Electrónico</label>
+              <div style={{ position: 'relative' }}>
+                <User size={16} style={{ position: 'absolute', left: '10px', top: '11px', color: '#adb5bd' }} />
+                <input 
+                  type="email" 
+                  value={authEmail} 
+                  onChange={(e) => setAuthEmail(e.target.value)} 
+                  placeholder="tu@correo.com" 
+                  style={{ paddingLeft: '34px', width: '100%', padding: '10px 10px 10px 34px', border: '1px solid #ced4da', borderRadius: '4px', outline: 'none' }}
+                  required 
+                />
+              </div>
+            </div>
+            <div className="form-group" style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#495057' }}>Contraseña</label>
+              <div style={{ position: 'relative' }}>
+                <Key size={16} style={{ position: 'absolute', left: '10px', top: '11px', color: '#adb5bd' }} />
+                <input 
+                  type="password" 
+                  value={authPassword} 
+                  onChange={(e) => setAuthPassword(e.target.value)} 
+                  placeholder="••••••••" 
+                  style={{ paddingLeft: '34px', width: '100%', padding: '10px 10px 10px 34px', border: '1px solid #ced4da', borderRadius: '4px', outline: 'none' }}
+                  required 
+                />
+              </div>
+            </div>
+            
+            <button type="submit" className="btn-primary" style={{ width: '100%', padding: '12px', fontSize: '15px', background: '#212529', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }} disabled={authLoading}>
+              {authLoading ? 'Procesando...' : 'Iniciar Sesión'}
+            </button>
+          </form>
+
+          {/* Enlaces de registro y recuperación de contraseña */}
+          <div style={{ textAlign: 'center', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <a 
+              href="https://wa.me/584245013484?text=Hola,%20estoy%20interesado%20en%20adquirir%20una%20cuenta%20para%20el%20sistema%20Fiskal." 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{ color: '#1c7ed6', fontSize: '13px', textDecoration: 'none', fontWeight: '500' }}
+            >
+              ¿Eres dueño de un negocio? Regístrate aquí
+            </a>
+
+            <button 
+              type="button"
+              onClick={() => { setShowForgotPassword(!showForgotPassword); setResetMessage(''); }}
+              style={{ background: 'none', border: 'none', color: '#6c757d', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+
+            {showForgotPassword && (
+              <form onSubmit={handleForgotPasswordSubmit} style={{ marginTop: '10px', background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>
+                <p style={{ fontSize: '12px', color: '#495057', marginBottom: '8px', fontWeight: 'bold' }}>Recuperar Contraseña:</p>
+                <input 
+                  type="email" 
+                  value={resetEmail} 
+                  onChange={e => setResetEmail(e.target.value)} 
+                  placeholder="Ingresa tu correo..." 
+                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px', marginBottom: '8px', outline: 'none' }}
+                  required 
+                />
+                {resetMessage && (
+                  <p style={{ fontSize: '11px', color: resetMessage.includes('Error') ? '#c92a2a' : '#2b8a3e', marginBottom: '8px', lineHeight: '1.4' }}>
+                    {resetMessage}
+                  </p>
+                )}
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button type="button" onClick={() => setShowForgotPassword(false)} style={{ flex: 1, padding: '6px', background: '#fff', border: '1px solid #ced4da', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>
+                    Cerrar
+                  </button>
+                  <button type="submit" disabled={resetLoading} style={{ flex: 2, padding: '6px', background: '#212529', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    {resetLoading ? 'Enviando...' : 'Enviar Correo'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '12px', color: '#6c757d' }}>
+          © 2026 Fiskal. Desarrollado por <a href="https://wa.me/50764749094?text=Hola,%20me%20gustaría%20más%20información%20sobre%20sus%20servicios." target="_blank" rel="noopener noreferrer" style={{ color: '#1c7ed6', textDecoration: 'none', fontWeight: 'bold' }}>KunstonAgency</a>
         </div>
       </div>
-      <div className="form-group" style={{ marginBottom: '20px' }}>
-        <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#495057' }}>Contraseña</label>
-        <div style={{ position: 'relative' }}>
-          <Key size={16} style={{ position: 'absolute', left: '10px', top: '11px', color: '#adb5bd' }} />
-          <input 
-            type="password" 
-            value={authPassword} 
-            onChange={(e) => setAuthPassword(e.target.value)} 
-            placeholder="••••••••" 
-            style={{ paddingLeft: '34px', width: '100%', padding: '10px 10px 10px 34px', border: '1px solid #ced4da', borderRadius: '4px', outline: 'none' }}
-            required 
-          />
-        </div>
-      </div>
-      
-      <button type="submit" className="btn-primary" style={{ width: '100%', padding: '12px', fontSize: '15px', background: '#212529', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }} disabled={authLoading}>
-        {authLoading ? 'Procesando...' : 'Iniciar Sesión'}
-      </button>
-    </form>
-
-    <div style={{ textAlign: 'center', marginTop: '16px' }}>
-      <a 
-        href="https://wa.me/584245013484?text=Hola,%20estoy%20interesado%20en%20adquirir%20una%20cuenta%20para%20el%20sistema%20Fiskal." 
-        target="_blank" 
-        rel="noopener noreferrer"
-        style={{ color: '#1c7ed6', fontSize: '13px', textDecoration: 'none', fontWeight: '500' }}
-      >
-        ¿Eres dueño de un negocio? Regístrate aquí
-      </a>
-    </div>
-  </div>
-
-  <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '12px', color: '#6c757d' }}>
-    © 2026 Fiskal. Desarrollado por <a href="https://wa.me/50764749094?text=Hola,%20me%20gustaría%20más%20información%20sobre%20sus%20servicios." target="_blank" rel="noopener noreferrer" style={{ color: '#1c7ed6', textDecoration: 'none', fontWeight: 'bold' }}>KunstonAgency</a>
-  </div>
-</div>
     );
   }
 
