@@ -1,16 +1,44 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../supabase';
-import { Maximize2, Monitor, X, Bell, CheckCircle, Clock, ChefHat, Timer, ZoomIn, ZoomOut } from 'lucide-react';
+import { Maximize2, Monitor, X, Bell, CheckCircle, Clock, ChefHat, Timer, ZoomIn, ZoomOut, PlayCircle } from 'lucide-react';
+
+const GENERAL_KEYWORDS = ['toddy', 'harina', 'azucar', 'galletas', 'citrato', 'disco duro', 'cronch', 'palitos', 'pepsi', 'coca cola', 'refresco', 'agua', 'cerveza'];
+
+const FALLBACK_BANNERS = [
+  {
+    url: 'https://images.unsplash.com/photo-1586190848861-99aa4a171e90?auto=format&fit=crop&w=1920&q=80',
+    title: '¡Pide tus Adicionales Favoritos!'
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1920&q=80',
+    title: 'Las Mejores Hamburguesas'
+  }
+];
 
 export default function KitchenDashboard({ sales, setSales, currentStoreId, currentStoreName, kdsBanners = [] }) {
   const [isPublicMode, setIsPublicMode] = useState(false);
   
-  // Rotación: 'banner' (fotos publicitarias) | 'board' (tablero general de pedidos)
+  // Rotación: 'banner' (fotos publicitarias o video de YouTube) | 'board' (tablero general de pedidos)
   const [displayMode, setDisplayMode] = useState('banner');
   const [currentSlide, setCurrentSlide] = useState(0);
 
-  // NUEVO: Estado para el tamaño de las letras (Zoom)
+  // Estados para el tamaño de las letras (Zoom), YouTube y Detección de Pantalla Completa
   const [fontScale, setFontScale] = useState(1);
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Sincronizar salida de pantalla completa con el cierre automático del modo público
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isFull = !!document.fullscreenElement;
+      setIsFullscreen(isFull);
+      if (!isFull) {
+        setIsPublicMode(false); // Al presionar Escape o salir de pantalla completa, regresa al panel de cocina
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   // Reloj de un segundo para que los cronómetros de cocina corran en vivo
   const [, setTicker] = useState(0);
@@ -25,37 +53,47 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
   const isFirstLoadRef = useRef(true);
   const popupTimeoutRef = useRef(null);
 
-  const generalKeywords = ['toddy', 'harina', 'azucar', 'galletas', 'citrato', 'disco duro', 'cronch', 'palitos', 'pepsi', 'coca cola', 'refresco', 'agua', 'cerveza'];
+  // Extractor avanzado de YouTube (Soporta videos individuales y Mixes/Playlists completos)
+  const getYouTubeData = (url) => {
+    if (!url) return { videoId: null, listId: null };
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    const videoId = (match && match[2].length === 11) ? match[2] : null;
 
-  // Fotos de respaldo en HD por si aún no hay fotos subidas
-  const fallbackBanners = [
-    {
-      url: 'https://images.unsplash.com/photo-1586190848861-99aa4a171e90?auto=format&fit=crop&w=1920&q=80',
-      title: '¡Pide tus Adicionales Favoritos!'
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1920&q=80',
-      title: 'Las Mejores Hamburguesas'
-    }
-  ];
+    const listMatch = url.match(/[?&]list=([^#&?]*)/);
+    const listId = listMatch ? listMatch[1] : null;
 
-  const activeBanners = (kdsBanners && kdsBanners.length > 0) ? kdsBanners : fallbackBanners;
+    return { videoId, listId };
+  };
+
+  const { videoId, listId } = getYouTubeData(youtubeUrl);
+
+  // Banners activos optimizados con useMemo
+  const activeBanners = useMemo(() => {
+    const base = (kdsBanners && kdsBanners.length > 0) ? kdsBanners : FALLBACK_BANNERS;
+    return videoId 
+      ? [...base, { type: 'youtube', videoId, listId, title: 'YouTube Video' }]
+      : base;
+  }, [kdsBanners, videoId, listId]);
 
   // =========================================================================
-  // 1. ROTACIÓN: FOTOS CON FUNDIDO (5s) Y TABLERO DE PEDIDOS (7s)
+  // 1. ROTACIÓN DINÁMICA: DIAPOSITIVAS (5s IMAGEN / 10s YOUTUBE) Y TABLERO (7s)
   // =========================================================================
   useEffect(() => {
     if (!isPublicMode) return;
 
     let timer;
     if (displayMode === 'banner') {
+      const currentBannerItem = activeBanners[currentSlide];
+      const slideDuration = (currentBannerItem && currentBannerItem.type === 'youtube') ? 10000 : 5000;
+
       timer = setTimeout(() => {
         if (currentSlide < activeBanners.length - 1) {
           setCurrentSlide(prev => prev + 1);
         } else {
           setDisplayMode('board');
         }
-      }, 5000); 
+      }, slideDuration); 
     } else {
       timer = setTimeout(() => {
         setCurrentSlide(0);
@@ -64,7 +102,7 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
     }
 
     return () => clearTimeout(timer);
-  }, [isPublicMode, displayMode, currentSlide, activeBanners.length]);
+  }, [isPublicMode, displayMode, currentSlide, activeBanners]);
 
   // =========================================================================
   // 2. DETECCIÓN AUTOMÁTICA DE PEDIDOS LISTOS (ALERTA DE 10 SEGUNDOS)
@@ -129,13 +167,13 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
 
     const kitchenItems = itemsList.filter(item => {
       const name = String(item.name || '').toLowerCase();
-      return !generalKeywords.some(gk => name.includes(gk));
+      return !GENERAL_KEYWORDS.some(gk => name.includes(gk));
     });
 
     return kitchenItems.length > 0;
   });
 
-  // MAGIA: Ordenar los pedidos para que si se agrega algo nuevo a una mesa vieja, salte a la posición #1
+  // Ordenar los pedidos
   waitingOrders.sort((a, b) => {
     const timeA = new Date(a.payment_details?.kitchen_sent_at || a.created_at).getTime();
     const timeB = new Date(b.payment_details?.kitchen_sent_at || b.created_at).getTime();
@@ -169,18 +207,16 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
     const secs = diffSec % 60;
     const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 
-    // Colores según tiempo transcurrido
-    let badgeColor = '#16a34a'; // < 5 min: Verde óptimo
+    let badgeColor = '#16a34a'; 
     if (diffSec >= 600) {
-      badgeColor = '#e05d5d';   // > 10 min: Rojo demora
+      badgeColor = '#e05d5d'; 
     } else if (diffSec >= 300) {
-      badgeColor = '#f59e0b';   // 5 a 10 min: Ámbar alerta
+      badgeColor = '#f59e0b'; 
     }
 
     return { formatted, diffSec, badgeColor, isReady };
   };
 
-  // NUEVO: Funciones de Zoom para Cocineros
   const zoomIn = () => setFontScale(prev => Math.min(prev + 0.2, 1.8));
   const zoomOut = () => setFontScale(prev => Math.max(prev - 0.2, 0.8));
 
@@ -191,10 +227,59 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 99999, background: '#0a0f1d', width: '100vw', height: '100vh', overflow: 'hidden' }}>
         
-        {/* FASE A: PRESENTACIÓN DE IMÁGENES CON FUNDIDO SUAVE (CROSSFADE) */}
+        {/* BOTÓN FLOTANTE DE SALIDA (PARA SMART TV O TOUCH) */}
+        <button 
+          onClick={async () => {
+            if (document.fullscreenElement && document.exitFullscreen) {
+              await document.exitFullscreen().catch(() => {});
+            }
+            setIsPublicMode(false);
+          }}
+          style={{
+            position: 'absolute', top: '16px', right: '16px', zIndex: 999999,
+            background: 'rgba(0,0,0,0.6)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer'
+          }}
+          title="Salir de Pantalla Clientes"
+        >
+          <X size={20} />
+        </button>
+
+        {/* FASE A: DIAPOSITIVAS (IMÁGENES Y VIDEO/MIX DE YOUTUBE INTERCALADOS CON TRANSPARENCIA) */}
         {activeBanners.map((banner, idx) => {
-          const imgUrl = typeof banner === 'string' ? banner : banner?.url;
           const isCurrent = displayMode === 'banner' && idx === currentSlide;
+
+          if (banner.type === 'youtube') {
+            const showAsBackgroundInBoard = displayMode === 'board';
+
+            return (
+              <div
+                key={idx}
+                style={{
+                  position: 'absolute', inset: 0,
+                  opacity: isCurrent ? 1 : (showAsBackgroundInBoard ? 0.3 : 0),
+                  transition: 'opacity 1.2s ease-in-out',
+                  zIndex: isCurrent || showAsBackgroundInBoard ? 5 : 1,
+                  filter: readyPopup ? 'brightness(0.2) blur(6px)' : 'none',
+                  pointerEvents: 'none',
+                  background: '#000'
+                }}
+              >
+                <iframe
+                  style={{
+                    position: 'absolute', inset: 0, width: '100vw', height: '100vh', border: 'none',
+                    pointerEvents: 'none'
+                  }}
+                  src={`https://www.youtube.com/embed/${banner.videoId}?autoplay=1&mute=0&controls=0${banner.listId ? `&list=${banner.listId}` : ''}`}
+                  allow="autoplay; encrypted-media"
+                  allowFullScreen
+                />
+              </div>
+            );
+          }
+
+          const imgUrl = typeof banner === 'string' ? banner : banner?.url;
 
           return (
             <div
@@ -214,11 +299,11 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
           );
         })}
 
-        {/* FASE B: TABLERO DE PEDIDOS (EN PREPARACIÓN VS LISTOS) */}
+        {/* FASE B: TABLERO DE PEDIDOS CON TRANSPARENCIA Y EFECTO DIFUMINADO */}
         <div style={{
           position: 'absolute', inset: 0, padding: '32px', boxSizing: 'border-box',
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px',
-          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+          background: videoId ? 'linear-gradient(135deg, rgba(15,23,42,0.85) 0%, rgba(30,41,59,0.85) 100%)' : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
           opacity: displayMode === 'board' ? 1 : 0,
           transition: 'opacity 0.8s ease-in-out',
           zIndex: displayMode === 'board' ? 10 : 0,
@@ -226,7 +311,7 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
           pointerEvents: displayMode === 'board' ? 'auto' : 'none'
         }}>
           {/* Columna 1: En Preparación */}
-          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', padding: '24px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', padding: '24px', display: 'flex', flexDirection: 'column', backdropFilter: videoId ? 'blur(8px)' : 'none' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px' }}>
               <ChefHat size={28} color="#f59e0b" />
               <h2 style={{ margin: 0, color: '#f59e0b', fontSize: '24px', fontWeight: '900', letterSpacing: '1px' }}>
@@ -253,7 +338,7 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
           </div>
 
           {/* Columna 2: Listos para Entregar */}
-          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', border: '2px solid #16a34a', padding: '24px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', border: '2px solid #16a34a', padding: '24px', display: 'flex', flexDirection: 'column', backdropFilter: videoId ? 'blur(8px)' : 'none' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px' }}>
               <CheckCircle size={28} color="#16a34a" />
               <h2 style={{ margin: 0, color: '#16a34a', fontSize: '24px', fontWeight: '900', letterSpacing: '1px' }}>
@@ -368,55 +453,71 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
       id="kds-panel"
       style={{ padding: '24px', background: '#f8f9fa', minHeight: '100vh', width: '100%', boxSizing: 'border-box', overflowY: 'auto', position: 'relative' }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h2 style={{ margin: 0, color: '#111827', letterSpacing: '-0.5px' }}>Panel de Cocina (KDS)</h2>
-          <p style={{ fontSize: '13px', color: '#6b7280', margin: '4px 0 0 0' }}>Gestión de comandas y tiempos de preparación en vivo</p>
-        </div>
+      {/* ENCABEZADO: Se oculta automáticamente al activar Pantalla Completa */}
+      {!isFullscreen && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h2 style={{ margin: 0, color: '#111827', letterSpacing: '-0.5px' }}>Panel de Cocina (KDS)</h2>
+            <p style={{ fontSize: '13px', color: '#6b7280', margin: '4px 0 0 0' }}>Gestión de comandas y tiempos de preparación en vivo</p>
+          </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          
-          <button 
-            onClick={() => {
-              setIsPublicMode(true);
-              const panel = document.getElementById('kds-panel');
-              if (panel && panel.requestFullscreen) {
-                panel.requestFullscreen().catch(e => console.log(e));
-              }
-            }}
-            style={{ 
-              background: '#16a34a', color: '#fff', border: 'none', 
-              padding: '8px 16px', borderRadius: '6px', fontSize: '13px', 
-              fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-              boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)'
-            }}
-          >
-            <Monitor size={16} /> 📺 Pantalla Clientes (Público)
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            
+            {/* INPUT PARA YOUTUBE */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '6px 12px', borderRadius: '6px', border: '1px solid #d1d5db', marginRight: '8px' }}>
+              <PlayCircle size={18} color="#dc2626" />
+              <input 
+                type="text" 
+                placeholder="Pegar link de YouTube o Mix..." 
+                value={youtubeUrl}
+                onChange={(e) => setYoutubeUrl(e.target.value)}
+                style={{ border: 'none', outline: 'none', fontSize: '13px', width: '180px', background: 'transparent' }}
+                title="Coloca el link de YouTube aquí para agregarlo como diapositiva con música en la Pantalla de Clientes"
+              />
+            </div>
 
-          <button 
-            onClick={() => {
-              const panel = document.getElementById('kds-panel');
-              if (!document.fullscreenElement) {
+            <button 
+              onClick={() => {
+                setIsPublicMode(true);
+                const panel = document.getElementById('kds-panel');
                 if (panel && panel.requestFullscreen) {
-                  panel.requestFullscreen().catch(err => console.error("Error fullscreen:", err));
+                  panel.requestFullscreen().catch(e => console.log(e));
                 }
-              } else {
-                if (document.exitFullscreen) document.exitFullscreen();
-              }
-            }}
-            style={{ background: '#111827', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            <Maximize2 size={16} /> Pantalla Completa Cocina
-          </button>
+              }}
+              style={{ 
+                background: '#16a34a', color: '#fff', border: 'none', 
+                padding: '8px 16px', borderRadius: '6px', fontSize: '13px', 
+                fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)'
+              }}
+            >
+              <Monitor size={16} /> 📺 Pantalla Clientes (Público)
+            </button>
 
-          <span style={{ background: '#f3f4f6', color: '#16a34a', border: '1px solid #d1fae5', padding: '8px 14px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ width: '8px', height: '8px', background: '#16a34a', borderRadius: '50%', display: 'inline-block' }}></span> En Vivo
-          </span>
+            <button 
+              onClick={() => {
+                const panel = document.getElementById('kds-panel');
+                if (!document.fullscreenElement) {
+                  if (panel && panel.requestFullscreen) {
+                    panel.requestFullscreen().catch(err => console.error("Error fullscreen:", err));
+                  }
+                } else {
+                  if (document.exitFullscreen) document.exitFullscreen();
+                }
+              }}
+              style={{ background: '#111827', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Maximize2 size={16} /> Pantalla Completa Cocina
+            </button>
+
+            <span style={{ background: '#f3f4f6', color: '#16a34a', border: '1px solid #d1fae5', padding: '8px 14px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: '8px', height: '8px', background: '#16a34a', borderRadius: '50%', display: 'inline-block' }}></span> En Vivo
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* NUEVO: CONTROLES FLOTANTES DE ZOOM (ESQUINA INFERIOR DERECHA) */}
+      {/* CONTROLES FLOTANTES DE ZOOM (ESQUINA INFERIOR DERECHA - PERMANECEN EN PANTALLA COMPLETA) */}
       <div style={{ position: 'fixed', bottom: '24px', right: '24px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 1000 }}>
         <button onClick={zoomIn} style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#111827', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} title="Agrandar Letras">
           <ZoomIn size={24} />
@@ -437,15 +538,12 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
           {waitingOrders.map((order, index) => {
             const orderId = order && order.id ? order.id.toString() : String(index + 1);
             
-            // MAGIA: Filtramos la lista de items para excluir los que ya fueron marcados como 'dispatched'
             const itemsList = getItems(order).filter(item => {
               const name = String(item.name || '').toLowerCase();
-              return !generalKeywords.some(gk => name.includes(gk));
+              return !GENERAL_KEYWORDS.some(gk => name.includes(gk));
             });
             const displayItems = itemsList.filter(item => !item.dispatched);
             
-            // Si la orden ya no tiene items pendientes por cocinar, no mostramos la tarjeta
-            // a menos que ya esté en estado 'ready' (para que el mesonero la vea y la entregue)
             if (displayItems.length === 0 && !['ready', 'listo', 'espera_pago'].includes(String(order.status || '').toLowerCase())) {
               return null;
             }
@@ -484,7 +582,6 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
                     <span style={{ fontSize: `${12 * fontScale}px`, fontWeight: '900', letterSpacing: '0.5px' }}>{statusText}</span>
                     
-                    {/* CRONÓMETRO EN VIVO DE PREPARACIÓN */}
                     {timerInfo && isPreparing && (
                       <span style={{ 
                         background: '#ffffff', color: timerInfo.badgeColor, padding: '2px 8px', 
@@ -495,7 +592,6 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
                       </span>
                     )}
 
-                    {/* TIEMPO TOTAL CONGELADO AL DESPACHAR */}
                     {timerInfo && isReady && (
                       <span style={{ 
                         background: 'rgba(255,255,255,0.25)', color: '#ffffff', padding: '2px 8px', 
@@ -516,7 +612,6 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
 
                     return (
                       <div key={i} style={{ paddingBottom: '12px', marginBottom: '12px', borderBottom: i === displayItems.length - 1 ? 'none' : '1px dashed #e5e7eb' }}>
-                        {/* TEXTO CON ESCALA DINÁMICA */}
                         <div style={{ fontWeight: '700', fontSize: `${16 * fontScale}px`, color: '#111827' }}>
                           {itemQty} x {itemName}
                         </div>
@@ -573,7 +668,6 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
                         const nowIso = new Date().toISOString();
                         const updatedPd = { ...(order.payment_details || {}), prep_finished_at: nowIso };
 
-                        // NUEVO: Al despachar, marcamos todos los items actuales como "dispatched"
                         const updatedItems = getItems(order).map(item => ({ ...item, dispatched: true }));
 
                         if (typeof setSales === 'function') {
