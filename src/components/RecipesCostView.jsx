@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChefHat, Plus, Trash2, Edit2, DollarSign, TrendingUp, Scale, Package, AlertCircle, CheckCircle, BarChart3, Award, X, RefreshCw } from 'lucide-react';
 import { supabase } from '../supabase';
 
-export default function RecipesCostView({ currentStoreId, products, fetchProducts, bcvRate }) {
+export default function RecipesCostView({ currentStoreId, products, fetchProducts, bcvRate, currentUserRole }) {
   const [activeSubTab, setActiveSubTab] = useState('recipes'); // 'recipes' | 'materials' | 'sales_analytics'
   
   // ==========================================
@@ -351,6 +351,19 @@ export default function RecipesCostView({ currentStoreId, products, fetchProduct
       alert("Error sincronizando costo: " + e.message);
     }
   };
+
+  // Bloqueo de seguridad: Si no es owner, se muestra mensaje de acceso restringido
+  if (currentUserRole !== 'owner') {
+    return (
+      <div style={{ textAlign: 'center', padding: '60px 20px', background: '#fff', borderRadius: '12px', border: '1px solid #fee2e2', maxWidth: '600px', margin: '40px auto' }}>
+        <AlertCircle size={48} color="#dc2626" style={{ margin: '0 auto 12px auto' }} />
+        <h3 style={{ color: '#dc2626', margin: '0 0 8px 0', fontSize: '20px' }}>Acceso Restringido</h3>
+        <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>
+          Esta sección de costos, recetas y rentabilidad está reservada exclusivamente para el Propietario (Owner) del comercio.
+        </p>
+      </div>
+    );
+  }
 
   // Cálculos del plato seleccionado
   const currentDish = (products || []).find(p => String(p.id) === String(selectedProductId));

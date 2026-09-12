@@ -4127,15 +4127,11 @@ return (
             </button>
           )}
 
-          {currentStoreType === 'restaurant' && (
-            <button 
-              className={activeTab === 'recipes' ? 'nav-btn active' : 'nav-btn'} 
-              onClick={(e) => { e.stopPropagation(); setActiveTab('recipes'); setIsSidebarExpanded(false); }}
-              style={{ color: '#16a34a', fontWeight: 'bold' }}
-            >
+          {currentStoreType === 'restaurant' && currentUserRole === 'owner' && (
+            <button className={activeTab === 'recipes' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('recipes'); setIsSidebarExpanded(false); }} style={{ color: '#16a34a', fontWeight: 'bold' }}>
               <ChefHat size={20} /> <span>Costos & Recetas</span>
             </button>
-          )}
+        )}
           
           {(currentUserRole === 'owner' || currentUserRole === 'super_admin' || currentUserRole === 'system_vendor') && (
             <button className={activeTab === 'settings' ? 'nav-btn active' : 'nav-btn'} onClick={(e) => { e.stopPropagation(); setActiveTab('settings'); setIsSidebarExpanded(false); }}>
@@ -4573,14 +4569,15 @@ return (
   />
 )}
 
-{activeTab === 'recipes' && currentStoreType === 'restaurant' && (
-            <RecipesCostView 
-              currentStoreId={currentStoreId}
-              products={products}
-              fetchProducts={fetchProducts}
-              bcvRate={bcvRate}
-            />
-          )}
+{activeTab === 'recipes' && currentStoreType === 'restaurant' && currentUserRole === 'owner' && (
+  <RecipesCostView 
+    currentStoreId={currentStoreId}
+    products={products}
+    fetchProducts={fetchProducts}
+    bcvRate={bcvRate}
+    currentUserRole={currentUserRole}
+  />
+)}
 
 {activeTab === 'settings' && (currentUserRole === 'owner' || currentUserRole === 'super_admin' || currentUserRole === 'system_vendor') && (
             <SettingsView 
