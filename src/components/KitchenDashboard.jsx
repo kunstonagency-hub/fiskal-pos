@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
-import { Maximize2, Monitor, X, Bell, CheckCircle, Clock, ChefHat, Timer } from 'lucide-react';
+import { Maximize2, Monitor, X, Bell, CheckCircle, Clock, ChefHat, Timer, ZoomIn, ZoomOut } from 'lucide-react';
 
 export default function KitchenDashboard({ sales, setSales, currentStoreId, currentStoreName, kdsBanners = [] }) {
   const [isPublicMode, setIsPublicMode] = useState(false);
@@ -8,6 +8,9 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
   // Rotación: 'banner' (fotos publicitarias) | 'board' (tablero general de pedidos)
   const [displayMode, setDisplayMode] = useState('banner');
   const [currentSlide, setCurrentSlide] = useState(0);
+
+  // NUEVO: Estado para el tamaño de las letras (Zoom)
+  const [fontScale, setFontScale] = useState(1);
 
   // Reloj de un segundo para que los cronómetros de cocina corran en vivo
   const [, setTicker] = useState(0);
@@ -132,6 +135,13 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
     return kitchenItems.length > 0;
   });
 
+  // MAGIA: Ordenar los pedidos para que si se agrega algo nuevo a una mesa vieja, salte a la posición #1
+  waitingOrders.sort((a, b) => {
+    const timeA = new Date(a.payment_details?.kitchen_sent_at || a.created_at).getTime();
+    const timeB = new Date(b.payment_details?.kitchen_sent_at || b.created_at).getTime();
+    return timeB - timeA; 
+  });
+
   const preparingOrders = waitingOrders.filter(o => {
     const st = String(o.status || '').trim().toLowerCase();
     return st === 'pending' || st === 'pendiente' || st === 'preparando' || st === 'en preparación' || st === 'en espera';
@@ -169,6 +179,10 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
 
     return { formatted, diffSec, badgeColor, isReady };
   };
+
+  // NUEVO: Funciones de Zoom para Cocineros
+  const zoomIn = () => setFontScale(prev => Math.min(prev + 0.2, 1.8));
+  const zoomOut = () => setFontScale(prev => Math.max(prev - 0.2, 0.8));
 
   // =========================================================================
   // VISTA 1: MODO PÚBLICO (PANTALLA SALÓN)
@@ -302,7 +316,7 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
           </span>
         </div>
 
-        {/* ALERTA GIGANTE CENTRAL (10 SEGUNDOS CON SONIDO) */}
+        {/* ALERTA GIGANTE CENTRAL */}
         {readyPopup && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 999999,
@@ -327,37 +341,32 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
               }}>
                 <CheckCircle size={54} />
               </div>
-              
               <span style={{ fontSize: '15px', fontWeight: '900', color: '#16a34a', textTransform: 'uppercase', letterSpacing: '2px', display: 'block', marginBottom: '8px' }}>
                 ¡Tu Pedido está Listo!
               </span>
-
               <h1 style={{ fontSize: '84px', fontWeight: '900', color: '#111827', margin: '0 0 8px 0', letterSpacing: '-2px', lineHeight: 1 }}>
                 {readyPopup.orderNum}
               </h1>
-
               <div style={{ fontSize: '26px', fontWeight: '800', color: '#1f2937', textTransform: 'capitalize', borderTop: '2px dashed #e5e7eb', paddingTop: '16px', marginTop: '12px' }}>
                 👤 {readyPopup.clientName}
               </div>
-              
               <p style={{ fontSize: '15px', color: '#6b7280', marginTop: '12px', marginBottom: 0 }}>
                 Por favor acércate a la barra para retirar
               </p>
             </div>
           </div>
         )}
-
       </div>
     );
   }
 
   // =========================================================================
-  // VISTA 2: MODO OPERATIVO DE COCINA (CON CRONÓMETROS EN VIVO)
+  // VISTA 2: MODO OPERATIVO DE COCINA (CON CRONÓMETROS Y ZOOM)
   // =========================================================================
   return (
     <div 
       id="kds-panel"
-      style={{ padding: '24px', background: '#f8f9fa', minHeight: '100vh', width: '100%', boxSizing: 'border-box', overflowY: 'auto' }}
+      style={{ padding: '24px', background: '#f8f9fa', minHeight: '100vh', width: '100%', boxSizing: 'border-box', overflowY: 'auto', position: 'relative' }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
@@ -407,6 +416,16 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
         </div>
       </div>
 
+      {/* NUEVO: CONTROLES FLOTANTES DE ZOOM (ESQUINA INFERIOR DERECHA) */}
+      <div style={{ position: 'fixed', bottom: '24px', right: '24px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 1000 }}>
+        <button onClick={zoomIn} style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#111827', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} title="Agrandar Letras">
+          <ZoomIn size={24} />
+        </button>
+        <button onClick={zoomOut} style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#fff', color: '#111827', border: '2px solid #111827', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} title="Achicar Letras">
+          <ZoomOut size={24} />
+        </button>
+      </div>
+
       {waitingOrders.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px', background: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
           <p style={{ color: '#6b7280', fontSize: '15px', margin: 0 }}>
@@ -414,14 +433,22 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
           </p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px', paddingBottom: '80px' }}>
           {waitingOrders.map((order, index) => {
             const orderId = order && order.id ? order.id.toString() : String(index + 1);
             
+            // MAGIA: Filtramos la lista de items para excluir los que ya fueron marcados como 'dispatched'
             const itemsList = getItems(order).filter(item => {
               const name = String(item.name || '').toLowerCase();
               return !generalKeywords.some(gk => name.includes(gk));
             });
+            const displayItems = itemsList.filter(item => !item.dispatched);
+            
+            // Si la orden ya no tiene items pendientes por cocinar, no mostramos la tarjeta
+            // a menos que ya esté en estado 'ready' (para que el mesonero la vea y la entregue)
+            if (displayItems.length === 0 && !['ready', 'listo', 'espera_pago'].includes(String(order.status || '').toLowerCase())) {
+              return null;
+            }
             
             const currentStatus = String(order.status || order.estatus || 'pending').trim().toLowerCase();
             const isPreparing = currentStatus === 'preparando' || currentStatus === 'en preparación';
@@ -447,24 +474,24 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
             const timeStr = order.created_at ? new Date(order.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--';
 
             return (
-              <div key={order && order.id ? order.id : index} style={{ background: '#fff', borderRadius: '8px', border: `1px solid ${borderColor}`, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
+              <div key={orderId} style={{ background: '#fff', borderRadius: '8px', border: `1px solid ${borderColor}`, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
                 <div style={{ background: headerBg, color: headerColor, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <strong style={{ fontSize: '18px', lineHeight: 1 }}>#{orderId.slice(-4)}</strong>
-                    <span style={{ fontSize: '11px', opacity: 0.9 }}>{timeStr} | {order.client_name || 'Cliente'}</span>
+                    <strong style={{ fontSize: `${18 * fontScale}px`, lineHeight: 1 }}>#{order.invoice_number || orderId.slice(-4)}</strong>
+                    <span style={{ fontSize: `${11 * fontScale}px`, opacity: 0.9 }}>{timeStr} | {order.client_name || 'Cliente'}</span>
                   </div>
                   
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '900', letterSpacing: '0.5px' }}>{statusText}</span>
+                    <span style={{ fontSize: `${12 * fontScale}px`, fontWeight: '900', letterSpacing: '0.5px' }}>{statusText}</span>
                     
                     {/* CRONÓMETRO EN VIVO DE PREPARACIÓN */}
                     {timerInfo && isPreparing && (
                       <span style={{ 
                         background: '#ffffff', color: timerInfo.badgeColor, padding: '2px 8px', 
-                        borderRadius: '4px', fontSize: '12px', fontWeight: '900', 
+                        borderRadius: '4px', fontSize: `${12 * fontScale}px`, fontWeight: '900', 
                         display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
                       }}>
-                        <Timer size={13} /> {timerInfo.formatted}
+                        <Timer size={13 * fontScale} /> {timerInfo.formatted}
                       </span>
                     )}
 
@@ -472,7 +499,7 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
                     {timerInfo && isReady && (
                       <span style={{ 
                         background: 'rgba(255,255,255,0.25)', color: '#ffffff', padding: '2px 8px', 
-                        borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', 
+                        borderRadius: '4px', fontSize: `${11 * fontScale}px`, fontWeight: 'bold', 
                         display: 'flex', alignItems: 'center', gap: '4px'
                       }}>
                         ⏱️ {timerInfo.formatted}
@@ -482,18 +509,21 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
                 </div>
 
                 <div style={{ padding: '16px', flex: 1 }}>
-                  {itemsList.map((item, i) => {
+                  {displayItems.length > 0 ? displayItems.map((item, i) => {
                     const itemName = item && item.name ? item.name : 'Producto';
                     const itemQty = item && item.quantity ? item.quantity : 1;
                     const customizationText = item.customization || item.customNote || '';
 
                     return (
-                      <div key={i} style={{ paddingBottom: '12px', marginBottom: '12px', borderBottom: i === itemsList.length - 1 ? 'none' : '1px dashed #e5e7eb' }}>
-                        <div style={{ fontWeight: '700', fontSize: '16px', color: '#111827' }}>{itemQty} x {itemName}</div>
+                      <div key={i} style={{ paddingBottom: '12px', marginBottom: '12px', borderBottom: i === displayItems.length - 1 ? 'none' : '1px dashed #e5e7eb' }}>
+                        {/* TEXTO CON ESCALA DINÁMICA */}
+                        <div style={{ fontWeight: '700', fontSize: `${16 * fontScale}px`, color: '#111827' }}>
+                          {itemQty} x {itemName}
+                        </div>
                         
                         {customizationText && (
                           <div style={{ 
-                            fontSize: '13px', 
+                            fontSize: `${13 * fontScale}px`, 
                             color: customizationText.includes('+') ? '#16a34a' : '#e05d5d', 
                             marginTop: '4px', 
                             display: 'flex', 
@@ -507,7 +537,9 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
                         )}
                       </div>
                     );
-                  })}
+                  }) : (
+                    <p style={{textAlign: 'center', color: '#9ca3af', fontStyle: 'italic', margin: 0, fontSize: `${14 * fontScale}px`}}>Todo despachado</p>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', borderTop: '1px solid #e5e7eb' }}>
@@ -522,7 +554,6 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
                           setSales(sales.map(s => s.id === order.id ? { ...s, status: 'preparando', payment_details: updatedPd } : s));
                         }
                         try {
-                          // Iniciar cronómetro guardando prep_started_at
                           await supabase.from('sales').update({ 
                             status: 'preparando',
                             payment_details: updatedPd
@@ -542,14 +573,17 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
                         const nowIso = new Date().toISOString();
                         const updatedPd = { ...(order.payment_details || {}), prep_finished_at: nowIso };
 
+                        // NUEVO: Al despachar, marcamos todos los items actuales como "dispatched"
+                        const updatedItems = getItems(order).map(item => ({ ...item, dispatched: true }));
+
                         if (typeof setSales === 'function') {
-                          setSales(sales.map(s => s.id === order.id ? { ...s, status: 'ready', payment_details: updatedPd } : s));
+                          setSales(sales.map(s => s.id === order.id ? { ...s, status: 'ready', payment_details: updatedPd, items: updatedItems } : s));
                         }
                         try {
-                          // Congelar cronómetro guardando prep_finished_at
                           await supabase.from('sales').update({ 
                             status: 'ready',
-                            payment_details: updatedPd
+                            payment_details: updatedPd,
+                            items: updatedItems
                           }).eq('id', order.id).eq('store_id', currentStoreId);
                         } catch (err) { console.error("Error estatus:", err); }
                       }}

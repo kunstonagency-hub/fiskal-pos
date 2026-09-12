@@ -3274,63 +3274,83 @@ const updateCalculations = () => {
     await fetchProducts(currentStoreId);
   };
 
-  const handleHoldOrder = async () => {
+const handleHoldOrder = async () => {
     if (cart.length === 0 || !currentShift || !currentStoreId) return;
 
     setProcessing(true);
     const clientData = clients.find(c => c.name === selectedClient);
     const clientDocToSave = clientData ? clientData.document : '';
 
+    // 1. DESCONTAR INVENTARIO DE LOS PLATOS NUEVOS (RESERVA INMEDIATA)
+    const itemsToDeduct = cart.filter(item => !item.stock_deducted);
+    if (itemsToDeduct.length > 0 && isOnline) {
+      await deductInventory(itemsToDeduct);
+    }
+
+    // 2. ¿Hay platos nuevos para cocinar?
+    const hasNewItems = itemsToDeduct.length > 0;
+
+    // 3. MARCAR COMO DESCONTADOS
+    const finalCart = cart.map(item => ({ ...item, stock_deducted: true }));
+
+    // 4. PREPARAR DETALLES DE PAGO (Reiniciar cronómetros de cocina si hay platos nuevos)
+    let updatedPaymentDetails = {
+      ...(settlingSale?.payment_details || {}),
+      applied_bcv_rate: bcvRate,
+      client_document: clientDocToSave
+    };
+
+    if (hasNewItems) {
+      // Le ponemos una marca de tiempo nueva para que salte de primera en la pantalla del cocinero
+      updatedPaymentDetails.kitchen_sent_at = new Date().toISOString();
+      // Borramos los tiempos viejos para que el cocinero pueda darle a "Preparar" de nuevo
+      delete updatedPaymentDetails.prep_started_at;
+      delete updatedPaymentDetails.prep_finished_at;
+    }
+
     const saleData = {
       total_usd: totalUSD,
       total_bs: totalBs,
       subtotal_usd: cartSubtotalUSD,
       tax_usd: calculatedTaxUSD,
-      items: cart,
+      items: finalCart,
       client_name: selectedClient,
       status: 'pending',
       balance_due_usd: totalUSD,
       shift_id: currentShift.id,
       store_id: currentStoreId,
-      payment_details: {
-        applied_bcv_rate: bcvRate,
-        client_document: clientDocToSave
-      }
+      payment_details: updatedPaymentDetails
     };
 
     if (!isOnline) {
-      const tempId = `local_${Date.now()}`;
-      await queueOfflineAction({ type: 'INSERT_SALE', saleData, historyData: null, tempId });
-      
-      const localSale = { ...saleData, id: tempId, created_at: new Date().toISOString() };
-      setSales([localSale, ...sales]);
-      
-      setCart([]);
-      setSelectedClient('Cliente General');
+      const tempId = settlingSale ? settlingSale.id : `local_${Date.now()}`;
+      if (settlingSale) {
+        await queueOfflineAction({ type: 'UPDATE_SALE', saleId: tempId, updatedStatus: 'pending', newBalanceDue: totalUSD, paymentDetails: updatedPaymentDetails });
+      } else {
+        await queueOfflineAction({ type: 'INSERT_SALE', saleData, historyData: null, tempId });
+      }
+      setCart([]); setSelectedClient('Cliente General'); setSettlingSale(null); setProcessing(false);
       checkPendingSales();
-      
-      alert(currentStoreType === 'restaurant' 
-        ? "¡Estás Offline! Comanda guardada localmente y en cola para cocina." 
-        : "¡Estás Offline! Cuenta guardada en espera localmente."
-      );
-      
-      setProcessing(false);
+      alert(currentStoreType === 'restaurant' ? "¡Estás Offline! Comanda guardada localmente y en cola para cocina." : "¡Estás Offline! Cuenta guardada en espera localmente.");
       return;
     }
 
-    const { error } = await supabase.from('sales').insert([saleData]);
-    if (error) {
-      alert("Error al dejar en espera: " + error.message);
+    if (settlingSale && !String(settlingSale.id).startsWith('local_')) {
+      // ACTUALIZAR CUENTA EXISTENTE
+      const { error } = await supabase.from('sales').update(saleData).eq('id', settlingSale.id).eq('store_id', currentStoreId);
+      if (error) alert("Error al actualizar la cuenta: " + error.message);
+      else alert("¡Cuenta actualizada y nuevos platos enviados a cocina!");
     } else {
-      setCart([]);
-      setSelectedClient('Cliente General');
-      fetchSales(currentStoreId);
-      
-      alert(currentStoreType === 'restaurant' 
-        ? "¡Comanda enviada a la cocina exitosamente!" 
-        : "¡Venta guardada en espera exitosamente!"
-      );
+      // CREAR CUENTA NUEVA
+      const { error } = await supabase.from('sales').insert([saleData]);
+      if (error) alert("Error al crear cuenta: " + error.message);
+      else alert(currentStoreType === 'restaurant' ? "¡Comanda enviada a la cocina exitosamente!" : "¡Venta guardada en espera exitosamente!");
     }
+
+    setCart([]);
+    setSelectedClient('Cliente General');
+    setSettlingSale(null);
+    fetchSales(currentStoreId);
     setProcessing(false);
   };
 
@@ -3345,7 +3365,7 @@ const updateCalculations = () => {
     setCart(sale.items || []);
     setSelectedClient(sale.client_name || 'Cliente General');
 
-    // VINCULAMOS la comanda para cobrarla sin borrarla de la base de datos
+    // VINCULAMOS la comanda para actualizarla sin borrarla
     setSettlingSale(sale);
 
     setActiveTab('pos');
@@ -3358,200 +3378,143 @@ const updateCalculations = () => {
   };
 
   const handleCreditCheckout = async () => {
-    if (!currentShift || !currentStoreId) {
-      alert("La caja está cerrada.");
-      return;
-    }
-
-    if (selectedClient === 'Cliente General') {
-      alert("Para registrar una venta a crédito debes asociar un cliente específico.");
-      return;
-    }
-
-    if (!window.confirm(`¿Registrar venta a CRÉDITO para ${selectedClient} por $${totalUSD.toFixed(2)}?`)) {
-      return;
-    }
+    if (!currentShift || !currentStoreId) return alert("La caja está cerrada.");
+    if (selectedClient === 'Cliente General') return alert("Para registrar crédito debes asociar un cliente.");
+    if (!window.confirm(`¿Registrar venta a CRÉDITO para ${selectedClient} por $${totalUSD.toFixed(2)}?`)) return;
 
     setProcessing(true);
     const clientData = clients.find(c => c.name === selectedClient);
     const clientDocToSave = clientData ? clientData.document : '';
 
+    // Descontar inventario solo de lo que falta
+    const itemsToDeduct = cart.filter(item => !item.stock_deducted);
+    const finalCart = cart.map(item => ({ ...item, stock_deducted: true }));
+
     const paymentDetails = {
       cash_usd: 0, cash_bs: 0, pago_movil: 0, zelle: 0, debit: 0,
       reference: 'VENTA A CRÉDITO',
       applied_bcv_rate: bcvRate,
-      client_document: clientDocToSave
+      client_document: clientDocToSave,
+      ...(settlingSale?.payment_details || {})
     };
 
     const invoiceNumber = await getNextInvoiceNumber(currentStoreId);
 
-    const saleData = {
-      invoice_number: invoiceNumber,
-      total_usd: totalUSD, total_bs: totalBs, 
-      subtotal_usd: cartSubtotalUSD, tax_usd: calculatedTaxUSD,
-      items: cart,
-      client_name: selectedClient, status: 'credit', balance_due_usd: totalUSD,
-      shift_id: currentShift.id, store_id: currentStoreId, payment_details: paymentDetails
-    };
-
-    const historyData = { amount_usd: 0, payment_details: paymentDetails, store_id: currentStoreId };
-
-    if (!isOnline) {
-      const tempId = `local_${Date.now()}`;
-      await queueOfflineAction({ type: 'INSERT_SALE', saleData, historyData, tempId });
+    if (settlingSale && !String(settlingSale.id).startsWith('local_')) {
+      // ACTUALIZAR MESA EXISTENTE Y PASARLA A CRÉDITO
+      const { error } = await supabase.from('sales').update({ 
+        status: 'credit', 
+        balance_due_usd: totalUSD, 
+        payment_details: paymentDetails, 
+        items: finalCart,
+        invoice_number: settlingSale.invoice_number || invoiceNumber
+      }).eq('id', settlingSale.id).eq('store_id', currentStoreId);
       
-      const currentProducts = [...products];
-      for (const item of cart) {
-        const idx = currentProducts.findIndex(p => p.id === item.id);
-        if (idx !== -1) {
-          currentProducts[idx].stock = Math.max(0, (currentProducts[idx].stock || 0) - item.quantity);
-        }
-      }
-      setProducts(currentProducts);
-      setSales([{ ...saleData, id: tempId, created_at: new Date().toISOString() }, ...sales]);
-
-      setCart([]);
-      setSelectedClient('Cliente General');
-      setShowPaymentModal(false);
-      setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
-      setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
-      checkPendingSales();
-      alert(`¡Estás Offline! Crédito ${invoiceNumber} guardado localmente.`);
-    } else {
-      const { error, data: newSale } = await supabase.from('sales').insert([saleData]).select().single();
-      if (error) {
-        alert("Error al registrar crédito: " + error.message);
-      } else {
-        if (newSale) {
-          await supabase.from('payment_history').insert([{
-            sale_id: newSale.id, amount_usd: 0, payment_details: paymentDetails, store_id: currentStoreId
-          }]);
-        }
-        await deductInventory(cart);
-        setCart([]);
-        setSelectedClient('Cliente General');
-        setShowPaymentModal(false);
-        setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
-        setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
+      if (error) alert("Error al registrar crédito: " + error.message);
+      else {
+        await supabase.from('payment_history').insert([{ sale_id: settlingSale.id, amount_usd: 0, payment_details: paymentDetails, store_id: currentStoreId }]);
+        if (itemsToDeduct.length > 0 && isOnline) await deductInventory(itemsToDeduct);
+        
+        setCart([]); setSelectedClient('Cliente General'); setShowPaymentModal(false); setSettlingSale(null);
         fetchSales(currentStoreId);
-        alert(`¡Venta a crédito ${invoiceNumber} registrada con éxito!`);
+        alert(`¡Venta a crédito registrada con éxito!`);
+      }
+    } else {
+      // CREAR CRÉDITO NUEVO DESDE CERO
+      const saleData = {
+        invoice_number: invoiceNumber, total_usd: totalUSD, total_bs: totalBs, subtotal_usd: cartSubtotalUSD, tax_usd: calculatedTaxUSD,
+        items: finalCart, client_name: selectedClient, status: 'credit', balance_due_usd: totalUSD,
+        shift_id: currentShift.id, store_id: currentStoreId, payment_details: paymentDetails
+      };
+
+      if (!isOnline) {
+        const tempId = `local_${Date.now()}`;
+        await queueOfflineAction({ type: 'INSERT_SALE', saleData, historyData: { amount_usd: 0, payment_details: paymentDetails, store_id: currentStoreId }, tempId });
+        setCart([]); setSelectedClient('Cliente General'); setShowPaymentModal(false); setSettlingSale(null);
+        checkPendingSales();
+        alert(`¡Estás Offline! Crédito ${invoiceNumber} guardado localmente.`);
+      } else {
+        const { error, data: newSale } = await supabase.from('sales').insert([saleData]).select().single();
+        if (error) alert("Error al registrar crédito: " + error.message);
+        else {
+          if (newSale) await supabase.from('payment_history').insert([{ sale_id: newSale.id, amount_usd: 0, payment_details: paymentDetails, store_id: currentStoreId }]);
+          if (itemsToDeduct.length > 0 && isOnline) await deductInventory(itemsToDeduct);
+          setCart([]); setSelectedClient('Cliente General'); setShowPaymentModal(false); setSettlingSale(null);
+          fetchSales(currentStoreId);
+          alert(`¡Venta a crédito ${invoiceNumber} registrada con éxito!`);
+        }
       }
     }
+    
+    setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
+    setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
     setProcessing(false);
   };
 
-const handleCheckoutSubmit = async () => {
-    if (!currentShift || !currentStoreId) {
-      alert("La caja está cerrada.");
-      return;
-    }
-
+  const handleCheckoutSubmit = async () => {
+    if (!currentShift || !currentStoreId) return alert("La caja está cerrada.");
     if (currentStoreCountry && currentStoreCountry.toLowerCase().includes('venezuela') && (!bcvRate || bcvRate <= 0)) {
       alert("No se puede cobrar: la tasa de cambio (BCV) no está configurada o es inválida en este momento. Ve a Ajustes, sincroniza o ingresa la tasa manualmente, y vuelve a intentarlo.");
       return;
     }
 
-    const finalCashUSD = parseFloat(payCashUSD) || 0;
-    const finalCashBs = parseFloat(payCashBs) || 0;
-    const finalPagoMovil = parseFloat(payPagoMovil) || 0;
-    const finalZelle = parseFloat(payZelle) || 0;
-    const finalDebit = parseFloat(payDebit) || 0;
+    const finalCashUSD = parseFloat(payCashUSD)||0;
+    const finalCashBs = parseFloat(payCashBs)||0;
+    const finalPagoMovil = parseFloat(payPagoMovil)||0;
+    const finalZelle = parseFloat(payZelle)||0;
+    const finalDebit = parseFloat(payDebit)||0;
 
     const currentTotalPaidUSD = finalCashUSD + finalZelle + ((finalCashBs + finalPagoMovil + finalDebit) / (bcvRate || 1));
 
-    if (currentTotalPaidUSD <= 0) {
-      alert("Debes ingresar un monto a pagar válido.");
-      return;
-    }
+    if (currentTotalPaidUSD <= 0) return alert("Debes ingresar un monto a pagar válido.");
 
     setProcessing(true);
-    
     const clientData = clients.find(c => c.name === selectedClient);
-    const clientDocToSave = clientData ? clientData.document : (settlingSale?.payment_details?.client_document || '');
-
-    if (changeCurrencyType === 'PAGO_MOVIL' && pagoMovilRateMode === 'personalizada' && !(parseFloat(pagoMovilCustomRate) > 0)) {
-      alert("Ingresa una tasa personalizada válida para el vuelto por Pago Móvil antes de confirmar.");
-      setProcessing(false);
-      return;
-    }
-
-    const changeRateToUse = (changeCurrencyType === 'PAGO_MOVIL' && pagoMovilRateMode === 'personalizada')
-      ? parseFloat(pagoMovilCustomRate)
-      : (bcvRate || 1);
-
+    const changeRateToUse = (changeCurrencyType === 'PAGO_MOVIL' && pagoMovilRateMode === 'personalizada') ? parseFloat(pagoMovilCustomRate) : (bcvRate || 1);
     const calculatedChangeUSD = parseFloat((Math.max(0, currentTotalPaidUSD - totalUSD)).toFixed(2));
     const calculatedChangeBs = parseFloat((calculatedChangeUSD * changeRateToUse).toFixed(2));
 
-    // =========================================================================
-    // LÓGICA DE VUELTO REAL: Si es Pago Móvil, el efectivo en gaveta NO se toca
-    // =========================================================================
     let netCashUsdToRegister = finalCashUSD;
     let netCashBsToRegister = finalCashBs;
 
     if (calculatedChangeUSD > 0 && currentStoreCountry && currentStoreCountry.toLowerCase().includes('venezuela')) {
-      if (changeCurrencyType === 'BS') {
-        // Salió efectivo físico en Bs de la gaveta
-        netCashBsToRegister = Math.max(0, finalCashBs - calculatedChangeBs);
-      } else if (changeCurrencyType === 'USD') {
-        // Salió efectivo físico en USD de la gaveta
-        netCashUsdToRegister = Math.max(0, finalCashUSD - calculatedChangeUSD);
-      }
-      // NOTA: Si changeCurrencyType === 'PAGO_MOVIL', NO se descuenta nada de gaveta física.
-      // Los $10 USD entran íntegros al conteo físico.
+      if (changeCurrencyType === 'BS') netCashBsToRegister = Math.max(0, finalCashBs - calculatedChangeBs);
+      else if (changeCurrencyType === 'USD') netCashUsdToRegister = Math.max(0, finalCashUSD - calculatedChangeUSD);
     }
 
+    // Descontar inventario solo de lo que falta (platos nuevos)
+    const itemsToDeduct = cart.filter(item => !item.stock_deducted);
+    const finalCart = cart.map(item => ({ ...item, stock_deducted: true }));
+
     const paymentDetails = {
-      cash_usd: netCashUsdToRegister,
-      cash_bs: netCashBsToRegister,
-      raw_cash_usd: finalCashUSD,
-      raw_cash_bs: finalCashBs,
-      pago_movil: finalPagoMovil,
-      zelle: finalZelle,
-      debit: finalDebit,
-      reference: paymentRef,
-      change_usd: calculatedChangeUSD,
-      change_bs: calculatedChangeBs,
-      change_currency_type: changeCurrencyType || 'USD',
-      change_rate_used: changeRateToUse,
-      applied_bcv_rate: bcvRate,
-      client_document: clientDocToSave
+      cash_usd: netCashUsdToRegister, cash_bs: netCashBsToRegister, raw_cash_usd: finalCashUSD, raw_cash_bs: finalCashBs,
+      pago_movil: finalPagoMovil, zelle: finalZelle, debit: finalDebit, reference: paymentRef,
+      change_usd: calculatedChangeUSD, change_bs: calculatedChangeBs, change_currency_type: changeCurrencyType || 'USD',
+      change_rate_used: changeRateToUse, applied_bcv_rate: bcvRate, client_document: clientData ? clientData.document : (settlingSale?.payment_details?.client_document || ''),
+      ...(settlingSale?.payment_details || {})
     };
 
     if (settlingSale) {
+      // PAGAR UNA CUENTA EXISTENTE
       const currentDebt = settlingSale.balance_due_usd || settlingSale.total_usd;
       const netPaidForDebt = Math.min(currentTotalPaidUSD, currentDebt);
       const newBalanceDue = parseFloat((currentDebt - netPaidForDebt).toFixed(2));
       const isFullyPaid = newBalanceDue <= 0.01;
-      const updatedStatus = isFullyPaid ? 'completed' : 'credit';
+      
+      await supabase.from('payment_history').insert([{ sale_id: settlingSale.id, amount_usd: netPaidForDebt, payment_details: paymentDetails, store_id: currentStoreId }]);
+      const { error } = await supabase.from('sales').update({ status: isFullyPaid ? 'completed' : 'credit', balance_due_usd: newBalanceDue, payment_details: paymentDetails, items: finalCart }).eq('id', settlingSale.id).eq('store_id', currentStoreId);
 
-      await supabase.from('payment_history').insert([{
-        sale_id: settlingSale.id,
-        amount_usd: netPaidForDebt,
-        payment_details: paymentDetails,
-        store_id: currentStoreId
-      }]);
-
-      const { error } = await supabase
-        .from('sales')
-        .update({
-          status: updatedStatus,
-          balance_due_usd: newBalanceDue,
-          payment_details: paymentDetails
-        })
-        .eq('id', settlingSale.id)
-        .eq('store_id', currentStoreId);
-
-      if (error) {
-        alert("Error al procesar abono: " + error.message);
-      } else {
-        alert(isFullyPaid ? "¡Crédito pagado por completo!" : `¡Abono registrado! Saldo pendiente: $${newBalanceDue.toFixed(2)}`);
-        setSettlingSale(null);
-        setShowPaymentModal(false);
+      if (error) alert("Error al procesar el abono: " + error.message);
+      else {
+        if (itemsToDeduct.length > 0 && isOnline) await deductInventory(itemsToDeduct);
+        alert(isFullyPaid ? "¡Cuenta pagada por completo!" : `¡Abono registrado! Saldo pendiente: $${newBalanceDue.toFixed(2)}`);
+        setSettlingSale(null); setShowPaymentModal(false); setCart([]); setSelectedClient('Cliente General');
         setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
         setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
         fetchSales(currentStoreId);
       }
     } else {
+      // COBRAR UNA VENTA DIRECTA NUEVA
       const newBalanceDue = parseFloat((Math.max(0, totalUSD - currentTotalPaidUSD)).toFixed(2));
       const finalStatus = newBalanceDue > 0 ? 'credit' : 'completed';
       const actualPaidToRecord = Math.min(currentTotalPaidUSD, totalUSD);
@@ -3563,35 +3526,21 @@ const handleCheckoutSubmit = async () => {
       }
 
       const invoiceNumber = await getNextInvoiceNumber(currentStoreId);
-
       const saleData = {
-        invoice_number: invoiceNumber,
-        total_usd: totalUSD, 
-        total_bs: totalBs, 
-        subtotal_usd: cartSubtotalUSD, 
-        tax_usd: calculatedTaxUSD,
-        items: cart,
-        client_name: selectedClient, 
-        status: finalStatus, 
-        balance_due_usd: newBalanceDue,
-        shift_id: currentShift.id, 
-        store_id: currentStoreId, 
-        payment_details: paymentDetails
+        invoice_number: invoiceNumber, total_usd: totalUSD, total_bs: totalBs, subtotal_usd: cartSubtotalUSD, tax_usd: calculatedTaxUSD,
+        items: finalCart, client_name: selectedClient, status: finalStatus, balance_due_usd: newBalanceDue,
+        shift_id: currentShift.id, store_id: currentStoreId, payment_details: paymentDetails
       };
 
       const { data: newSale, error } = await supabase.from('sales').insert([saleData]).select().single();
-      if (error) {
-        alert("Error al procesar el pago: " + error.message);
-      } else {
+      if (error) alert("Error al procesar el pago: " + error.message);
+      else {
         if (newSale && actualPaidToRecord > 0) {
-          await supabase.from('payment_history').insert([{
-            sale_id: newSale.id, amount_usd: actualPaidToRecord, payment_details: paymentDetails, store_id: currentStoreId
-          }]);
+          await supabase.from('payment_history').insert([{ sale_id: newSale.id, amount_usd: actualPaidToRecord, payment_details: paymentDetails, store_id: currentStoreId }]);
         }
-        await deductInventory(cart);
-        setCart([]);
-        setSelectedClient('Cliente General');
-        setShowPaymentModal(false);
+        if (itemsToDeduct.length > 0 && isOnline) await deductInventory(itemsToDeduct);
+        
+        setCart([]); setSelectedClient('Cliente General'); setShowPaymentModal(false);
         setPayCashUSD(''); setPayCashBs(''); setPayPagoMovil(''); setPayZelle(''); setPayDebit(''); setPaymentRef('');
         setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0 });
         fetchSales(currentStoreId);

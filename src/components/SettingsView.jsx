@@ -93,7 +93,7 @@ function SettingsView({
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', alignItems: 'stretch' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 400px), 1fr))', gap: '24px', alignItems: 'stretch' }}>
       
       {/* 1. Datos Fiscales y Configuración de Comercio */}
       <div className="product-form-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
@@ -117,7 +117,7 @@ function SettingsView({
             </div>
             
             {currentStoreTaxEnabled && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#f8f9fa', padding: '12px', borderRadius: '6px', border: '1px solid #ced4da' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', background: '#f8f9fa', padding: '12px', borderRadius: '6px', border: '1px solid #ced4da' }}>
                 <div className="form-group" style={{ margin: 0 }}>
                   <label>Tasa de Impuesto (%)</label>
                   <input type="number" step="0.1" value={currentStoreTaxRate} onChange={(e) => setCurrentStoreTaxRate(e.target.value)} />
