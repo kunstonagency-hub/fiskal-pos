@@ -108,8 +108,8 @@ function ProductsView({
   };
 
   return (
-    <div className="products-layout">
-      <div className="product-form-card">
+    <div className="products-layout" style={{ maxWidth: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
+      <div className="product-form-card" style={{ maxWidth: '100%', boxSizing: 'border-box' }}>
         <h3>
           {editingProduct 
             ? `Editando: ${editingProduct.name}` 
@@ -118,13 +118,13 @@ function ProductsView({
               : `Agregar Nuevo ${currentStoreType === 'restaurant' ? 'Platillo / Ítem' : 'Producto'}`}
         </h3>
         
-        <form onSubmit={handleFormSubmit} className="fiskal-form">
+        <form onSubmit={handleFormSubmit} className="fiskal-form" style={{ width: '100%', boxSizing: 'border-box' }}>
           <div className="form-group">
             <label>Fotografía {currentStoreType === 'restaurant' ? 'del Platillo' : 'del Producto'}</label>
-            <div style={{ border: '2px dashed #ced4da', padding: '16px', textAlign: 'center', borderRadius: '6px', background: '#f8f9fa' }}>
+            <div style={{ border: '2px dashed #ced4da', padding: '16px', textAlign: 'center', borderRadius: '6px', background: '#f8f9fa', width: '100%', boxSizing: 'border-box' }}>
               {imagePreview ? (
                 <div style={{ marginBottom: '10px' }}>
-                  <img src={imagePreview} alt="Vista previa" style={{ maxHeight: '100px', objectFit: 'cover', borderRadius: '4px' }} />
+                  <img src={imagePreview} alt="Vista previa" style={{ maxHeight: '100px', maxWidth: '100%', objectFit: 'cover', borderRadius: '4px' }} />
                 </div>
               ) : (
                 <div style={{ marginBottom: '10px', color: '#6c757d' }}>
@@ -132,21 +132,21 @@ function ProductsView({
                   <span style={{ fontSize: '12px' }}>Sube una foto</span>
                 </div>
               )}
-              <input name="image" type="file" accept="image/*" onChange={handleImageSelect} style={{ fontSize: '12px', width: '100%' }} />
+              <input name="image" type="file" accept="image/*" onChange={handleImageSelect} style={{ fontSize: '12px', width: '100%', boxSizing: 'border-box' }} />
             </div>
           </div>
 
           <div className="form-group">
             <label>Nombre {currentStoreType === 'restaurant' ? 'del Platillo' : 'del Producto'}</label>
-            <input name="name" type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder={currentStoreType === 'restaurant' ? "Ej. Hamburguesa Doble" : "Ej. Harina PAN"} />
+            <input name="name" type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder={currentStoreType === 'restaurant' ? "Ej. Hamburguesa Doble" : "Ej. Harina PAN"} style={{ width: '100%', boxSizing: 'border-box' }} />
           </div>
           <div className="form-group">
             <label>Código de Barras / SKU (Autogenerado al duplicar)</label>
-            <input name="barcode" type="text" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="SKU-001" />
+            <input name="barcode" type="text" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="SKU-001" style={{ width: '100%', boxSizing: 'border-box' }} />
           </div>
           <div className="form-group">
             <label>Precio de Venta ($ USD)</label>
-            <input name="price" type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required placeholder="0.00" />
+            <input name="price" type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required placeholder="0.00" style={{ width: '100%', boxSizing: 'border-box' }} />
           </div>
 
           <div className="form-group">
@@ -160,22 +160,23 @@ function ProductsView({
                 setStock(val === '' ? '' : Number(val));
               }} 
               required 
-              placeholder="0" 
+              placeholder="0"
+              style={{ width: '100%', boxSizing: 'border-box' }}
             />
             
             {editingProduct && (
-              <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0', marginTop: '8px' }}>
+              <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0', marginTop: '8px', width: '100%', boxSizing: 'border-box' }}>
                 <span style={{ fontSize: '11px', fontWeight: '800', color: '#16a34a', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>
                   📦 Reabastecer (Entrada de mercancía)
                 </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                   <input 
                     name="addedUnits"
                     type="number" 
                     value={addedUnits} 
                     onChange={(e) => handleAddUnitsChange(e.target.value)} 
                     placeholder="Ej. 24 (lo que llegó)" 
-                    style={{ flex: 1, padding: '8px 10px', fontSize: '13px', borderRadius: '6px', border: '1px solid #16a34a', outline: 'none', background: '#fff' }} 
+                    style={{ flex: '1 1 120px', minWidth: '0', padding: '8px 10px', fontSize: '13px', borderRadius: '6px', border: '1px solid #16a34a', outline: 'none', background: '#fff', boxSizing: 'border-box' }} 
                   />
                   <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                     {addedUnits ? `Total: ${stock} ud.` : `Actual: ${editingProduct.stock || 0}`}
@@ -205,7 +206,7 @@ function ProductsView({
                   if(e.target.value === 'Por Peso') setProductModifiers(['kg']); 
                 }
               }} 
-              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', marginBottom: category === 'Por Peso' || !['General', 'Por Peso', ...products.map(p => (p.category || '').trim())].includes(category) ? '8px' : '0' }}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', marginBottom: category === 'Por Peso' || !['General', 'Por Peso', ...products.map(p => (p.category || '').trim())].includes(category) ? '8px' : '0' }}
             >
               <option value="General">General</option>
               {currentStoreType !== 'restaurant' && <option value="Por Peso">Por Peso (Balanza)</option>}
@@ -224,20 +225,20 @@ function ProductsView({
                 value={category} 
                 onChange={(e) => setCategory(e.target.value)} 
                 placeholder="Escribe el nombre de la nueva categoría..." 
-                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #1c7ed6', fontSize: '13px', background: '#e7f5ff', marginTop: '8px' }}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #1c7ed6', fontSize: '13px', background: '#e7f5ff', marginTop: '8px' }}
                 autoFocus
               />
             )}
           </div>
 
           {category === 'Por Peso' && currentStoreType !== 'restaurant' && (
-            <div className="form-group" style={{ background: '#e7f5ff', padding: '12px', borderRadius: '6px', border: '1px solid #74c0fc', marginBottom: '16px', marginTop: '12px' }}>
+            <div className="form-group" style={{ background: '#e7f5ff', padding: '12px', borderRadius: '6px', border: '1px solid #74c0fc', marginBottom: '16px', marginTop: '12px', width: '100%', boxSizing: 'border-box' }}>
               <label style={{ color: '#1971c2', fontWeight: 'bold' }}>Unidad de Medida Base</label>
               <select 
                 name="measure_unit"
                 value={productModifiers[0] || 'kg'} 
                 onChange={(e) => setProductModifiers([e.target.value])}
-                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px' }}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px' }}
               >
                 <option value="kg">Kilogramos (Kg)</option>
                 <option value="g">Gramos (g)</option>
@@ -249,24 +250,24 @@ function ProductsView({
           )}
 
           {currentStoreType === 'restaurant' && (
-            <div className="form-group" style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '16px' }}>
+            <div className="form-group" style={{ background: '#f8f9fa', padding: '14px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
               <label style={{ fontWeight: '800', color: '#111827', marginBottom: '6px', display: 'block', fontSize: '12px', textTransform: 'uppercase' }}>
                 1. Ingredientes Base (Vienen incluidos "Con todo")
               </label>
-              <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', width: '100%' }}>
                 <input 
                   name="base_ingredient"
                   type="text" 
                   value={newModifierText} 
                   onChange={(e) => setNewModifierText(e.target.value)} 
                   placeholder="Ej. Cebolla, Papa, Salsas..." 
-                  style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da' }}
+                  style={{ flex: '1 1 120px', minWidth: '0', padding: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box' }}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addProductModifierTag(); } }}
                 />
                 <button 
                   type="button" 
                   onClick={addProductModifierTag} 
-                  style={{ background: '#111827', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                  style={{ background: '#111827', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                 >
                   + Agregar
                 </button>
@@ -289,19 +290,19 @@ function ProductsView({
           )}
 
           {currentStoreType === 'restaurant' && (
-            <div className="form-group" style={{ background: '#f9fafb', padding: '14px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '16px' }}>
+            <div className="form-group" style={{ background: '#f9fafb', padding: '14px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
               <label style={{ fontWeight: '800', color: '#16a34a', marginBottom: '6px', display: 'block', fontSize: '12px', textTransform: 'uppercase' }}>
-                ⭐ 2. Adicionales / Extras con Costo (Opcionales con costo)
+                ⭐ 2. Adicionales / Extras con Costo
               </label>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '6px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', width: '100%' }}>
                 <input 
                   name="extra_name"
                   type="text" 
                   value={newExtraName} 
                   onChange={(e) => setNewExtraName(e.target.value)} 
                   placeholder="Nombre: Ej. Huevo, Tocineta" 
-                  style={{ padding: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da' }}
+                  style={{ flex: '1 1 110px', minWidth: '0', padding: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box' }}
                 />
                 <input 
                   name="extra_price"
@@ -310,12 +311,12 @@ function ProductsView({
                   value={newExtraPrice} 
                   onChange={(e) => setNewExtraPrice(e.target.value)} 
                   placeholder="Precio ($)" 
-                  style={{ padding: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da' }}
+                  style={{ flex: '1 1 80px', minWidth: '0', padding: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box' }}
                 />
                 <button 
                   type="button" 
                   onClick={handleAddExtraTag} 
-                  style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                  style={{ flex: '1 1 auto', background: '#16a34a', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                 >
                   + Añadir Extra
                 </button>
@@ -343,23 +344,23 @@ function ProductsView({
           )}
 
           {currentStoreKronoEnabled && (
-            <div className="form-group" style={{ background: showInKrono ? '#ecfdf5' : '#f8fafc', padding: '12px', borderRadius: '6px', border: showInKrono ? '1px solid #10b981' : '1px solid #e2e8f0', marginBottom: '16px' }}>
+            <div className="form-group" style={{ background: showInKrono ? '#ecfdf5' : '#f8fafc', padding: '12px', borderRadius: '6px', border: showInKrono ? '1px solid #10b981' : '1px solid #e2e8f0', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: showInKrono ? '12px' : '0' }}>
-                <input name="showInKrono" type="checkbox" id="showInKrono" checked={showInKrono} onChange={(e) => setShowInKrono(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
-                <label htmlFor="showInKrono" style={{ margin: 0, cursor: 'pointer', fontWeight: 'bold', color: '#0f766e' }}>
+                <input name="showInKrono" type="checkbox" id="showInKrono" checked={showInKrono} onChange={(e) => setShowInKrono(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer', flexShrink: 0 }} />
+                <label htmlFor="showInKrono" style={{ margin: 0, cursor: 'pointer', fontWeight: 'bold', color: '#0f766e', lineHeight: 1.2 }}>
                   🛒 Publicar en Krono Market (App de Delivery)
                 </label>
               </div>
               {showInKrono && (
                 <div style={{ marginLeft: '24px' }}>
                   <label style={{ fontSize: '12px', color: '#475569', marginBottom: '4px', display: 'block' }}>Precio Preferencial en Krono ($ USD) - Opcional</label>
-                  <input name="kronoPrice" type="number" step="0.01" value={kronoPrice} onChange={(e) => setKronoPrice(e.target.value)} placeholder="Ej. 4.50 (Deja vacío para usar precio normal)" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
+                  <input name="kronoPrice" type="number" step="0.01" value={kronoPrice} onChange={(e) => setKronoPrice(e.target.value)} placeholder="Ej. 4.50 (Deja vacío para usar precio normal)" style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
                 </div>
               )}
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '12px', width: '100%' }}>
             {(editingProduct || name.includes('(Copia)')) && (
               <button type="button" className="btn-secondary" onClick={customResetForm} style={{ flex: 1 }}>Cancelar</button>
             )}
@@ -374,13 +375,15 @@ function ProductsView({
         </form>
       </div>
 
-      <div className="product-list-card">
+      <div className="product-list-card" style={{ maxWidth: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
           <h3 style={{ margin: 0 }}>Inventario Registrado ({products.length})</h3>
           <button className="btn-secondary" onClick={() => setShowPrintCatalog(true)} style={{ fontSize: '12px', padding: '6px 12px' }}>🖨️ Imprimir Catálogo</button>
         </div>
-        <div className="table-responsive">
-          <table className="fiskal-table">
+        
+        {/* Aquí blindamos la tabla para que haga scroll interno si es necesario y no rompa el contenedor */}
+        <div className="table-responsive" style={{ width: '100%', overflowX: 'auto', WebkitOverflowScrolling: 'touch', display: 'block' }}>
+          <table className="fiskal-table" style={{ width: '100%' }}>
             <thead>
               <tr>
                 <th>Producto</th>
@@ -412,8 +415,8 @@ function ProductsView({
                       </span>
                     </td>
                     <td className="action-cell">
-                      <div className="action-buttons" style={{ justifyContent: 'center' }}>
-                        
+                      {/* Flex wrap en los botones para que bajen en vez de estirar la tabla */}
+                      <div className="action-buttons" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '6px' }}>
                         <button 
                           className="btn-icon-primary" 
                           onClick={() => handleDuplicateProduct(prod)} 
@@ -422,7 +425,6 @@ function ProductsView({
                         >
                           <Copy size={16} />
                         </button>
-
                         <button className="btn-icon-primary" onClick={() => handleOpenLabel(prod)} title="Ver Etiqueta QR"><QrCode size={16} /></button>
                         <button className="btn-icon-edit" onClick={() => handleStartEditProduct(prod)} title="Editar"><Edit2 size={16} /></button>
                         <button className="btn-icon-danger" onClick={() => handleDeleteProduct(prod.id)} title="Eliminar"><Trash2 size={16} /></button>
