@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../supabase';
-import { Maximize2, Monitor, X, Bell, CheckCircle, Clock, ChefHat, Timer, ZoomIn, ZoomOut, PlayCircle } from 'lucide-react';
+import { Maximize2, Monitor, X, Bell, CheckCircle, Clock, ChefHat, Timer, ZoomIn, ZoomOut, PlayCircle, BookmarkPlus, ListVideo, Trash2 } from 'lucide-react';
 
 const GENERAL_KEYWORDS = ['toddy', 'harina', 'azucar', 'galletas', 'citrato', 'disco duro', 'cronch', 'palitos', 'pepsi', 'coca cola', 'refresco', 'agua', 'cerveza'];
 
@@ -22,10 +22,69 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
   const [displayMode, setDisplayMode] = useState('banner');
   const [currentSlide, setCurrentSlide] = useState(0);
 
-  // Estados para el tamaño de las letras (Zoom), YouTube y Detección de Pantalla Completa
+  // Estados para el tamaño de las letras (Zoom), YouTube, y Pantalla Completa
   const [fontScale, setFontScale] = useState(1);
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // NUEVOS ESTADOS: Listas guardadas de YouTube
+  const [savedLinks, setSavedLinks] = useState([]);
+  const [showSavedLinks, setShowSavedLinks] = useState(false);
+
+  // Cargar las listas de YouTube guardadas desde la base de datos al iniciar
+  useEffect(() => {
+    if (!currentStoreId) return;
+    const fetchSavedLinks = async () => {
+      try {
+        const { data } = await supabase.from('settings').select('value').eq('key', `kds_yt_${currentStoreId}`).maybeSingle();
+        if (data && data.value) {
+          setSavedLinks(JSON.parse(data.value));
+        }
+      } catch (err) {
+        console.log("Error cargando listas de YouTube:", err);
+      }
+    };
+    fetchSavedLinks();
+  }, [currentStoreId]);
+
+  // Funciones para Guardar y Eliminar Listas
+  const handleSaveLink = async () => {
+    if (!youtubeUrl.trim()) {
+      alert("Primero pega un enlace de YouTube para poder guardarlo.");
+      return;
+    }
+    const label = window.prompt("Dale un nombre a esta lista o video (Ej: Rock Clásico, Electrónica, etc.):", "Nueva Lista");
+    if (!label) return; 
+
+    const updatedLinks = [...savedLinks, { label, url: youtubeUrl }];
+    setSavedLinks(updatedLinks);
+
+    try {
+      await supabase.from('settings').upsert({
+        key: `kds_yt_${currentStoreId}`,
+        value: JSON.stringify(updatedLinks),
+        store_id: currentStoreId
+      }, { onConflict: 'key' });
+      alert("¡Lista guardada con éxito!");
+    } catch (error) {
+      console.error("Error guardando enlace:", error);
+    }
+  };
+
+  const handleDeleteLink = async (indexToRemove) => {
+    if (!window.confirm("¿Seguro que deseas eliminar esta lista guardada?")) return;
+    const updatedLinks = savedLinks.filter((_, idx) => idx !== indexToRemove);
+    setSavedLinks(updatedLinks);
+    try {
+      await supabase.from('settings').upsert({
+        key: `kds_yt_${currentStoreId}`,
+        value: JSON.stringify(updatedLinks),
+        store_id: currentStoreId
+      }, { onConflict: 'key' });
+    } catch (error) {
+      console.error("Error eliminando enlace:", error);
+    }
+  };
 
   // Sincronizar salida de pantalla completa con el cierre automático del modo público
   useEffect(() => {
@@ -33,7 +92,7 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
       const isFull = !!document.fullscreenElement;
       setIsFullscreen(isFull);
       if (!isFull) {
-        setIsPublicMode(false); // Al presionar Escape o salir de pantalla completa, regresa al panel de cocina
+        setIsPublicMode(false); 
       }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -463,8 +522,8 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             
-            {/* INPUT PARA YOUTUBE */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '6px 12px', borderRadius: '6px', border: '1px solid #d1d5db', marginRight: '8px' }}>
+            {/* INPUT PARA YOUTUBE Y MIS LISTAS GUARDADAS */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '6px 12px', borderRadius: '6px', border: '1px solid #d1d5db', marginRight: '8px', position: 'relative' }}>
               <PlayCircle size={18} color="#dc2626" />
               <input 
                 type="text" 
@@ -474,6 +533,59 @@ export default function KitchenDashboard({ sales, setSales, currentStoreId, curr
                 style={{ border: 'none', outline: 'none', fontSize: '13px', width: '180px', background: 'transparent' }}
                 title="Coloca el link de YouTube aquí para agregarlo como diapositiva con música en la Pantalla de Clientes"
               />
+              
+              <div style={{ height: '20px', width: '1px', background: '#e5e7eb', margin: '0 4px' }}></div>
+              
+              <button 
+                onClick={handleSaveLink}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#16a34a', display: 'flex', alignItems: 'center' }}
+                title="Guardar lista actual"
+              >
+                <BookmarkPlus size={18} />
+              </button>
+              
+              <button 
+                onClick={() => setShowSavedLinks(!showSavedLinks)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#4b5563', display: 'flex', alignItems: 'center' }}
+                title="Ver mis listas guardadas"
+              >
+                <ListVideo size={18} />
+              </button>
+
+              {/* DROPDOWN DE LISTAS GUARDADAS */}
+              {showSavedLinks && (
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', width: '280px', background: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 1000, overflow: 'hidden' }}>
+                  <div style={{ background: '#f9fafb', padding: '12px', borderBottom: '1px solid #e5e7eb', fontSize: '13px', fontWeight: 'bold', color: '#111827', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>🎵 Mis Listas Guardadas</span>
+                    <button onClick={() => setShowSavedLinks(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={16} /></button>
+                  </div>
+                  
+                  <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                    {savedLinks.length === 0 ? (
+                      <div style={{ padding: '16px', textAlign: 'center', color: '#6b7280', fontSize: '13px', fontStyle: 'italic' }}>
+                        No tienes listas guardadas aún.
+                      </div>
+                    ) : (
+                      savedLinks.map((link, idx) => (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', transition: 'background 0.2s' }} 
+                             onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                             onClick={() => { setYoutubeUrl(link.url); setShowSavedLinks(false); }}>
+                          
+                          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1, paddingRight: '8px' }}>
+                            <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#374151', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{link.label}</span>
+                            <span style={{ fontSize: '10px', color: '#9ca3af', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{link.url}</span>
+                          </div>
+                          
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteLink(idx); }} style={{ background: '#fee2e2', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Eliminar lista">
+                             <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <button 
