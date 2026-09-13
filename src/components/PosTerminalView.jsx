@@ -483,7 +483,7 @@ export default function PosTerminalView({
                 <Clock size={16} /> {currentStoreType === 'restaurant' ? 'A Cocina' : 'En Espera'}
               </button>
               <button 
-                onClick={() => { setIsMobileCartOpen(false); setSettlingSale(null); setShowPaymentModal(true); }} 
+                onClick={() => { setIsMobileCartOpen(false); setShowPaymentModal(true); }} 
                 disabled={cart.length === 0 || !currentShift} 
                 style={{ flex: 1.5, padding: '14px', background: '#111827', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: cart.length === 0 ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', opacity: cart.length === 0 ? 0.5 : 1 }}
               >

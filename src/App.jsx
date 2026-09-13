@@ -3234,7 +3234,15 @@ const updateCalculations = () => {
     calculatedTotalUSD = rawCartSum;
   }
 
-  const totalUSD = settlingSale ? (settlingSale.balance_due_usd || settlingSale.total_usd) : calculatedTotalUSD;
+  // Si hay una venta en curso pero está pendiente (comanda de cocina/en espera), 
+  // permitimos que sume los nuevos ítems en tiempo real con calculatedTotalUSD.
+  // Calculamos si la cuenta abierta ya tiene algún pago previo abonado
+  const amountAlreadyPaid = (settlingSale && settlingSale.balance_due_usd !== undefined) 
+  ? (settlingSale.total_usd - settlingSale.balance_due_usd) 
+  : 0;
+
+  // El total en pantalla siempre prioriza el carrito en vivo, restando pagos previos si los hay
+  const totalUSD = calculatedTotalUSD - amountAlreadyPaid;
   const totalBs = totalUSD * bcvRate;
 
   const paidUSDFromCashUSD = calcPayments.cashUSD;
@@ -3281,7 +3289,7 @@ const handleHoldOrder = async () => {
     const clientData = clients.find(c => c.name === selectedClient);
     const clientDocToSave = clientData ? clientData.document : '';
 
-    // 1. DESCONTAR INVENTARIO DE LOS PLATOS NUEVOS (RESERVA INMEDIATA)
+    // 1. DESCONTAR INVENTARIO SOLO DE LOS PLATOS NUEVOS (RESERVA INMEDIATA)
     const itemsToDeduct = cart.filter(item => !item.stock_deducted);
     if (itemsToDeduct.length > 0 && isOnline) {
       await deductInventory(itemsToDeduct);
@@ -3293,7 +3301,11 @@ const handleHoldOrder = async () => {
     // 3. MARCAR COMO DESCONTADOS
     const finalCart = cart.map(item => ({ ...item, stock_deducted: true }));
 
-    // 4. PREPARAR DETALLES DE PAGO (Reiniciar cronómetros de cocina si hay platos nuevos)
+    // 4. RECALCULAR EL TOTAL REAL DEL CARRITO AL MOMENTO DE GUARDAR
+    const newTotalUSD = finalCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const newTotalBs = newTotalUSD * bcvRate;
+
+    // 5. PREPARAR DETALLES DE PAGO (Reiniciar cronómetros de cocina si hay platos nuevos)
     let updatedPaymentDetails = {
       ...(settlingSale?.payment_details || {}),
       applied_bcv_rate: bcvRate,
@@ -3309,14 +3321,14 @@ const handleHoldOrder = async () => {
     }
 
     const saleData = {
-      total_usd: totalUSD,
-      total_bs: totalBs,
-      subtotal_usd: cartSubtotalUSD,
-      tax_usd: calculatedTaxUSD,
+      total_usd: newTotalUSD, // Usar el nuevo total calculado
+      total_bs: newTotalBs,
+      subtotal_usd: newTotalUSD, // (Ajustar si usas lógica de impuestos separada)
+      tax_usd: 0, // (Ajustar si usas lógica de impuestos separada)
       items: finalCart,
       client_name: selectedClient,
       status: 'pending',
-      balance_due_usd: totalUSD,
+      balance_due_usd: newTotalUSD, // Actualizar el saldo pendiente con el nuevo total
       shift_id: currentShift.id,
       store_id: currentStoreId,
       payment_details: updatedPaymentDetails
@@ -3325,7 +3337,7 @@ const handleHoldOrder = async () => {
     if (!isOnline) {
       const tempId = settlingSale ? settlingSale.id : `local_${Date.now()}`;
       if (settlingSale) {
-        await queueOfflineAction({ type: 'UPDATE_SALE', saleId: tempId, updatedStatus: 'pending', newBalanceDue: totalUSD, paymentDetails: updatedPaymentDetails });
+        await queueOfflineAction({ type: 'UPDATE_SALE', saleId: tempId, updatedStatus: 'pending', newBalanceDue: newTotalUSD, paymentDetails: updatedPaymentDetails });
       } else {
         await queueOfflineAction({ type: 'INSERT_SALE', saleData, historyData: null, tempId });
       }
@@ -3336,7 +3348,7 @@ const handleHoldOrder = async () => {
     }
 
     if (settlingSale && !String(settlingSale.id).startsWith('local_')) {
-      // ACTUALIZAR CUENTA EXISTENTE
+      // ACTUALIZAR CUENTA EXISTENTE (Mesa abierta)
       const { error } = await supabase.from('sales').update(saleData).eq('id', settlingSale.id).eq('store_id', currentStoreId);
       if (error) alert("Error al actualizar la cuenta: " + error.message);
       else alert("¡Cuenta actualizada y nuevos platos enviados a cocina!");
@@ -3496,13 +3508,22 @@ const handleHoldOrder = async () => {
 
     if (settlingSale) {
       // PAGAR UNA CUENTA EXISTENTE
-      const currentDebt = settlingSale.balance_due_usd || settlingSale.total_usd;
+      const isPendingOrder = settlingSale.status === 'pending';
+      const currentDebt = isPendingOrder ? totalUSD : (settlingSale.balance_due_usd || settlingSale.total_usd);
       const netPaidForDebt = Math.min(currentTotalPaidUSD, currentDebt);
       const newBalanceDue = parseFloat((currentDebt - netPaidForDebt).toFixed(2));
       const isFullyPaid = newBalanceDue <= 0.01;
-      
+
+      const updatePayload = { status: isFullyPaid ? 'completed' : 'credit', balance_due_usd: newBalanceDue, payment_details: paymentDetails, items: finalCart };
+      if (isPendingOrder) {
+        updatePayload.total_usd = totalUSD;
+        updatePayload.total_bs = totalBs;
+        updatePayload.subtotal_usd = cartSubtotalUSD;
+        updatePayload.tax_usd = calculatedTaxUSD;
+      }
+
       await supabase.from('payment_history').insert([{ sale_id: settlingSale.id, amount_usd: netPaidForDebt, payment_details: paymentDetails, store_id: currentStoreId }]);
-      const { error } = await supabase.from('sales').update({ status: isFullyPaid ? 'completed' : 'credit', balance_due_usd: newBalanceDue, payment_details: paymentDetails, items: finalCart }).eq('id', settlingSale.id).eq('store_id', currentStoreId);
+      const { error } = await supabase.from('sales').update(updatePayload).eq('id', settlingSale.id).eq('store_id', currentStoreId);
 
       if (error) alert("Error al procesar el abono: " + error.message);
       else {
