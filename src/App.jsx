@@ -3142,20 +3142,28 @@ const syncRate = async (type, storeId, manualValue = null) => {
       return;
     }
 
-    const currentInCart = cart.find(item => item.id === product.id)?.quantity || 0;
+    // Sumamos la cantidad de este producto en todo el carrito para validar el stock correctamente
+    const currentInCart = cart.filter(item => item.id === product.id).reduce((sum, item) => sum + item.quantity, 0);
     if (product.stock !== undefined && currentInCart >= product.stock) {
       alert(`No hay suficiente stock disponible para ${product.name}. Stock actual: ${product.stock}`);
       return;
     }
 
     setCart(prevCart => {
-      const existing = prevCart.find(item => item.id === product.id);
+      // LA MAGIA: Solo agrupamos si el producto en el carrito AÚN NO ha sido enviado a la cocina
+      const existing = prevCart.find(item => item.id === product.id && !item.stock_deducted);
+      
       if (existing) {
         return prevCart.map(item => 
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          (item.id === product.id && !item.stock_deducted) 
+            ? { ...item, quantity: item.quantity + 1 } 
+            : item
         );
       }
-      return [...prevCart, { ...product, quantity: 1 }];
+      
+      // Si el anterior ya se despachó a cocina, creamos una línea totalmente nueva
+      // Le asignamos un cartItemId único para que el KDS la vea como una comanda fresca
+      return [...prevCart, { ...product, quantity: 1, cartItemId: `${product.id}_new_${Date.now()}` }];
     });
   };
 
@@ -3188,6 +3196,13 @@ const syncRate = async (type, storeId, manualValue = null) => {
       const uniqueKey = item.cartItemId || item.id;
       
       if (uniqueKey === targetKey) {
+        
+        // BLOQUEO DE SEGURIDAD: Evitar sumar con el botón '+' a platos que ya están en cocina
+        if (item.stock_deducted && delta > 0) {
+          alert("Este platillo ya fue enviado a la cocina. Si el cliente quiere otro igual, por favor agrégalo desde el menú para generar una comanda nueva.");
+          return item;
+        }
+
         // Buscamos el producto original para verificar el stock correctamente
         const productInfo = products.find(p => p.id === item.id);
         const newQty = item.quantity + delta;
