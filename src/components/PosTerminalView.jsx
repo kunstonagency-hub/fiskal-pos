@@ -164,7 +164,6 @@ export default function PosTerminalView({
                 onChange={(e) => setBarcodeInput(e.target.value)}
                 placeholder="Escanear código o SKU..."
                 style={{ width: '100%', padding: '8px 38px 8px 34px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '13px', outline: 'none' }}
-                autoFocus
               />
               <button 
                 type="button" 
