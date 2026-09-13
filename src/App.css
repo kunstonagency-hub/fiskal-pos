@@ -332,6 +332,13 @@
   cursor: not-allowed;
 }
 
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  display: block;
+}
+
 .fiskal-table {
   width: 100%;
   border-collapse: collapse;
@@ -381,7 +388,8 @@
 }
 
 .action-buttons {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 6px;
