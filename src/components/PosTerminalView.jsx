@@ -907,7 +907,7 @@ export default function PosTerminalView({
                       <span
                         style={{
                           fontSize: "11px",
-                          color: item.customization.includes("+")
+                          color: (item.customization || "").includes("+")
                             ? "#16a34a"
                             : "#e05d5d",
                           display: "block",
