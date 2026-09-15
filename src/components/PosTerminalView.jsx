@@ -654,7 +654,8 @@ export default function PosTerminalView({
       <div
         className={`cart-summary-wrapper ${isMobileCartOpen ? "open" : ""}`}
         onClick={(e) => {
-          if (e.target.className.includes("cart-summary-wrapper"))
+          // Validamos que className sea un string antes de usar includes
+          if (typeof e.target.className === "string" && e.target.className.includes("cart-summary-wrapper"))
             setIsMobileCartOpen(false);
         }}
       >
