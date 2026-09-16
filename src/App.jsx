@@ -482,12 +482,7 @@ function App() {
   const [storeCustomDiscount, setStoreCustomDiscount] = useState(0);
   const [newStoreType, setNewStoreType] = useState("standard"); // Selector para Super Admin
 
-  const [productModifiers, setProductModifiers] = useState([
-    "Cebolla",
-    "Papa",
-    "Queso",
-    "Salsas",
-  ]); // Etiquetas base
+  const [productModifiers, setProductModifiers] = useState([]); // Etiquetas base vacías
   const [newModifierText, setNewModifierText] = useState(""); // Texto para agregar nueva etiqueta
   const [showModifierModal, setShowModifierModal] = useState(false);
   const [productForModifiers, setProductForModifiers] = useState(null);
@@ -3661,7 +3656,7 @@ function App() {
           : prod.modifiers;
       setProductModifiers(arr);
     } else {
-      setProductModifiers(["Cebolla", "Papa", "Queso", "Salsas"]);
+      setProductModifiers([]); 
     }
 
     if (prod.extras) {
@@ -3689,7 +3684,7 @@ function App() {
     setBarcode("");
     setImageFile(null);
     setImagePreview(null);
-    setProductModifiers(["Cebolla", "Papa", "Queso", "Salsas"]);
+    setProductModifiers([]);
     setNewModifierText("");
     setShowInKrono(false);
     setKronoPrice("");
