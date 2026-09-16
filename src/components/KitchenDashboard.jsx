@@ -29,11 +29,7 @@ const GENERAL_KEYWORDS = [
   "disco duro",
   "cronch",
   "palitos",
-  "pepsi",
-  "coca cola",
-  "refresco",
-  "agua",
-  "cerveza",
+
 ];
 
 const FALLBACK_BANNERS = [
