@@ -20,21 +20,7 @@ import {
 // Dashboard de cocina y pantalla pública.
 // Este componente muestra el panel operativo de cocina, controla el flujo de pedidos y
 // también ofrece la vista para clientes con banners, videos y tablero de pedidos listos.
-const GENERAL_KEYWORDS = [
-  "toddy",
-  "harina",
-  "azucar",
-  "galletas",
-  "citrato",
-  "disco duro",
-  "cronch",
-  "palitos",
-  "pepsi",
-  "coca cola",
-  "refresco",
-  "agua",
-  "cerveza",
-];
+const generalKeywords = []; // Ahora la cocina verá TODOS los productos (incluyendo bebidas)
 
 const FALLBACK_BANNERS = [
   {
