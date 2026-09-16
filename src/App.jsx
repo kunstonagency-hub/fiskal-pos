@@ -562,7 +562,7 @@ function App() {
     setIsParaLlevar(false);
 
     // Cargar ingredientes base (todos marcados por defecto)
-    let modsArray = ["Cebolla", "Papa", "Queso", "Salsas"];
+    let modsArray = [];
     if (prod.modifiers) {
       modsArray =
         typeof prod.modifiers === "string"
@@ -6559,90 +6559,92 @@ function App() {
               className="modal-body fiskal-form"
               style={{ padding: "20px", maxHeight: "70vh", overflowY: "auto" }}
             >
-              {/* SECCIÓN 1: INGREDIENTES BASE (CON TODO) */}
-              <div style={{ marginBottom: "16px" }}>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "#6b7280",
-                    fontWeight: "800",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    display: "block",
-                    marginBottom: "8px",
-                  }}
-                >
-                  Ingredientes Base (Desmarca para quitar)
-                </span>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                    background: "#fafafa",
-                    padding: "12px",
-                    borderRadius: "8px",
-                    border: "1px solid #e5e7eb",
-                  }}
-                >
-                  <label
+              {/* SECCIÓN 1: INGREDIENTES BASE (CON TODO) - SOLO SE MUESTRA SI HAY INGREDIENTES */}
+              {Object.keys(dynamicToggles).length > 0 && (
+                <div style={{ marginBottom: "16px" }}>
+                  <span
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px",
-                      fontSize: "13px",
-                      fontWeight: "700",
-                      color: "#16a34a",
+                      fontSize: "11px",
+                      color: "#6b7280",
+                      fontWeight: "800",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.5px",
+                      display: "block",
+                      marginBottom: "8px",
                     }}
                   >
-                    <input
-                      type="checkbox"
-                      checked={true}
-                      disabled
-                      style={{ width: "16px", height: "16px" }}
-                    />
-                    Con todo (Base incluida)
-                  </label>
-                  <hr
+                    Ingredientes Base (Desmarca para quitar)
+                  </span>
+                  <div
                     style={{
-                      border: "0",
-                      borderTop: "1px dashed #e5e7eb",
-                      margin: "2px 0",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
+                      background: "#fafafa",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "1px solid #e5e7eb",
                     }}
-                  />
-
-                  {Object.keys(dynamicToggles).map((modName, idx) => (
+                  >
                     <label
-                      key={idx}
                       style={{
                         display: "flex",
                         alignItems: "center",
                         gap: "10px",
-                        cursor: "pointer",
                         fontSize: "13px",
-                        color: "#374151",
+                        fontWeight: "700",
+                        color: "#16a34a",
                       }}
                     >
                       <input
                         type="checkbox"
-                        checked={dynamicToggles[modName]}
-                        onChange={(e) =>
-                          setDynamicToggles({
-                            ...dynamicToggles,
-                            [modName]: e.target.checked,
-                          })
-                        }
-                        style={{
-                          width: "16px",
-                          height: "16px",
-                          cursor: "pointer",
-                        }}
+                        checked={true}
+                        disabled
+                        style={{ width: "16px", height: "16px" }}
                       />
-                      {modName}
+                      Con todo (Base incluida)
                     </label>
-                  ))}
+                    <hr
+                      style={{
+                        border: "0",
+                        borderTop: "1px dashed #e5e7eb",
+                        margin: "2px 0",
+                      }}
+                    />
+
+                    {Object.keys(dynamicToggles).map((modName, idx) => (
+                      <label
+                        key={idx}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          color: "#374151",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={dynamicToggles[modName]}
+                          onChange={(e) =>
+                            setDynamicToggles({
+                              ...dynamicToggles,
+                              [modName]: e.target.checked,
+                            })
+                          }
+                          style={{
+                            width: "16px",
+                            height: "16px",
+                            cursor: "pointer",
+                          }}
+                        />
+                        {modName}
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* SECCIÓN 2: EXTRAS / ADICIONALES CON PRECIO (DESMARCADOS POR DEFECTO) */}
               {(() => {
