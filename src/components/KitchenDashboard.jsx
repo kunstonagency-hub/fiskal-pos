@@ -295,9 +295,9 @@ export default function KitchenDashboard({
     const itemsList = getItems(s);
     if (itemsList.length === 0) return false;
 
-    const kitchenItems = itemsList.filter((item) => {
-      const name = String(item.name || "").toLowerCase();
-      return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
+    const kitchenItems = itemsList.filter(item => {
+      const name = String(item.name || '').toLowerCase();
+      return !generalKeywords.some(gk => name.includes(gk));
     });
 
     return kitchenItems.length > 0;
