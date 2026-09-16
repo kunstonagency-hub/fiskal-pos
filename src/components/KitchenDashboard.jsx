@@ -20,7 +20,21 @@ import {
 // Dashboard de cocina y pantalla pública.
 // Este componente muestra el panel operativo de cocina, controla el flujo de pedidos y
 // también ofrece la vista para clientes con banners, videos y tablero de pedidos listos.
-const generalKeywords = []; // Ahora la cocina verá TODOS los productos (incluyendo bebidas)
+const GENERAL_KEYWORDS = [
+  "toddy",
+  "harina",
+  "azucar",
+  "galletas",
+  "citrato",
+  "disco duro",
+  "cronch",
+  "palitos",
+  "pepsi",
+  "coca cola",
+  "refresco",
+  "agua",
+  "cerveza",
+];
 
 const FALLBACK_BANNERS = [
   {
@@ -295,9 +309,9 @@ export default function KitchenDashboard({
     const itemsList = getItems(s);
     if (itemsList.length === 0) return false;
 
-    const kitchenItems = itemsList.filter(item => {
-      const name = String(item.name || '').toLowerCase();
-      return !generalKeywords.some(gk => name.includes(gk));
+    const kitchenItems = itemsList.filter((item) => {
+      const name = String(item.name || "").toLowerCase();
+      return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
     });
 
     return kitchenItems.length > 0;
