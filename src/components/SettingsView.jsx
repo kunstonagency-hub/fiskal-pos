@@ -11,6 +11,8 @@ import {
   Image as ImageIcon,
   UploadCloud,
   Monitor,
+  QrCode,
+  Download,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -39,6 +41,7 @@ function MapUpdater({ center }) {
 }
 
 function SettingsView({
+  currentStoreId, 
   currentStoreType,
   currentStoreRif,
   setCurrentStoreRif,
@@ -423,6 +426,62 @@ function SettingsView({
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+      
+      {/* NUEVO: CÓDIGO QR DE AUTO-SERVICIO */}
+      {currentStoreType === 'restaurant' && (
+        <div className="product-form-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#862e9c' }}>
+            <QrCode size={20} /> Menú QR (Auto-Servicio en Mesa)
+          </h3>
+          <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '16px' }}>
+            Descarga e imprime este código para colocarlo en tus mesas. Los clientes podrán escanearlo para pedir desde su celular sin hacer fila y las comandas llegarán directo a tu Historial.
+          </p>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#f3d9fa', padding: '24px', borderRadius: '12px', border: '1px solid #eebefa' }}>
+            <div style={{ background: '#fff', padding: '16px', borderRadius: '16px', boxShadow: '0 8px 16px rgba(0,0,0,0.1)' }}>
+              <img 
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${window.location.origin}/menu/${currentStoreId}`} 
+                alt="QR Auto-Servicio" 
+                style={{ display: 'block', width: '180px', height: '180px' }}
+              />
+            </div>
+            
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', width: '100%', maxWidth: '320px' }}>
+              <a 
+                href={`${window.location.origin}/menu/${currentStoreId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flex: 1, textAlign: 'center', background: '#fff', color: '#862e9c', border: '1px solid #862e9c', padding: '10px', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold', fontSize: '13px' }}
+              >
+                Probar QR
+              </a>
+              <button 
+                onClick={async () => {
+                  // Generamos la imagen en altísima calidad (1000x1000) para imprenta
+                  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${window.location.origin}/menu/${currentStoreId}`;
+                  try {
+                    const response = await fetch(qrUrl);
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `QR_Menu_Mesas.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  } catch (err) {
+                    window.open(qrUrl, '_blank');
+                  }
+                }}
+                style={{ flex: 1, background: '#862e9c', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+              >
+                <Download size={16} /> Descargar (HD)
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -82,6 +82,7 @@ import AdminMasterView from "./components/AdminMasterView";
 import SettingsView from "./components/SettingsView";
 import PosTerminalView from "./components/PosTerminalView";
 import RecipesCostView from "./components/RecipesCostView";
+import LocalMenuView from './components/LocalMenuView';
 
 const customIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -204,6 +205,12 @@ const compressImage = (file, maxWidth = 800, quality = 0.7) => {
 // Centraliza la autenticación, el estado global, la navegación entre módulos y
 // la coordinación de todas las vistas del sistema Fiskal.
 function App() {
+
+  const currentPath = window.location.pathname;
+  if (currentPath.startsWith('/menu/')) {
+    const urlStoreId = currentPath.split('/menu/')[1];
+    return <LocalMenuView storeId={urlStoreId} />;
+  }
   const [session, setSession] = useState(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -6430,6 +6437,7 @@ function App() {
               currentUserRole === "super_admin" ||
               currentUserRole === "system_vendor") && (
               <SettingsView
+                currentStoreId={currentStoreId} 
                 currentStoreRif={currentStoreRif}
                 setCurrentStoreRif={setCurrentStoreRif}
                 currentStoreAddress={currentStoreAddress}
