@@ -3696,32 +3696,33 @@ function App() {
   };
 
   const handleDeleteProduct = async (id) => {
+    // 1. VENTANA DE ADVERTENCIA PARA EVITAR BORRADOS ACCIDENTALES
+    if (!window.confirm("⚠️ ¿Estás absolutamente seguro de que deseas ELIMINAR este producto del menú? Esta acción no se puede deshacer.")) {
+      return; // Si le da a "Cancelar", se detiene todo y no borra nada.
+    }
+
     if (!isOnline) {
-      if (id.toString().startsWith("local_")) {
+      if (id.toString().startsWith('local_')) {
         const actions = await getOfflineActions();
-        const action = actions.find(
-          (a) => a.type === "INSERT_PRODUCT" && a.tempId === id,
-        );
+        const action = actions.find(a => a.type === 'INSERT_PRODUCT' && a.tempId === id);
         if (action) await clearOfflineAction(action.local_id);
       } else {
-        await queueOfflineAction({ type: "DELETE_PRODUCT", productId: id });
+        await queueOfflineAction({ type: 'DELETE_PRODUCT', productId: id });
       }
-      setProducts(products.filter((p) => p.id !== id));
+      setProducts(products.filter(p => p.id !== id));
       checkPendingSales();
       alert("¡Estás Offline! Producto eliminado localmente.");
       return;
     }
 
     try {
-      const { error } = await supabase
-        .from("products")
-        .delete()
-        .eq("id", id)
-        .eq("store_id", currentStoreId);
+      const { error } = await supabase.from('products').delete().eq('id', id).eq('store_id', currentStoreId);
       if (error) throw error;
       fetchProducts(currentStoreId);
+      alert("Producto eliminado exitosamente.");
     } catch (error) {
-      console.error("Error al eliminar producto:", error.message);
+      console.error('Error al eliminar producto:', error.message);
+      alert("Error al eliminar producto: " + error.message);
     }
   };
 
