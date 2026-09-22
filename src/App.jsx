@@ -3424,36 +3424,31 @@ function App() {
         if (isOnline) {
           imageUrl = await uploadImageToSupabase();
         } else {
-          alert(
-            "Aviso: Como estás Offline, la imagen no se subirá temporalmente.",
-          );
+          alert("Aviso: Como estás Offline, la imagen no se subirá temporalmente.");
         }
-      } else if (imagePreview && !imagePreview.startsWith("blob:")) {
+      } else if (imagePreview && !imagePreview.startsWith('blob:')) {
         // Mantiene la foto existente al duplicar
         imageUrl = imagePreview;
       }
 
-      const newProduct = {
-        name,
-        price: parseFloat(price),
-        cost: parseFloat(cost) || 0,
-        stock: parseInt(stock) || 0,
-        category: category || "General",
+      const newProduct = { 
+        name, 
+        price: parseFloat(price), 
+        cost: parseFloat(cost) || 0, 
+        stock: parseInt(stock) || 0, 
+        category: category || 'General',
         barcode: barcode.trim() || null,
         image_url: imageUrl,
-        modifiers: productModifiers.join(", "),
+        modifiers: productModifiers.join(', '),
+        extras: productExtras, // <--- ¡AQUÍ ESTABA LA FALLA! Ahora sí se guardan los extras.
         store_id: currentStoreId,
         show_in_krono: showInKrono,
-        krono_preferential_price: kronoPrice ? parseFloat(kronoPrice) : null,
+        krono_preferential_price: kronoPrice ? parseFloat(kronoPrice) : null
       };
 
       if (!isOnline) {
         const tempId = `local_prod_${Date.now()}`;
-        await queueOfflineAction({
-          type: "INSERT_PRODUCT",
-          productData: newProduct,
-          tempId,
-        });
+        await queueOfflineAction({ type: 'INSERT_PRODUCT', productData: newProduct, tempId });
         setProducts([{ ...newProduct, id: tempId }, ...products]);
         resetProductForm();
         setLoading(false);
@@ -3462,14 +3457,14 @@ function App() {
         return;
       }
 
-      const { error } = await supabase.from("products").insert([newProduct]);
+      const { error } = await supabase.from('products').insert([newProduct]);
       if (error) throw error;
 
       resetProductForm();
       fetchProducts(currentStoreId);
       alert("¡Producto guardado exitosamente!");
     } catch (error) {
-      console.error("Error al guardar producto:", error.message);
+      console.error('Error al guardar producto:', error.message);
       alert("Error al guardar producto: " + error.message);
     } finally {
       setLoading(false);
@@ -3613,7 +3608,7 @@ function App() {
           : prod.modifiers;
       setProductModifiers(arr);
     } else {
-      setProductModifiers(["Cebolla", "Papa", "Queso", "Salsas"]);
+      setProductModifiers([]); 
     }
 
     // Copiar todos los extras con sus precios
