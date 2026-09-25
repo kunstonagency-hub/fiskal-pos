@@ -259,8 +259,40 @@ function App() {
   const [resetMessage, setResetMessage] = useState("");
 
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
+  const [newPassword, setNewPassword] = useState('');
   const [updatingPassword, setUpdatingPassword] = useState(false);
+
+  // NUEVO: Candado de Autorización (PIN de Dueño)
+  const [storeAdminPin, setStoreAdminPin] = useState('1234');
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authPinInput, setAuthPinInput] = useState('');
+  const [pendingAction, setPendingAction] = useState(null);
+
+  const requestAdminAuth = (actionType, payload) => {
+    if (currentUserRole !== 'cajero') {
+      // Si es dueño o super admin, pasa directo sin pedir clave
+      if (actionType === 'edit') handleStartEditProduct(payload);
+      if (actionType === 'delete') handleDeleteProduct(payload.id);
+    } else {
+      // Si es cajero, levanta el candado
+      setPendingAction({ type: actionType, payload });
+      setAuthPinInput('');
+      setShowAuthModal(true);
+    }
+  };
+
+  const verifyAdminPin = (e) => {
+    e.preventDefault();
+    if (authPinInput === storeAdminPin) {
+      setShowAuthModal(false);
+      if (pendingAction.type === 'edit') handleStartEditProduct(pendingAction.payload);
+      if (pendingAction.type === 'delete') handleDeleteProduct(pendingAction.payload.id);
+      setPendingAction(null);
+    } else {
+      alert("❌ PIN Incorrecto. Autorización denegada.");
+      setAuthPinInput('');
+    }
+  };
 
   const handleUpdatePassword = async (e) => {
     e.preventDefault();
@@ -1250,13 +1282,7 @@ function App() {
         activeStoreId !== "undefined"
       ) {
         if (navigator.onLine) {
-          const { data: storeInfo, error: storeErr } = await supabase
-            .from("stores")
-            .select(
-              "name, is_active, store_type, country, rif, document, address, tax_enabled, tax_rate, tax_inclusive, krono_enabled, lat, lng, is_trial, trial_end_date, subscription_expires_at, kds_banners",
-            )
-            .eq("id", activeStoreId)
-            .single();
+          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active, store_type, country, rif, document, address, tax_enabled, tax_rate, tax_inclusive, krono_enabled, lat, lng, is_trial, trial_end_date, subscription_expires_at, kds_banners, admin_pin').eq('id', activeStoreId).single();
 
           if (storeInfo) {
             console.log(
@@ -1342,6 +1368,7 @@ function App() {
               setCurrentStoreLat(parseFloat(storeInfo.lat) || 10.4806);
               setCurrentStoreLng(parseFloat(storeInfo.lng) || -66.9036);
               setCurrentStoreKdsBanners(storeInfo.kds_banners || []);
+              setStoreAdminPin(storeInfo.admin_pin || '1234');
 
               localStorage.setItem(
                 `fiskal_cache_store_name_${activeStoreId}`,
@@ -6372,6 +6399,7 @@ function App() {
 
           {activeTab === "products" && (
             <ProductsView
+              requestAdminAuth={requestAdminAuth}
               handleDuplicateProduct={handleDuplicateProduct}
               editingProduct={editingProduct}
               currentStoreType={currentStoreType}
@@ -6433,7 +6461,10 @@ function App() {
               currentUserRole === "super_admin" ||
               currentUserRole === "system_vendor") && (
               <SettingsView
-                currentStoreId={currentStoreId} 
+                supabase={supabase}
+                currentStoreId={currentStoreId}
+                storeAdminPin={storeAdminPin}
+                setStoreAdminPin={setStoreAdminPin} 
                 currentStoreRif={currentStoreRif}
                 setCurrentStoreRif={setCurrentStoreRif}
                 currentStoreAddress={currentStoreAddress}
@@ -9490,6 +9521,38 @@ function App() {
                 Imprimir (Tamaño Carta / A4)
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* MODAL DE AUTORIZACIÓN (PIN DE GERENTE) */}
+      {showAuthModal && (
+        <div className="modal-overlay" style={{ zIndex: 20000 }}>
+          <div className="modal-content" style={{ width: '350px', textAlign: 'center', padding: '24px' }}>
+            <div style={{ width: '60px', height: '60px', background: '#fee2e2', color: '#ef4444', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <Lock size={30} />
+            </div>
+            <h3 style={{ margin: '0 0 8px 0', color: '#111827' }}>Autorización Requerida</h3>
+            <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '20px' }}>
+              Esta acción requiere el PIN de seguridad del dueño.
+            </p>
+            <form onSubmit={verifyAdminPin}>
+              <input 
+                type="password" 
+                inputMode="numeric"
+                placeholder="****" 
+                value={authPinInput}
+                onChange={e => setAuthPinInput(e.target.value.replace(/\D/g, ''))}
+                autoFocus
+                required
+                maxLength={4}
+                style={{ width: '100%', padding: '14px', fontSize: '28px', letterSpacing: '12px', textAlign: 'center', borderRadius: '8px', border: '2px solid #cbd5e1', marginBottom: '16px', outline: 'none' }}
+              />
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button type="button" onClick={() => { setShowAuthModal(false); setPendingAction(null); }} style={{ flex: 1, padding: '12px', background: '#f1f5f9', border: 'none', borderRadius: '8px', fontWeight: 'bold', color: '#475569', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ flex: 1, padding: '12px', background: '#111827', border: 'none', borderRadius: '8px', fontWeight: 'bold', color: '#fff', cursor: 'pointer' }}>Autorizar</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

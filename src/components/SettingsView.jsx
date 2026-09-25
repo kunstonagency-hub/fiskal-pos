@@ -41,7 +41,10 @@ function MapUpdater({ center }) {
 }
 
 function SettingsView({
-  currentStoreId, 
+  supabase,
+  currentStoreId,
+  storeAdminPin,
+  setStoreAdminPin, 
   currentStoreType,
   currentStoreRif,
   setCurrentStoreRif,
@@ -152,6 +155,33 @@ function SettingsView({
               placeholder="Ej. J-12345678-9"
             />
           </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+            <div className="form-group">
+              <label>PIN de Seguridad (Cajeros)</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input 
+                  type="password" 
+                  maxLength={4} 
+                  value={storeAdminPin} 
+                  onChange={e => setStoreAdminPin(e.target.value.replace(/\D/g, ''))} 
+                  placeholder="1234" 
+                  style={{ width: '100px', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '16px', letterSpacing: '2px', textAlign: 'center', fontWeight: 'bold', outline: 'none' }} 
+                />
+                <button type="button" onClick={async () => {
+                  if (storeAdminPin.length < 4) return alert("El PIN debe tener 4 dígitos.");
+                  try {
+                    const { error } = await supabase.from('stores').update({ admin_pin: storeAdminPin }).eq('id', currentStoreId);
+                    if (error) throw error; // Si hay error en Supabase, lo atrapamos
+                    alert("✅ PIN de seguridad actualizado exitosamente.");
+                  } catch(e) { 
+                    console.error("Detalle del error:", e);
+                    alert("Error guardando PIN: " + e.message); 
+                  }
+                }} style={{ background: '#111827', color: '#fff', border: 'none', padding: '0 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar PIN</button>
+              </div>
+            </div>
+          </div>
+
           <div className="form-group">
             <label>Dirección Física en Facturas</label>
             <textarea

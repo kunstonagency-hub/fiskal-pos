@@ -12,6 +12,7 @@ import {
 // Este componente centraliza el alta, edición, duplicado, eliminación y reabastecimiento de productos,
 // además de los modifiers, extras y opciones específicas para restaurante.
 function ProductsView({
+  requestAdminAuth,
   editingProduct,
   currentStoreType,
   handleUpdateProduct,
@@ -996,20 +997,8 @@ function ProductsView({
                         >
                           <QrCode size={16} />
                         </button>
-                        <button
-                          className="btn-icon-edit"
-                          onClick={() => handleStartEditProduct(prod)}
-                          title="Editar"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          className="btn-icon-danger"
-                          onClick={() => handleDeleteProduct(prod.id)}
-                          title="Eliminar"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <button type="button" className="btn-icon-edit" onClick={() => requestAdminAuth('edit', prod)} title="Editar"><Edit2 size={16} /></button>
+                        <button type="button" className="btn-icon-danger" onClick={() => requestAdminAuth('delete', prod)} title="Eliminar"><Trash2 size={16} /></button>
                       </div>
                     </td>
                   </tr>
