@@ -14,6 +14,7 @@ import {
   CreditCard,
   ShoppingCart,
   X,
+  AlertTriangle 
 } from "lucide-react";
 
 // Terminal de punto de venta.
@@ -59,12 +60,49 @@ export default function PosTerminalView({
   processing,
   setSettlingSale,
   setShowPaymentModal,
+  isEditingOrder = false, // <--- NUEVO: Prop para saber si es un pedido retomado
 }) {
   // Estado para controlar si el carrito está abierto en móviles/tablets
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
 
+  // --- ESTADOS PARA EL MODAL DE ADVERTENCIA ---
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+  const [itemToModify, setItemToModify] = useState(null);
+
   // Calcular cantidad total de ítems en el carrito para la burbuja
   const totalCartItems = cart.reduce((total, item) => total + item.quantity, 0);
+
+  // --- FUNCIÓN INTERCEPTORA: Evalúa si es restaurante Y si el pedido ya fue a cocina ---
+  const handleModifyAttempt = (item, actionType, id, value = null) => {
+    // SOLO mostrar el modal si estamos en modo "restaurant" Y es una cuenta retomada (ya fue a cocina)
+    if (currentStoreType === "restaurant" && isEditingOrder) {
+      setItemToModify(item.name);
+      setPendingAction(() => () => {
+        if (actionType === "remove") removeFromCart(id);
+        if (actionType === "update") updateQuantity(id, value);
+      });
+      setShowWarningModal(true);
+    } else {
+      // Si NO es restaurante, o es un PEDIDO NUEVO, elimina o resta inmediatamente sin preguntar
+      if (actionType === "remove") removeFromCart(id);
+      if (actionType === "update") updateQuantity(id, value);
+    }
+  };
+
+  const confirmModification = () => {
+    if (pendingAction) pendingAction();
+    setShowWarningModal(false);
+    setPendingAction(null);
+    setItemToModify(null);
+  };
+
+  const cancelModification = () => {
+    setShowWarningModal(false);
+    setPendingAction(null);
+    setItemToModify(null);
+  };
+  // -------------------------------------------------------------
 
   return (
     <div className="pos-grid">
@@ -167,6 +205,44 @@ export default function PosTerminalView({
           }
         }
       `}</style>
+
+      {/* --- MODAL DE ADVERTENCIA (SOLO SE ACTIVA SI ES RESTAURANTE Y ES UN PEDIDO RETOMADO) --- */}
+      {showWarningModal && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 100000, display: "flex",
+          alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)"
+        }}>
+          <div style={{
+            background: "#fff", borderRadius: "16px", width: "90%", maxWidth: "400px", padding: "24px",
+            textAlign: "center", boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)"
+          }}>
+            <div style={{
+              width: "60px", height: "60px", borderRadius: "50%", background: "#fef2f2",
+              display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", color: "#ef4444"
+            }}>
+              <AlertTriangle size={32} />
+            </div>
+            <h2 style={{ margin: "0 0 12px 0", color: "#111827", fontSize: "20px", fontWeight: "800" }}>
+              ¿Avisaste a Cocina?
+            </h2>
+            <p style={{ color: "#4b5563", fontSize: "14px", lineHeight: "1.5", marginBottom: "20px" }}>
+              Estás modificando <strong>{itemToModify}</strong> de una orden existente.<br/><br/>
+              Si este producto ya se estaba preparando en la cocina, <strong>asegúrate de avisarle al cocinero</strong>.
+            </p>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button onClick={cancelModification} style={{
+                flex: 1, padding: "12px", background: "#f3f4f6", color: "#4b5563",
+                border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer"
+              }}>Cancelar</button>
+              <button onClick={confirmModification} style={{
+                flex: 1, padding: "12px", background: "#ef4444", color: "#fff",
+                border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer"
+              }}>Sí, eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ------------------------------------------------ */}
 
       {/* SECCIÓN IZQUIERDA: CATÁLOGO */}
       <div className="products-catalog">
@@ -960,9 +1036,10 @@ export default function PosTerminalView({
                       border: "1px solid #ced4da",
                     }}
                   >
+                    {/* --- BOTÓN RESTAR CON VALIDACIÓN DE RETOMADO --- */}
                     <button
                       onClick={() =>
-                        updateQuantity(item.cartItemId || item.id, -1)
+                        handleModifyAttempt(item, "update", item.cartItemId || item.id, -1)
                       }
                       style={{
                         background: "none",
@@ -973,6 +1050,7 @@ export default function PosTerminalView({
                     >
                       <Minus size={14} color="#495057" />
                     </button>
+                    
                     <span
                       style={{
                         fontWeight: "bold",
@@ -983,6 +1061,7 @@ export default function PosTerminalView({
                     >
                       {item.quantity}
                     </span>
+
                     <button
                       onClick={() =>
                         updateQuantity(item.cartItemId || item.id, 1)
@@ -996,8 +1075,10 @@ export default function PosTerminalView({
                     >
                       <Plus size={14} color="#495057" />
                     </button>
+
+                    {/* --- BOTÓN ELIMINAR CON VALIDACIÓN DE RETOMADO --- */}
                     <button
-                      onClick={() => removeFromCart(item.cartItemId || item.id)}
+                      onClick={() => handleModifyAttempt(item, "remove", item.cartItemId || item.id)}
                       style={{
                         background: "#fff5f5",
                         border: "none",

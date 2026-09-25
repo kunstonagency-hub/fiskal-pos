@@ -6236,6 +6236,7 @@ function App() {
               processing={processing}
               setSettlingSale={setSettlingSale}
               setShowPaymentModal={setShowPaymentModal}
+              isEditingOrder={!!settlingSale}
             />
           )}
 
