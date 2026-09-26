@@ -262,6 +262,39 @@ function App() {
   const [newPassword, setNewPassword] = useState('');
   const [updatingPassword, setUpdatingPassword] = useState(false);
 
+  const [scannerMode, setScannerMode] = useState("pos"); // 'pos' o 'inventory'
+  const [flashEnabled, setFlashEnabled] = useState(false);
+
+  const toggleFlash = async () => {
+  try {
+    // Buscamos el elemento de video dentro de TU contenedor específico
+    const videoEl = document.querySelector("#fiskal-qr-reader video");
+    
+    if (!videoEl || !videoEl.srcObject) {
+      alert("La cámara aún no está inicializada o no se detecta video.");
+      return;
+    }
+
+    const track = videoEl.srcObject.getVideoTracks()[0];
+    const capabilities = track.getCapabilities();
+
+    if (!capabilities.torch) {
+      alert("Tu cámara actual o navegador no soportan encender el flash.");
+      return;
+    }
+
+    const newFlashState = !flashEnabled;
+    await track.applyConstraints({
+      advanced: [{ torch: newFlashState }]
+    });
+    
+    setFlashEnabled(newFlashState);
+  } catch (err) {
+    console.error("Error al alternar el flash:", err);
+    alert("Hubo un error al intentar encender el flash.");
+  }
+};
+
   // NUEVO: Candado de Autorización (PIN de Dueño)
   const [storeAdminPin, setStoreAdminPin] = useState('1234');
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -3769,16 +3802,22 @@ function App() {
       }
     }
 
-    const foundProduct = products.find(
-      (p) => p.barcode === cleanCode || p.id.toString() === cleanCode,
-    );
-
-    if (foundProduct) {
-      addToCart(foundProduct);
+    if (scannerMode === "inventory") {
+      // Estamos en la pantalla de inventario: pegamos el código en el input
+      setBarcode(cleanCode);
     } else {
-      alert(
-        `Código escaneado: "${cleanCode}", pero no se encontró ningún producto asociado.`,
+      // Estamos en el POS: buscamos el producto para vender
+      const foundProduct = products.find(
+        (p) => p.barcode === cleanCode || p.id.toString() === cleanCode,
       );
+
+      if (foundProduct) {
+        addToCart(foundProduct);
+      } else {
+        alert(
+          `Código escaneado: "${cleanCode}", pero no se encontró ningún producto asociado.`,
+        );
+      }
     }
   };
 
@@ -3856,7 +3895,8 @@ function App() {
     }
   }, [showCameraScannerModal]);
 
-  const startCameraScanner = () => {
+  const startCameraScanner = (mode = "pos") => {
+    setScannerMode(mode);
     setCameraScanError("");
     setShowCameraScannerModal(true);
   };
@@ -6442,6 +6482,7 @@ function App() {
               setNewExtraName={setNewExtraName}
               newExtraPrice={newExtraPrice}
               setNewExtraPrice={setNewExtraPrice}
+              onStartCameraScanner={() => startCameraScanner("inventory")}
             />
           )}
 
@@ -7615,74 +7656,132 @@ function App() {
 
       {/* 1.4 MODAL: ESCÁNER CON CÁMARA EN VIVO */}
       {showCameraScannerModal && (
-        <div className="modal-overlay" style={{ zIndex: 10005 }}>
+  <div className="modal-overlay" style={{ zIndex: 10005 }}>
+    <div
+      className="modal-content"
+      style={{ width: "380px", textAlign: "center", padding: "20px" }}
+    >
+      <div
+        className="modal-header"
+        style={{ borderBottom: "none", paddingBottom: "0" }}
+      >
+        <h3>Escáner en Vivo</h3>
+        <button 
+          className="btn-close-modal" 
+          onClick={() => {
+            setFlashEnabled(false);
+            stopCameraScanner();
+          }}
+        >
+          <X size={20} />
+        </button>
+      </div>
+      <div className="modal-body" style={{ padding: "12px 0" }}>
+        
+        {/* --- CONTENEDOR RELATIVO PARA LA CÁMARA Y EL LÁSER --- */}
+        <div style={{ position: "relative", width: "100%", borderRadius: "8px", overflow: "hidden", background: "#000" }}>
+          
           <div
-            className="modal-content"
-            style={{ width: "380px", textAlign: "center", padding: "20px" }}
-          >
-            <div
-              className="modal-header"
-              style={{ borderBottom: "none", paddingBottom: "0" }}
-            >
-              <h3>Escáner en Vivo</h3>
-              <button className="btn-close-modal" onClick={stopCameraScanner}>
-                <X size={20} />
-              </button>
-            </div>
-            <div className="modal-body" style={{ padding: "12px 0" }}>
-              <div
-                ref={
-                  typeof scannerContainerRef !== "undefined"
-                    ? scannerContainerRef
-                    : null
-                }
-                id="fiskal-qr-reader"
-                style={{
-                  width: "100%",
-                  minHeight: "250px",
-                  background: "#000",
-                  borderRadius: "8px",
-                  overflow: "hidden",
-                }}
-              ></div>
-              {cameraScanError ? (
-                <p
-                  style={{
-                    color: "#fa5252",
-                    fontSize: "12px",
-                    marginTop: "8px",
-                  }}
-                >
-                  {cameraScanError}
-                </p>
-              ) : (
-                <p
-                  style={{
-                    color: "#6c757d",
-                    fontSize: "12px",
-                    marginTop: "8px",
-                  }}
-                >
-                  Apunta al código para escanear automáticamente
-                </p>
-              )}
-            </div>
-            <div
-              className="modal-footer"
-              style={{ borderTop: "none", justifyContent: "center" }}
-            >
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={stopCameraScanner}
-                style={{ width: "100%" }}
-              >
-                Cancelar Escáner
-              </button>
-            </div>
-          </div>
+            ref={
+              typeof scannerContainerRef !== "undefined"
+                ? scannerContainerRef
+                : null
+            }
+            id="fiskal-qr-reader"
+            style={{
+              width: "100%",
+              minHeight: "250px",
+            }}
+          ></div>
+          
+          {/* LÍNEA ROJA (LÁSER FANTASMA) */}
+          <div
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: "15%",
+              width: "70%",
+              height: "2px",
+              backgroundColor: "rgba(255, 0, 0, 0.7)",
+              boxShadow: "0 0 10px rgba(255, 0, 0, 1)",
+              zIndex: 10,
+              transform: "translateY(-50%)",
+              pointerEvents: "none" // Clave: permite que el usuario toque la cámara a través de la línea
+            }}
+          ></div>
+
         </div>
-      )}
+        {/* ----------------------------------------------------- */}
+
+        {cameraScanError ? (
+          <p
+            style={{
+              color: "#fa5252",
+              fontSize: "12px",
+              marginTop: "12px",
+            }}
+          >
+            {cameraScanError}
+          </p>
+        ) : (
+          <p
+            style={{
+              color: "#6c757d",
+              fontSize: "12px",
+              marginTop: "12px",
+            }}
+          >
+            Apunta al código para escanear automáticamente
+          </p>
+        )}
+      </div>
+      
+      <div
+        className="modal-footer"
+        style={{ 
+          borderTop: "none", 
+          display: "flex", 
+          flexDirection: "column", // Para apilar los botones 
+          gap: "8px" 
+        }}
+      >
+        {/* BOTÓN DEL FLASH */}
+        <button
+          type="button"
+          onClick={toggleFlash}
+          style={{
+            width: "100%",
+            background: flashEnabled ? "#fbbf24" : "#2b3035", // Amarillo si está encendido, oscuro si está apagado
+            color: flashEnabled ? "#000" : "#fff",
+            border: "none",
+            padding: "10px",
+            borderRadius: "6px",
+            fontWeight: "bold",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px"
+          }}
+        >
+          🔦 {flashEnabled ? "Apagar Linterna" : "Encender Linterna"}
+        </button>
+
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => {
+            setFlashEnabled(false);
+            stopCameraScanner();
+          }}
+          style={{ width: "100%", padding: "10px" }}
+        >
+          Cancelar Escáner
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* -------------------------------------------------------------------------- */}
       {/* GRUPO 2: CAJA Y TURNOS                                                    */}

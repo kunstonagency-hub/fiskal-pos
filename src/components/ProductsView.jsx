@@ -6,6 +6,7 @@ import {
   Edit2,
   Trash2,
   Copy,
+  Camera, // <-- IMPORTAMOS EL ÍCONO DE LA CÁMARA
 } from "lucide-react";
 
 // Vista de gestión del catálogo.
@@ -54,6 +55,7 @@ function ProductsView({
   handleOpenLabel,
   handleStartEditProduct,
   handleDeleteProduct,
+  onStartCameraScanner, // <--- NUEVA PROPIEDAD PARA ABRIR LA CÁMARA
 }) {
   const [addedUnits, setAddedUnits] = useState("");
 
@@ -223,17 +225,45 @@ function ProductsView({
               style={{ width: "100%", boxSizing: "border-box" }}
             />
           </div>
+          
+          {/* --- AQUÍ FUE MODIFICADO EL CAMPO DEL CÓDIGO DE BARRAS --- */}
           <div className="form-group">
             <label>Código de Barras / SKU (Autogenerado al duplicar)</label>
-            <input
-              name="barcode"
-              type="text"
-              value={barcode}
-              onChange={(e) => setBarcode(e.target.value)}
-              placeholder="SKU-001"
-              style={{ width: "100%", boxSizing: "border-box" }}
-            />
+            <div style={{ position: "relative", width: "100%", display: "flex", alignItems: "center" }}>
+              <QrCode size={16} style={{ position: "absolute", left: "10px", color: "#6c757d", zIndex: 2 }} />
+              <input
+                name="barcode"
+                type="text"
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                placeholder="Escanea o escribe el código..."
+                style={{ width: "100%", boxSizing: "border-box", paddingLeft: "34px", paddingRight: "40px" }}
+              />
+              <button
+                type="button"
+                onClick={onStartCameraScanner}
+                title="Escanear Código de Barras"
+                style={{
+                  position: "absolute",
+                  right: "4px",
+                  background: "#212529",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "6px 8px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 2
+                }}
+              >
+                <Camera size={15} />
+              </button>
+            </div>
           </div>
+          {/* --------------------------------------------------------- */}
+
           <div className="form-group">
             <label>Precio de Venta ($ USD)</label>
             <input
