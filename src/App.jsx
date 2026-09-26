@@ -7132,382 +7132,476 @@ function App() {
             </div>
 
             <div className="modal-body" style={{ padding: "20px" }}>
-              {/* Resumen Total */}
-              <div
-                style={{
-                  background: "#f9fafb",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "8px",
-                  padding: "14px 18px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "16px",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "#6b7280",
-                    textTransform: "uppercase",
-                    fontWeight: "800",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  Total a Pagar
-                </span>
-                <div style={{ textAlign: "right" }}>
-                  <h2
-                    style={{
-                      fontSize: "24px",
-                      fontWeight: "900",
-                      color: "#111827",
-                      margin: 0,
-                    }}
-                  >
-                    ${totalUSD.toFixed(2)}
-                  </h2>
-                  {currentStoreCountry === "venezuela" && (
-                    <span
+              
+              {/* --- CÁLCULOS BLINDADOS PARA ABONOS (LEYENDO TU BD) --- */}
+              {(() => {
+                const isAbono = !!settlingSale;
+                
+                // Leemos DIRECTAMENTE las columnas que me mostraste en Supabase
+                const originalTotal = isAbono ? Number(settlingSale.total_usd || 0) : Number(totalUSD);
+                
+                // La deuda actual es exactamente el "balance_due_usd"
+                const targetUSD = isAbono ? Number(settlingSale.balance_due_usd || 0) : originalTotal;
+                
+                // Por lo tanto, lo que pagó antes es el Total menos lo que debe ahora
+                const previouslyPaid = isAbono ? (originalTotal - targetUSD) : 0;
+
+                const targetBs = targetUSD * (bcvRate || 1);
+                
+                // Cálculo de Vuelto y Restante con lo que el usuario está escribiendo AHORA en los inputs
+                const currentPaid = Number(totalPaidUSD) || 0;
+                const calcRemaining = targetUSD - currentPaid;
+                const calcChange = currentPaid - targetUSD;
+                
+                const finalRemaining = calcRemaining > 0 ? calcRemaining : 0;
+                const finalChange = calcChange > 0 ? calcChange : 0;
+                const finalChangeBs = finalChange * (bcvRate || 1);
+
+                return (
+                  <>
+                    {/* NUEVO: HISTORIAL DE LA FACTURA PARA CRÉDITOS */}
+                    {isAbono && (
+                      <div
+                        style={{
+                          background: "#f0fdf4",
+                          border: "1px solid #bbf7d0",
+                          borderRadius: "8px",
+                          padding: "12px",
+                          marginBottom: "16px",
+                          fontSize: "12px",
+                        }}
+                      >
+                        <h4 style={{ margin: "0 0 8px 0", color: "#166534", fontWeight: "800", display: "flex", justifyContent: "space-between" }}>
+                          <span>🧾 Resumen de la Cuenta</span>
+                          <span style={{ fontSize: "11px", background: "#dcfce7", padding: "2px 6px", borderRadius: "4px" }}>
+                            {settlingSale.invoice_number || settlingSale.id || '---'}
+                          </span>
+                        </h4>
+                        <div style={{ display: "flex", justifyContent: "space-between", color: "#15803d", marginBottom: "4px" }}>
+                          <span>Total Original Facturado:</span>
+                          <strong>${originalTotal.toFixed(2)}</strong>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", color: "#15803d", borderBottom: invoiceHistory && invoiceHistory.length > 0 ? "1px dashed #bbf7d0" : "none", paddingBottom: invoiceHistory && invoiceHistory.length > 0 ? "6px" : "0", marginBottom: invoiceHistory && invoiceHistory.length > 0 ? "6px" : "0" }}>
+                          <span>Abonado Previamente:</span>
+                          <strong>${previouslyPaid.toFixed(2)}</strong>
+                        </div>
+
+                        {/* HISTORIAL DE ABONOS DESGLOSADO */}
+                        {invoiceHistory && invoiceHistory.length > 0 && (
+                          <div style={{ marginTop: "8px" }}>
+                            <span style={{ fontSize: "10px", color: "#166534", fontWeight: "bold", textTransform: "uppercase" }}>Detalle de abonos anteriores:</span>
+                            {invoiceHistory.map((h, i) => {
+                              const histBcvRate = h.payment_details?.applied_bcv_rate || bcvRate || 1;
+                              const isVzlaHist = currentStoreCountry === "venezuela";
+                              const abonoAmount = Number(h.amount_usd) || Number(h.amount) || 0;
+                              
+                              const abonoText = isVzlaHist
+                                ? `Bs. ${(abonoAmount * histBcvRate).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Ref: $${abonoAmount.toFixed(2)})`
+                                : `$${abonoAmount.toFixed(2)}`;
+
+                              return (
+                                <div
+                                  key={i}
+                                  style={{
+                                    fontSize: "11px",
+                                    padding: "6px",
+                                    background: "#dcfce7",
+                                    borderRadius: "4px",
+                                    marginTop: "4px",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    color: "#166534"
+                                  }}
+                                >
+                                  <span>{new Date(h.created_at).toLocaleString()}</span>
+                                  <strong>{abonoText}</strong>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Resumen Total */}
+                    <div
                       style={{
-                        fontSize: "13px",
-                        color: "#6b7280",
-                        fontWeight: "600",
+                        background: "#f9fafb",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "8px",
+                        padding: "14px 18px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "16px",
                       }}
                     >
-                      Bs.{" "}
-                      {totalBs.toLocaleString("es-VE", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Estado de Pagos con los toques de color precisos */}
-              <div
-                style={{
-                  background: "#ffffff",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "8px",
-                  padding: "12px 16px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "8px",
-                  marginBottom: "16px",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: "13px",
-                    color: "#4b5563",
-                  }}
-                >
-                  <span>Total Ingresado:</span>
-                  <strong
-                    style={{
-                      color: totalPaidUSD >= totalUSD ? "#16a34a" : "#111827",
-                    }}
-                  >
-                    ${totalPaidUSD.toFixed(2)}{" "}
-                    {currentStoreCountry === "venezuela" &&
-                      `(Bs. ${(totalPaidUSD * bcvRate).toFixed(2)})`}
-                  </strong>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: "13px",
-                    color: "#4b5563",
-                  }}
-                >
-                  <span>Restante / Falta:</span>
-                  <strong
-                    style={{ color: remainingUSD > 0 ? "#e05d5d" : "#9ca3af" }}
-                  >
-                    ${remainingUSD.toFixed(2)}{" "}
-                    {currentStoreCountry === "venezuela" &&
-                      `(Bs. ${remainingBs.toFixed(2)})`}
-                  </strong>
-                </div>
-
-                {changeUSD > 0 && (
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontSize: "15px",
-                      borderTop: "1px dashed #e5e7eb",
-                      paddingTop: "8px",
-                      marginTop: "2px",
-                    }}
-                  >
-                    <span style={{ fontWeight: "700", color: "#111827" }}>
-                      Cambio / Vuelto:
-                    </span>
-                    <strong
-                      style={{
-                        fontSize: "18px",
-                        fontWeight: "900",
-                        color: "#16a34a",
-                      }}
-                    >
-                      ${changeUSD.toFixed(2)}
-                    </strong>
-                  </div>
-                )}
-              </div>
-
-              {/* SELECTOR DE VUELTO / CAMBIO */}
-              {changeUSD > 0 && currentStoreCountry === "venezuela" && (
-                <div
-                  style={{
-                    background: "#f9fafb",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "8px",
-                    padding: "14px",
-                    marginBottom: "16px",
-                  }}
-                >
-                  <label
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: "800",
-                      color: "#374151",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.5px",
-                      marginBottom: "8px",
-                      display: "block",
-                    }}
-                  >
-                    ¿Cómo vas a entregar el Vuelto de ${changeUSD.toFixed(2)}?
-                  </label>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr 1fr",
-                      gap: "6px",
-                      marginBottom: "10px",
-                    }}
-                  >
-                    {[
-                      { id: "USD", label: "💵 Efectivo USD" },
-                      { id: "BS", label: "💵 Efectivo Bs" },
-                      { id: "PAGO_MOVIL", label: "📱 Pago Móvil" },
-                    ].map((btn) => {
-                      const active = changeCurrencyType === btn.id;
-                      return (
-                        <button
-                          key={btn.id}
-                          type="button"
-                          onClick={() => setChangeCurrencyType(btn.id)}
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          color: "#6b7280",
+                          textTransform: "uppercase",
+                          fontWeight: "800",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
+                        {isAbono ? "Deuda Actual (Falta por Pagar)" : "Total a Pagar"}
+                      </span>
+                      <div style={{ textAlign: "right" }}>
+                        <h2
                           style={{
-                            padding: "9px 4px",
-                            fontSize: "11px",
-                            borderRadius: "6px",
-                            fontWeight: "700",
-                            cursor: "pointer",
-                            border: active
-                              ? "1px solid #111827"
-                              : "1px solid #d1d5db",
-                            background: active ? "#111827" : "#ffffff",
-                            color: active ? "#ffffff" : "#374151",
-                            transition: "all 0.15s",
+                            fontSize: "24px",
+                            fontWeight: "900",
+                            color: "#111827",
+                            margin: 0,
                           }}
                         >
-                          {btn.label}
-                        </button>
-                      );
-                    })}
-                  </div>
+                          ${targetUSD.toFixed(2)}
+                        </h2>
+                        {currentStoreCountry === "venezuela" && (
+                          <span
+                            style={{
+                              fontSize: "13px",
+                              color: "#6b7280",
+                              fontWeight: "600",
+                            }}
+                          >
+                            Bs.{" "}
+                            {targetBs.toLocaleString("es-VE", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
 
-                  {/* AJUSTES DE TASA PARA PAGO MÓVIL */}
-                  {changeCurrencyType === "PAGO_MOVIL" && (
+                    {/* Estado de Pagos actual */}
                     <div
                       style={{
                         background: "#ffffff",
-                        padding: "12px",
-                        borderRadius: "6px",
                         border: "1px solid #e5e7eb",
-                        marginTop: "8px",
+                        borderRadius: "8px",
+                        padding: "12px 16px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "8px",
+                        marginBottom: "16px",
                       }}
                     >
                       <div
                         style={{
                           display: "flex",
-                          gap: "6px",
-                          marginBottom: "8px",
+                          justifyContent: "space-between",
+                          fontSize: "13px",
+                          color: "#4b5563",
                         }}
                       >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPagoMovilRateMode("actual");
-                            setPagoMovilCustomRate("");
-                          }}
+                        <span>Monto Ingresado Ahora:</span>
+                        <strong
                           style={{
-                            flex: 1,
-                            padding: "7px",
-                            fontSize: "11px",
-                            borderRadius: "4px",
-                            cursor: "pointer",
-                            fontWeight: "700",
-                            border:
-                              pagoMovilRateMode === "actual"
-                                ? "1px solid #111827"
-                                : "1px solid #e5e7eb",
-                            background:
-                              pagoMovilRateMode === "actual"
-                                ? "#111827"
-                                : "#f9fafb",
-                            color:
-                              pagoMovilRateMode === "actual"
-                                ? "#ffffff"
-                                : "#4b5563",
+                            color: currentPaid >= targetUSD ? "#16a34a" : "#111827",
                           }}
                         >
-                          Tasa BCV ({bcvRate ? bcvRate.toFixed(2) : "---"})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPagoMovilRateMode("personalizada");
-                            setPagoMovilCustomRate(
-                              String(Math.round(bcvRate * 1.05)),
-                            );
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: "7px",
-                            fontSize: "11px",
-                            borderRadius: "4px",
-                            cursor: "pointer",
-                            fontWeight: "700",
-                            border:
-                              pagoMovilRateMode === "personalizada"
-                                ? "1px solid #111827"
-                                : "1px solid #e5e7eb",
-                            background:
-                              pagoMovilRateMode === "personalizada"
-                                ? "#111827"
-                                : "#f9fafb",
-                            color:
-                              pagoMovilRateMode === "personalizada"
-                                ? "#ffffff"
-                                : "#4b5563",
-                          }}
-                        >
-                          ⭐ Tasa Preferencial
-                        </button>
+                          ${currentPaid.toFixed(2)}{" "}
+                          {currentStoreCountry === "venezuela" &&
+                            `(Bs. ${(currentPaid * bcvRate).toFixed(2)})`}
+                        </strong>
                       </div>
-
-                      {pagoMovilRateMode === "personalizada" && (
-                        <div style={{ marginBottom: "8px" }}>
-                          <label
-                            style={{
-                              fontSize: "11px",
-                              color: "#6b7280",
-                              display: "block",
-                              marginBottom: "2px",
-                            }}
-                          >
-                            Tasa acordada (Bs/$):
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={pagoMovilCustomRate}
-                            onChange={(e) =>
-                              setPagoMovilCustomRate(e.target.value)
-                            }
-                            placeholder="Ej. 850.00"
-                            style={{
-                              width: "100%",
-                              padding: "7px 10px",
-                              borderRadius: "4px",
-                              border: "1px solid #111827",
-                              fontWeight: "700",
-                              fontSize: "13px",
-                              outline: "none",
-                            }}
-                            autoFocus
-                          />
-                        </div>
-                      )}
 
                       <div
                         style={{
                           display: "flex",
                           justifyContent: "space-between",
-                          alignItems: "center",
-                          paddingTop: "6px",
-                          borderTop: "1px dashed #f3f4f6",
+                          fontSize: "13px",
+                          color: "#4b5563",
                         }}
                       >
-                        <span
-                          style={{
-                            fontSize: "12px",
-                            fontWeight: "600",
-                            color: "#374151",
-                          }}
-                        >
-                          Monto a transferir por banco:
-                        </span>
+                        <span>Restante / Falta:</span>
                         <strong
-                          style={{
-                            fontSize: "16px",
-                            fontWeight: "900",
-                            color: "#16a34a",
-                          }}
+                          style={{ color: finalRemaining > 0 ? "#e05d5d" : "#9ca3af" }}
                         >
-                          Bs.{" "}
-                          {pagoMovilChangeBs.toLocaleString("es-VE", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          ${finalRemaining.toFixed(2)}{" "}
+                          {currentStoreCountry === "venezuela" &&
+                            `(Bs. ${(finalRemaining * (bcvRate || 1)).toFixed(2)})`}
                         </strong>
                       </div>
-                    </div>
-                  )}
 
-                  {changeCurrencyType === "USD" && (
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        color: "#6b7280",
-                        display: "block",
-                      }}
-                    >
-                      Entregarás <strong>${changeUSD.toFixed(2)} USD</strong> en
-                      billetes físicos de la gaveta.
-                    </span>
-                  )}
-                  {changeCurrencyType === "BS" && (
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        color: "#6b7280",
-                        display: "block",
-                      }}
-                    >
-                      Entregarás{" "}
-                      <strong>
-                        Bs.{" "}
-                        {changeBs.toLocaleString("es-VE", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </strong>{" "}
-                      en billetes físicos de la gaveta.
-                    </span>
-                  )}
-                </div>
-              )}
+                      {finalChange > 0 && (
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            fontSize: "15px",
+                            borderTop: "1px dashed #e5e7eb",
+                            paddingTop: "8px",
+                            marginTop: "2px",
+                          }}
+                        >
+                          <span style={{ fontWeight: "700", color: "#111827" }}>
+                            Cambio / Vuelto:
+                          </span>
+                          <strong
+                            style={{
+                              fontSize: "18px",
+                              fontWeight: "900",
+                              color: "#16a34a",
+                            }}
+                          >
+                            ${finalChange.toFixed(2)}
+                          </strong>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SELECTOR DE VUELTO / CAMBIO */}
+                    {finalChange > 0 && currentStoreCountry === "venezuela" && (
+                      <div
+                        style={{
+                          background: "#f9fafb",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "8px",
+                          padding: "14px",
+                          marginBottom: "16px",
+                        }}
+                      >
+                        <label
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: "800",
+                            color: "#374151",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
+                            marginBottom: "8px",
+                            display: "block",
+                          }}
+                        >
+                          ¿Cómo vas a entregar el Vuelto de ${finalChange.toFixed(2)}?
+                        </label>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr 1fr",
+                            gap: "6px",
+                            marginBottom: "10px",
+                          }}
+                        >
+                          {[
+                            { id: "USD", label: "💵 Efectivo USD" },
+                            { id: "BS", label: "💵 Efectivo Bs" },
+                            { id: "PAGO_MOVIL", label: "📱 Pago Móvil" },
+                          ].map((btn) => {
+                            const active = changeCurrencyType === btn.id;
+                            return (
+                              <button
+                                key={btn.id}
+                                type="button"
+                                onClick={() => setChangeCurrencyType(btn.id)}
+                                style={{
+                                  padding: "9px 4px",
+                                  fontSize: "11px",
+                                  borderRadius: "6px",
+                                  fontWeight: "700",
+                                  cursor: "pointer",
+                                  border: active
+                                    ? "1px solid #111827"
+                                    : "1px solid #d1d5db",
+                                  background: active ? "#111827" : "#ffffff",
+                                  color: active ? "#ffffff" : "#374151",
+                                  transition: "all 0.15s",
+                                }}
+                              >
+                                {btn.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* AJUSTES DE TASA PARA PAGO MÓVIL */}
+                        {changeCurrencyType === "PAGO_MOVIL" && (
+                          <div
+                            style={{
+                              background: "#ffffff",
+                              padding: "12px",
+                              borderRadius: "6px",
+                              border: "1px solid #e5e7eb",
+                              marginTop: "8px",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: "6px",
+                                marginBottom: "8px",
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPagoMovilRateMode("actual");
+                                  setPagoMovilCustomRate("");
+                                }}
+                                style={{
+                                  flex: 1,
+                                  padding: "7px",
+                                  fontSize: "11px",
+                                  borderRadius: "4px",
+                                  cursor: "pointer",
+                                  fontWeight: "700",
+                                  border:
+                                    pagoMovilRateMode === "actual"
+                                      ? "1px solid #111827"
+                                      : "1px solid #e5e7eb",
+                                  background:
+                                    pagoMovilRateMode === "actual"
+                                      ? "#111827"
+                                      : "#f9fafb",
+                                  color:
+                                    pagoMovilRateMode === "actual"
+                                      ? "#ffffff"
+                                      : "#4b5563",
+                                }}
+                              >
+                                Tasa BCV ({bcvRate ? bcvRate.toFixed(2) : "---"})
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPagoMovilRateMode("personalizada");
+                                  setPagoMovilCustomRate(
+                                    String(Math.round(bcvRate * 1.05)),
+                                  );
+                                }}
+                                style={{
+                                  flex: 1,
+                                  padding: "7px",
+                                  fontSize: "11px",
+                                  borderRadius: "4px",
+                                  cursor: "pointer",
+                                  fontWeight: "700",
+                                  border:
+                                    pagoMovilRateMode === "personalizada"
+                                      ? "1px solid #111827"
+                                      : "1px solid #e5e7eb",
+                                  background:
+                                    pagoMovilRateMode === "personalizada"
+                                      ? "#111827"
+                                      : "#f9fafb",
+                                  color:
+                                    pagoMovilRateMode === "personalizada"
+                                      ? "#ffffff"
+                                      : "#4b5563",
+                                }}
+                              >
+                                ⭐ Tasa Preferencial
+                              </button>
+                            </div>
+
+                            {pagoMovilRateMode === "personalizada" && (
+                              <div style={{ marginBottom: "8px" }}>
+                                <label
+                                  style={{
+                                    fontSize: "11px",
+                                    color: "#6b7280",
+                                    display: "block",
+                                    marginBottom: "2px",
+                                  }}
+                                >
+                                  Tasa acordada (Bs/$):
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={pagoMovilCustomRate}
+                                  onChange={(e) =>
+                                    setPagoMovilCustomRate(e.target.value)
+                                  }
+                                  placeholder="Ej. 850.00"
+                                  style={{
+                                    width: "100%",
+                                    padding: "7px 10px",
+                                    borderRadius: "4px",
+                                    border: "1px solid #111827",
+                                    fontWeight: "700",
+                                    fontSize: "13px",
+                                    outline: "none",
+                                  }}
+                                  autoFocus
+                                />
+                              </div>
+                            )}
+
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                paddingTop: "6px",
+                                borderTop: "1px dashed #f3f4f6",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: "12px",
+                                  fontWeight: "600",
+                                  color: "#374151",
+                                }}
+                              >
+                                Monto a transferir por banco:
+                              </span>
+                              <strong
+                                style={{
+                                  fontSize: "16px",
+                                  fontWeight: "900",
+                                  color: "#16a34a",
+                                }}
+                              >
+                                Bs.{" "}
+                                {(pagoMovilRateMode === "personalizada" && pagoMovilCustomRate ? finalChange * Number(pagoMovilCustomRate) : finalChangeBs).toLocaleString("es-VE", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </strong>
+                            </div>
+                          </div>
+                        )}
+
+                        {changeCurrencyType === "USD" && (
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              color: "#6b7280",
+                              display: "block",
+                            }}
+                          >
+                            Entregarás <strong>${finalChange.toFixed(2)} USD</strong> en
+                            billetes físicos de la gaveta.
+                          </span>
+                        )}
+                        {changeCurrencyType === "BS" && (
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              color: "#6b7280",
+                              display: "block",
+                            }}
+                          >
+                            Entregarás{" "}
+                            <strong>
+                              Bs.{" "}
+                              {finalChangeBs.toLocaleString("es-VE", {
+                                minimumFractionDigits: 2,
+                              })}
+                            </strong>{" "}
+                            en billetes físicos de la gaveta.
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* Inputs de Cobro */}
               <div className="payment-inputs-grid">
