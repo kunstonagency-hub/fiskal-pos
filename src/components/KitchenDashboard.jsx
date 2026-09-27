@@ -2037,54 +2037,57 @@ export default function KitchenDashboard({
         </div>
       )}
 
-      <div
-        style={{
-          position: "fixed",
-          bottom: "24px",
-          right: "24px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px",
-          zIndex: 1000,
-        }}
-      >
-        <button
-          onClick={zoomIn}
+      {/* Botones de Zoom: Solo visibles en Pantalla Completa (Cocina) */}
+      {isFullscreen && (
+        <div
           style={{
-            width: "48px",
-            height: "48px",
-            borderRadius: "50%",
-            background: "#111827",
-            color: "#fff",
-            border: "none",
+            position: "fixed",
+            bottom: "24px",
+            right: "24px",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            flexDirection: "column",
+            gap: "8px",
+            zIndex: 1000,
           }}
         >
-          <ZoomIn size={24} />
-        </button>
-        <button
-          onClick={zoomOut}
-          style={{
-            width: "48px",
-            height: "48px",
-            borderRadius: "50%",
-            background: "#fff",
-            color: "#111827",
-            border: "2px solid #111827",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-          }}
-        >
-          <ZoomOut size={24} />
-        </button>
-      </div>
+          <button
+            onClick={zoomIn}
+            style={{
+              width: "48px",
+              height: "48px",
+              borderRadius: "50%",
+              background: "#111827",
+              color: "#fff",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            }}
+          >
+            <ZoomIn size={24} />
+          </button>
+          <button
+            onClick={zoomOut}
+            style={{
+              width: "48px",
+              height: "48px",
+              borderRadius: "50%",
+              background: "#fff",
+              color: "#111827",
+              border: "2px solid #111827",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+            }}
+          >
+            <ZoomOut size={24} />
+          </button>
+        </div>
+      )}
 
       {(() => {
         const ordersToRender = kdsConfig.hideReady
