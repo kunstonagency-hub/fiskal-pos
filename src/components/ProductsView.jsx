@@ -190,17 +190,62 @@ function ProductsView({
                   <span style={{ fontSize: "12px" }}>Sube una foto</span>
                 </div>
               )}
-              <input
-                name="image"
-                type="file"
-                accept="image/*"
-                onChange={handleImageSelect}
-                style={{
-                  fontSize: "12px",
-                  width: "100%",
-                  boxSizing: "border-box",
-                }}
-              />
+               <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+                
+                {/* Botón para subir desde la Galería */}
+                <label
+                  style={{
+                    background: "#e9ecef",
+                    color: "#212529",
+                    padding: "8px 12px",
+                    borderRadius: "4px",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    border: "1px solid #ced4da"
+                  }}
+                >
+                  <ImageIcon size={14} /> Galería
+                  <input
+                    name="image"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    style={{ display: "none" }} /* Ocultamos el input feo nativo */
+                  />
+                </label>
+
+                {/* Botón para abrir la Cámara directamente */}
+                <label
+                  style={{
+                    background: "#212529",
+                    color: "#fff",
+                    padding: "8px 12px",
+                    borderRadius: "4px",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    border: "none"
+                  }}
+                >
+                  <Camera size={14} /> Cámara
+                  <input
+                    name="image"
+                    type="file"
+                    accept="image/*"
+                    capture="environment" /* ESTA ES LA MAGIA QUE ABRE LA CÁMARA TRASERA */
+                    onChange={handleImageSelect}
+                    style={{ display: "none" }}
+                  />
+                </label>
+
+              </div>
             </div>
           </div>
 
