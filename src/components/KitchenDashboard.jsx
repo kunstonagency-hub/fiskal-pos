@@ -445,18 +445,27 @@ export default function KitchenDashboard({
                   filter: readyPopup ? "brightness(0.2) blur(6px)" : "none",
                   pointerEvents: "none",
                   background: "#000",
+                  // Agregamos Flexbox al contenedor para centrar el video escalado
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden"
                 }}
               >
                 <iframe
                   style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100vw",
-                    height: "100vh",
+                    // TRUCO DE RENDIMIENTO PARA SMART TVs:
+                    // Engañamos a YouTube dándole un tamaño interno pequeño (qHD)
+                    // para que envíe una calidad baja/media (480p/720p).
+                    width: "960px",
+                    height: "540px",
+                    // Y luego lo multiplicamos x 2.1 por CSS para que llene la pantalla (aprox 1080p)
+                    transform: "scale(2.2)",
                     border: "none",
                     pointerEvents: "none",
                   }}
-                  src={`https://www.youtube.com/embed/${banner.videoId}?autoplay=1&mute=0&controls=0${banner.listId ? `&list=${banner.listId}` : ""}`}
+                  // Parámetros optimizados: quitamos branding, sugeridos, teclado y anotaciones para ahorrar RAM
+                  src={`https://www.youtube.com/embed/${banner.videoId}?autoplay=1&mute=0&controls=0&modestbranding=1&rel=0&iv_load_policy=3&disablekb=1&playsinline=1${banner.listId ? `&list=${banner.listId}` : ""}`}
                   allow="autoplay; encrypted-media"
                   allowFullScreen
                 />
