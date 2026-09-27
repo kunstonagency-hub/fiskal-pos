@@ -18,12 +18,10 @@ import {
   Settings,
   Columns,
   LayoutGrid,
-  Headphones
+  Headphones, // <-- ICONO DE RADIO
 } from "lucide-react";
 
 // Dashboard de cocina y pantalla pública.
-// Este componente muestra el panel operativo de cocina, controla el flujo de pedidos y
-// también ofrece la vista para clientes con banners, videos y tablero de pedidos listos.
 const GENERAL_KEYWORDS = [
   "toddy",
   "harina",
@@ -55,40 +53,33 @@ export default function KitchenDashboard({
 }) {
   const [isPublicMode, setIsPublicMode] = useState(false);
 
-  // Rotación: 'banner' (fotos publicitarias o video de YouTube) | 'board' (tablero general de pedidos)
   const [displayMode, setDisplayMode] = useState("banner");
   const [currentSlide, setCurrentSlide] = useState(0);
 
-  // Estados para el tamaño de las letras (Zoom), YouTube, y Pantalla Completa
   const [fontScale, setFontScale] = useState(1);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isRadioMode, setIsRadioMode] = useState(false); // <-- NUEVO ESTADO MODO RADIO
 
-  // Listas guardadas de YouTube
   const [savedLinks, setSavedLinks] = useState([]);
   const [showSavedLinks, setShowSavedLinks] = useState(false);
 
-  // =========================================================================
-  // ESTADOS PARA CONFIGURACIÓN DEL KDS (LAYOUT Y ESTACIONES POR DISPOSITIVO)
-  // =========================================================================
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [kdsConfig, setKdsConfig] = useState({
-    layout: "grid", // 'grid', '2-col', '3-col'
+    layout: "grid",
     hideReady: false,
     col1Cats: [],
     col2Cats: [],
     col3Cats: [],
   });
 
-  // NUEVOS ESTADOS PARA CATEGORÍAS (Garantizar que siempre aparezcan)
   const [dbCategories, setDbCategories] = useState([]);
   const [extraCats, setExtraCats] = useState([]);
-  const [customCat, setCustomCat] = useState("");
 
-  // Cargar configuraciones guardadas al iniciar
   useEffect(() => {
-    const savedConfig = localStorage.getItem(`fiskal_kds_config_${currentStoreId}`);
+    const savedConfig = localStorage.getItem(
+      `fiskal_kds_config_${currentStoreId}`
+    );
     if (savedConfig) {
       try {
         setKdsConfig(JSON.parse(savedConfig));
@@ -100,10 +91,12 @@ export default function KitchenDashboard({
 
   const updateKdsConfig = (newConfig) => {
     setKdsConfig(newConfig);
-    localStorage.setItem(`fiskal_kds_config_${currentStoreId}`, JSON.stringify(newConfig));
+    localStorage.setItem(
+      `fiskal_kds_config_${currentStoreId}`,
+      JSON.stringify(newConfig)
+    );
   };
 
-  // Cargar las listas de YouTube guardadas desde la base de datos al iniciar
   useEffect(() => {
     if (!currentStoreId) return;
     const fetchSavedLinks = async () => {
@@ -123,7 +116,6 @@ export default function KitchenDashboard({
     fetchSavedLinks();
   }, [currentStoreId]);
 
-  // Cargar categorías históricas de la base de datos para el Modal
   useEffect(() => {
     if (!currentStoreId) return;
     const fetchCats = async () => {
@@ -133,7 +125,9 @@ export default function KitchenDashboard({
           .select("category")
           .eq("store_id", currentStoreId);
         if (data) {
-          const uniqueCats = [...new Set(data.map(item => item.category?.trim()).filter(Boolean))];
+          const uniqueCats = [
+            ...new Set(data.map((item) => item.category?.trim()).filter(Boolean)),
+          ];
           setDbCategories(uniqueCats);
         }
       } catch (e) {
@@ -143,7 +137,6 @@ export default function KitchenDashboard({
     fetchCats();
   }, [currentStoreId]);
 
-  // Funciones para Guardar y Eliminar Listas
   const handleSaveLink = async () => {
     if (!youtubeUrl.trim()) {
       alert("Primero pega un enlace de YouTube para poder guardarlo.");
@@ -151,7 +144,7 @@ export default function KitchenDashboard({
     }
     const label = window.prompt(
       "Dale un nombre a esta lista o video (Ej: Rock Clásico, Electrónica, etc.):",
-      "Nueva Lista",
+      "Nueva Lista"
     );
     if (!label) return;
 
@@ -165,7 +158,7 @@ export default function KitchenDashboard({
           value: JSON.stringify(updatedLinks),
           store_id: currentStoreId,
         },
-        { onConflict: "key" },
+        { onConflict: "key" }
       );
       alert("¡Lista guardada con éxito!");
     } catch (error) {
@@ -185,14 +178,13 @@ export default function KitchenDashboard({
           value: JSON.stringify(updatedLinks),
           store_id: currentStoreId,
         },
-        { onConflict: "key" },
+        { onConflict: "key" }
       );
     } catch (error) {
       console.error("Error eliminando enlace:", error);
     }
   };
 
-  // Sincronizar salida de pantalla completa
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isFull = !!document.fullscreenElement;
@@ -206,27 +198,23 @@ export default function KitchenDashboard({
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  // Reloj de un segundo
   const [, setTicker] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => setTicker((t) => t + 1), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Alerta gigante central de 10 segundos
   const [readyPopup, setReadyPopup] = useState(null);
   const prevReadyIdsRef = useRef(new Set());
   const isFirstLoadRef = useRef(true);
   const popupTimeoutRef = useRef(null);
 
-  // Extractor de YouTube
   const getYouTubeData = (url) => {
     if (!url) return { videoId: null, listId: null };
     const regExp =
       /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
     const match = url.match(regExp);
     const videoId = match && match[2].length === 11 ? match[2] : null;
-
     const listMatch = url.match(/[?&]list=([^#&?]*)/);
     const listId = listMatch ? listMatch[1] : null;
 
@@ -238,14 +226,13 @@ export default function KitchenDashboard({
   const activeBanners = useMemo(() => {
     const base =
       kdsBanners && kdsBanners.length > 0 ? kdsBanners : FALLBACK_BANNERS;
-    
-    // Si el modo radio está activado, ocultamos el video de la rotación de pantalla
+
+    // Ocultar video de la pantalla rotativa si MODO RADIO está activo
     return videoId && !isRadioMode
       ? [...base, { type: "youtube", videoId, listId, title: "YouTube Video" }]
       : base;
   }, [kdsBanners, videoId, listId, isRadioMode]);
 
-  // Rotación Dinámica
   useEffect(() => {
     if (!isPublicMode) return;
 
@@ -270,14 +257,11 @@ export default function KitchenDashboard({
         setDisplayMode("banner");
       }, 7000);
     }
-
     return () => clearTimeout(timer);
   }, [isPublicMode, displayMode, currentSlide, activeBanners]);
 
-  // Alertas de pedidos listos
   useEffect(() => {
     if (!sales || !Array.isArray(sales)) return;
-
     const currentReadyOrders = sales.filter((s) => {
       const st = String(s.status || s.estatus || "")
         .trim()
@@ -292,7 +276,7 @@ export default function KitchenDashboard({
     }
 
     const newlyReady = currentReadyOrders.find(
-      (o) => !prevReadyIdsRef.current.has(o.id),
+      (o) => !prevReadyIdsRef.current.has(o.id)
     );
 
     if (newlyReady) {
@@ -300,16 +284,14 @@ export default function KitchenDashboard({
       const orderIdStr = String(newlyReady.id);
       const orderNum = newlyReady.invoice_number || `#${orderIdStr.slice(-4)}`;
       const clientName = newlyReady.client_name || "Cliente";
-
       try {
         const bell = new Audio(
-          "https://upload.wikimedia.org/wikipedia/commons/3/34/Sound_Effect_-_Door_Bell.ogg",
+          "https://upload.wikimedia.org/wikipedia/commons/3/34/Sound_Effect_-_Door_Bell.ogg"
         );
         bell.play().catch((e) => console.log("Audio:", e));
       } catch (e) {}
 
       setReadyPopup({ orderNum, clientName });
-
       if (popupTimeoutRef.current) clearTimeout(popupTimeoutRef.current);
       popupTimeoutRef.current = setTimeout(() => {
         setReadyPopup(null);
@@ -337,26 +319,18 @@ export default function KitchenDashboard({
   const rawOrders =
     typeof sales !== "undefined" && Array.isArray(sales) ? sales : [];
 
-  // EXTRACCIÓN AVANZADA DE CATEGORÍAS (Combinando BBDD + Actuales + Manuales)
   const availableCategories = useMemo(() => {
     const cats = new Set();
-    
-    // Categorías desde DB
-    dbCategories.forEach(c => cats.add(c));
-    
-    // Categorías añadidas manualmente en esta sesión
-    extraCats.forEach(c => cats.add(c));
-    
-    // Categorías de los pedidos actuales
+    dbCategories.forEach((c) => cats.add(c));
+    extraCats.forEach((c) => cats.add(c));
     rawOrders.forEach((s) => {
-      getItems(s).forEach((i) => cats.add(i.category ? i.category.trim() : "General"));
+      getItems(s).forEach((i) =>
+        cats.add(i.category ? i.category.trim() : "General")
+      );
     });
-    
-    // Categorías previamente guardadas en la config
-    if (kdsConfig.col1Cats) kdsConfig.col1Cats.forEach(c => cats.add(c));
-    if (kdsConfig.col2Cats) kdsConfig.col2Cats.forEach(c => cats.add(c));
-    if (kdsConfig.col3Cats) kdsConfig.col3Cats.forEach(c => cats.add(c));
-    
+    if (kdsConfig.col1Cats) kdsConfig.col1Cats.forEach((c) => cats.add(c));
+    if (kdsConfig.col2Cats) kdsConfig.col2Cats.forEach((c) => cats.add(c));
+    if (kdsConfig.col3Cats) kdsConfig.col3Cats.forEach((c) => cats.add(c));
     return Array.from(cats).filter(Boolean).sort();
   }, [rawOrders, dbCategories, extraCats, kdsConfig]);
 
@@ -367,7 +341,6 @@ export default function KitchenDashboard({
       .toLowerCase();
     if (["completed", "pagada", "paid", "credit", "crédito"].includes(status))
       return false;
-
     const validKitchenStates = [
       "pending",
       "en espera",
@@ -379,25 +352,21 @@ export default function KitchenDashboard({
       "espera_pago",
     ];
     if (!validKitchenStates.includes(status)) return false;
-
     const itemsList = getItems(s);
     if (itemsList.length === 0) return false;
-
     const kitchenItems = itemsList.filter((item) => {
       const name = String(item.name || "").toLowerCase();
       return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
     });
-
     return kitchenItems.length > 0;
   });
 
-  // Ordenar los pedidos
   waitingOrders.sort((a, b) => {
     const timeA = new Date(
-      a.payment_details?.kitchen_sent_at || a.created_at,
+      a.payment_details?.kitchen_sent_at || a.created_at
     ).getTime();
     const timeB = new Date(
-      b.payment_details?.kitchen_sent_at || b.created_at,
+      b.payment_details?.kitchen_sent_at || b.created_at
     ).getTime();
     return timeB - timeA;
   });
@@ -427,11 +396,10 @@ export default function KitchenDashboard({
     const startTime = pd.prep_started_at
       ? new Date(pd.prep_started_at).getTime()
       : null;
-
     if (!startTime) return null;
 
     const isReady = ["ready", "listo", "espera_pago"].includes(
-      String(order.status || "").toLowerCase(),
+      String(order.status || "").toLowerCase()
     );
     const endTime =
       isReady && pd.prep_finished_at
@@ -441,7 +409,10 @@ export default function KitchenDashboard({
     const diffSec = Math.max(0, Math.floor((endTime - startTime) / 1000));
     const mins = Math.floor(diffSec / 60);
     const secs = diffSec % 60;
-    const formatted = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+    const formatted = `${String(mins).padStart(2, "0")}:${String(secs).padStart(
+      2,
+      "0"
+    )}`;
 
     let badgeColor = "#16a34a";
     if (diffSec >= 600) {
@@ -456,18 +427,13 @@ export default function KitchenDashboard({
   const zoomIn = () => setFontScale((prev) => Math.min(prev + 0.2, 1.8));
   const zoomOut = () => setFontScale((prev) => Math.max(prev - 0.2, 0.8));
 
-  // =========================================================================
-  // RENDERIZADO INDEPENDIENTE POR ESTACIÓN DE COMANDAS
-  // =========================================================================
   const renderOrderCard = (order, index, targetCats = []) => {
     const orderId = order && order.id ? order.id.toString() : String(index + 1);
-
     const itemsList = getItems(order).filter((item) => {
       const name = String(item.name || "").toLowerCase();
       return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
     });
 
-    // 💡 FILTRADO EXCLUSIVO PARA ESTA ESTACIÓN
     let stationItems = itemsList;
     if (targetCats.length > 0) {
       stationItems = itemsList.filter((i) => {
@@ -476,34 +442,31 @@ export default function KitchenDashboard({
       });
     }
 
-    // Si la orden no tiene nada para esta estación (ej: es un perro pero esta es la estación hamburguesa), no la mostramos.
     if (stationItems.length === 0) return null;
 
-    // ESTADOS INDEPENDIENTES DE LA ESTACIÓN
-    const currentStatus = String(order.status || order.estatus || "pending").trim().toLowerCase();
-    const globalIsReady = currentStatus === "ready" || currentStatus === "listo" || currentStatus === "espera_pago";
+    const currentStatus = String(order.status || order.estatus || "pending")
+      .trim()
+      .toLowerCase();
+    const globalIsReady =
+      currentStatus === "ready" ||
+      currentStatus === "listo" ||
+      currentStatus === "espera_pago";
+    const stationIsReady = stationItems.every((i) => i.dispatched);
+    const stationIsPreparing =
+      stationItems.some((i) => i.preparing) && !stationIsReady;
 
-    // Revisamos si TODOS los items de ESTA estación ya fueron marcados como despachados
-    const stationIsReady = stationItems.every(i => i.dispatched);
-    
-    // Revisamos si ALGÚN item de ESTA estación está marcado en preparación
-    const stationIsPreparing = stationItems.some(i => i.preparing) && !stationIsReady;
-
-    // Ocultar si el usuario lo pidió en la configuración y la estación ya despachó lo suyo
     if (kdsConfig.hideReady && (stationIsReady || globalIsReady)) {
       return null;
     }
 
     const displayItems = stationItems.filter((item) => !item.dispatched);
-
-    // Si esta estación ya despachó pero NO ocultamos las órdenes listas, lo mantenemos pero mostramos estado
     if (displayItems.length === 0 && !stationIsReady && !globalIsReady) {
       return null;
     }
 
     const timerInfo = getTimerInfo(order);
 
-    let headerBg = "#e05d5d"; 
+    let headerBg = "#e05d5d";
     let headerColor = "#fff";
     let borderColor = "#e5e7eb";
     let statusText = "PENDIENTE";
@@ -519,12 +482,15 @@ export default function KitchenDashboard({
     }
 
     const timeStr = order.created_at
-      ? new Date(order.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      ? new Date(order.created_at).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
       : "--:--";
 
     return (
       <div
-        key={`${orderId}-${targetCats.join('-')}`}
+        key={`${orderId}-${targetCats.join("-")}`}
         style={{
           background: "#fff",
           borderRadius: "8px",
@@ -554,29 +520,44 @@ export default function KitchenDashboard({
             </span>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
-            <span style={{ fontSize: `${12 * fontScale}px`, fontWeight: "900", letterSpacing: "0.5px" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: "4px",
+            }}
+          >
+            <span
+              style={{
+                fontSize: `${12 * fontScale}px`,
+                fontWeight: "900",
+                letterSpacing: "0.5px",
+              }}
+            >
               {statusText}
             </span>
 
-            {timerInfo && (stationIsPreparing || (!stationIsReady && currentStatus === "preparando")) && (
-              <span
-                style={{
-                  background: "#ffffff",
-                  color: timerInfo.badgeColor,
-                  padding: "2px 8px",
-                  borderRadius: "4px",
-                  fontSize: `${12 * fontScale}px`,
-                  fontWeight: "900",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                }}
-              >
-                <Timer size={13 * fontScale} /> {timerInfo.formatted}
-              </span>
-            )}
+            {timerInfo &&
+              (stationIsPreparing ||
+                (!stationIsReady && currentStatus === "preparando")) && (
+                <span
+                  style={{
+                    background: "#ffffff",
+                    color: timerInfo.badgeColor,
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                    fontSize: `${12 * fontScale}px`,
+                    fontWeight: "900",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                  }}
+                >
+                  <Timer size={13 * fontScale} /> {timerInfo.formatted}
+                </span>
+              )}
 
             {timerInfo && stationIsReady && (
               <span
@@ -603,7 +584,8 @@ export default function KitchenDashboard({
             displayItems.map((item, i) => {
               const itemName = item && item.name ? item.name : "Producto";
               const itemQty = item && item.quantity ? item.quantity : 1;
-              const customizationText = item.customization || item.customNote || "";
+              const customizationText =
+                item.customization || item.customNote || "";
 
               return (
                 <div
@@ -611,27 +593,43 @@ export default function KitchenDashboard({
                   style={{
                     paddingBottom: "12px",
                     marginBottom: "12px",
-                    borderBottom: i === displayItems.length - 1 ? "none" : "1px dashed #e5e7eb",
+                    borderBottom:
+                      i === displayItems.length - 1
+                        ? "none"
+                        : "1px dashed #e5e7eb",
                   }}
                 >
-                  <div style={{ fontWeight: "700", fontSize: `${16 * fontScale}px`, color: "#111827" }}>
+                  <div
+                    style={{
+                      fontWeight: "700",
+                      fontSize: `${16 * fontScale}px`,
+                      color: "#111827",
+                    }}
+                  >
                     {itemQty} x {itemName}
                   </div>
-
                   {customizationText && (
                     <div
                       style={{
                         fontSize: `${13 * fontScale}px`,
-                        color: customizationText.includes("+") ? "#16a34a" : "#e05d5d",
+                        color: customizationText.includes("+")
+                          ? "#16a34a"
+                          : "#e05d5d",
                         marginTop: "4px",
                         display: "flex",
                         flexDirection: "column",
                         gap: "2px",
                         paddingLeft: "8px",
-                        borderLeft: `2px solid ${customizationText.includes("+") ? "#16a34a" : "#e05d5d"}`,
+                        borderLeft: `2px solid ${
+                          customizationText.includes("+")
+                            ? "#16a34a"
+                            : "#e05d5d"
+                        }`,
                       }}
                     >
-                      <span style={{ fontWeight: "bold" }}>• {customizationText}</span>
+                      <span style={{ fontWeight: "bold" }}>
+                        • {customizationText}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -659,34 +657,51 @@ export default function KitchenDashboard({
                 e.currentTarget.blur();
                 const nowIso = new Date().toISOString();
                 const updatedPd = { ...(order.payment_details || {}) };
-                if (!updatedPd.prep_started_at) updatedPd.prep_started_at = nowIso;
+                if (!updatedPd.prep_started_at)
+                  updatedPd.prep_started_at = nowIso;
 
-                // Modificamos a estado de preparación SÓLO los ítems de ESTA estación
                 const updatedItems = getItems(order).map((item) => {
                   const c = item.category ? item.category.trim() : "General";
-                  const belongsToStation = targetCats.length === 0 || targetCats.includes(c);
+                  const belongsToStation =
+                    targetCats.length === 0 || targetCats.includes(c);
                   if (belongsToStation) return { ...item, preparing: true };
                   return item;
                 });
 
-                const isAnyItemPreparing = updatedItems.some(i => i.preparing);
-                const newStatus = (isAnyItemPreparing && currentStatus === "pending") ? "preparando" : order.status;
+                const isAnyItemPreparing = updatedItems.some(
+                  (i) => i.preparing
+                );
+                const newStatus =
+                  isAnyItemPreparing && currentStatus === "pending"
+                    ? "preparando"
+                    : order.status;
 
                 if (typeof setSales === "function") {
                   setSales(
                     sales.map((s) =>
-                      s.id === order.id ? { ...s, status: newStatus, payment_details: updatedPd, items: updatedItems } : s
+                      s.id === order.id
+                        ? {
+                            ...s,
+                            status: newStatus,
+                            payment_details: updatedPd,
+                            items: updatedItems,
+                          }
+                        : s
                     )
                   );
                 }
                 try {
                   await supabase
                     .from("sales")
-                    .update({ status: newStatus, payment_details: updatedPd, items: updatedItems })
+                    .update({
+                      status: newStatus,
+                      payment_details: updatedPd,
+                      items: updatedItems,
+                    })
                     .eq("id", order.id)
                     .eq("store_id", currentStoreId);
                 } catch (err) {
-                  console.error("Error estatus:", err);
+                  console.error(err);
                 }
               }}
               style={{
@@ -701,7 +716,7 @@ export default function KitchenDashboard({
                 textTransform: "uppercase",
               }}
             >
-              Preparar (Iniciar)
+              Preparar
             </button>
           )}
 
@@ -712,23 +727,23 @@ export default function KitchenDashboard({
                 const nowIso = new Date().toISOString();
                 const updatedPd = { ...(order.payment_details || {}) };
 
-                // Despachamos SÓLO los ítems de ESTA estación
                 const updatedItems = getItems(order).map((item) => {
                   const c = item.category ? item.category.trim() : "General";
-                  const belongsToStation = targetCats.length === 0 || targetCats.includes(c);
+                  const belongsToStation =
+                    targetCats.length === 0 || targetCats.includes(c);
                   if (belongsToStation) return { ...item, dispatched: true };
                   return item;
                 });
 
-                // Verificamos si, gracias a este despacho, TODA la orden está lista globalmente
                 const allKitchenItems = updatedItems.filter((item) => {
                   const name = String(item.name || "").toLowerCase();
                   return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
                 });
-                
-                const allDispatched = allKitchenItems.length > 0 && allKitchenItems.every(i => i.dispatched);
-                const newStatus = allDispatched ? "ready" : order.status;
 
+                const allDispatched =
+                  allKitchenItems.length > 0 &&
+                  allKitchenItems.every((i) => i.dispatched);
+                const newStatus = allDispatched ? "ready" : order.status;
                 if (allDispatched && !updatedPd.prep_finished_at) {
                   updatedPd.prep_finished_at = nowIso;
                 }
@@ -737,7 +752,12 @@ export default function KitchenDashboard({
                   setSales(
                     sales.map((s) =>
                       s.id === order.id
-                        ? { ...s, status: newStatus, payment_details: updatedPd, items: updatedItems }
+                        ? {
+                            ...s,
+                            status: newStatus,
+                            payment_details: updatedPd,
+                            items: updatedItems,
+                          }
                         : s
                     )
                   );
@@ -745,11 +765,15 @@ export default function KitchenDashboard({
                 try {
                   await supabase
                     .from("sales")
-                    .update({ status: newStatus, payment_details: updatedPd, items: updatedItems })
+                    .update({
+                      status: newStatus,
+                      payment_details: updatedPd,
+                      items: updatedItems,
+                    })
                     .eq("id", order.id)
                     .eq("store_id", currentStoreId);
                 } catch (err) {
-                  console.error("Error estatus:", err);
+                  console.error(err);
                 }
               }}
               style={{
@@ -765,7 +789,7 @@ export default function KitchenDashboard({
                 textTransform: "uppercase",
               }}
             >
-              Despachar (Listo)
+              Despachar
             </button>
           )}
 
@@ -807,9 +831,7 @@ export default function KitchenDashboard({
     );
   };
 
-  // =========================================================================
-  // VISTA 1: MODO PÚBLICO (PANTALLA SALÓN)
-  // =========================================================================
+  // VISTA PÚBLICA
   if (isPublicMode) {
     return (
       <div
@@ -825,9 +847,8 @@ export default function KitchenDashboard({
       >
         <button
           onClick={async () => {
-            if (document.fullscreenElement && document.exitFullscreen) {
+            if (document.fullscreenElement && document.exitFullscreen)
               await document.exitFullscreen().catch(() => {});
-            }
             setIsPublicMode(false);
           }}
           style={{
@@ -846,26 +867,31 @@ export default function KitchenDashboard({
             justifyContent: "center",
             cursor: "pointer",
           }}
-          title="Salir de Pantalla Clientes"
         >
           <X size={20} />
         </button>
 
-        {/* REPRODUCTOR OCULTO DE MODO RADIO (Audio fluido, 0 consumo gráfico) */}
+        {/* REPRODUCTOR OCULTO DE MODO RADIO (Audio fluido, 0 consumo gráfico en Pantalla Pública) */}
         {isRadioMode && videoId && (
           <iframe
-            style={{ width: "1px", height: "1px", position: "absolute", opacity: 0, pointerEvents: "none" }}
-            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&controls=0&modestbranding=1&rel=0&iv_load_policy=3&disablekb=1&playsinline=1${listId ? `&list=${listId}` : ""}`}
+            style={{
+              width: "1px",
+              height: "1px",
+              position: "absolute",
+              opacity: 0,
+              pointerEvents: "none",
+            }}
+            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&controls=0&modestbranding=1&rel=0&iv_load_policy=3&disablekb=1&playsinline=1${
+              listId ? `&list=${listId}` : ""
+            }`}
             allow="autoplay; encrypted-media"
           />
         )}
 
         {activeBanners.map((banner, idx) => {
           const isCurrent = displayMode === "banner" && idx === currentSlide;
-
           if (banner.type === "youtube") {
             const showAsBackgroundInBoard = displayMode === "board";
-
             return (
               <div
                 key={idx}
@@ -881,7 +907,7 @@ export default function KitchenDashboard({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  overflow: "hidden"
+                  overflow: "hidden",
                 }}
               >
                 <iframe
@@ -892,16 +918,16 @@ export default function KitchenDashboard({
                     border: "none",
                     pointerEvents: "none",
                   }}
-                  src={`https://www.youtube.com/embed/${banner.videoId}?autoplay=1&mute=0&controls=0&modestbranding=1&rel=0&iv_load_policy=3&disablekb=1&playsinline=1${banner.listId ? `&list=${banner.listId}` : ""}`}
+                  src={`https://www.youtube.com/embed/${banner.videoId}?autoplay=1&mute=0&controls=0&modestbranding=1&rel=0&iv_load_policy=3&disablekb=1&playsinline=1${
+                    banner.listId ? `&list=${banner.listId}` : ""
+                  }`}
                   allow="autoplay; encrypted-media"
                   allowFullScreen
                 />
               </div>
             );
           }
-
           const imgUrl = typeof banner === "string" ? banner : banner?.url;
-
           return (
             <div
               key={idx}
@@ -1178,25 +1204,21 @@ export default function KitchenDashboard({
                   Cocinando con amor...
                 </span>
               ) : (
-                readyOrders.map((ro) => {
-                  const num =
-                    ro.invoice_number || `#${String(ro.id).slice(-4)}`;
-                  return (
-                    <span
-                      key={ro.id}
-                      style={{
-                        background: "#16a34a",
-                        color: "#fff",
-                        padding: "4px 12px",
-                        borderRadius: "6px",
-                        fontSize: "16px",
-                        fontWeight: "900",
-                      }}
-                    >
-                      {num}
-                    </span>
-                  );
-                })
+                readyOrders.map((ro) => (
+                  <span
+                    key={ro.id}
+                    style={{
+                      background: "#16a34a",
+                      color: "#fff",
+                      padding: "4px 12px",
+                      borderRadius: "6px",
+                      fontSize: "16px",
+                      fontWeight: "900",
+                    }}
+                  >
+                    {ro.invoice_number || `#${String(ro.id).slice(-4)}`}
+                  </span>
+                ))
               )}
             </div>
           </div>
@@ -1303,9 +1325,7 @@ export default function KitchenDashboard({
     );
   }
 
-  // =========================================================================
-  // VISTA 2: MODO OPERATIVO DE COCINA
-  // =========================================================================
+  // VISTA 2: MODO OPERATIVO
   return (
     <div
       id="kds-panel"
@@ -1319,77 +1339,391 @@ export default function KitchenDashboard({
         position: "relative",
       }}
     >
-      {/* MODAL DE CONFIGURACIÓN DEL KDS */}
+      {/* ========================================================================================= */}
+      {/* ESTILOS INYECTADOS EXCLUSIVOS PARA HACER LA CABECERA Y EL GRID RESPONSIVOS EN MÓVILES */}
+      {/* ========================================================================================= */}
+      <style>{`
+        .kds-header-wrapper {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 24px;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+        .kds-actions-group {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .kds-youtube-bar {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: #fff;
+          padding: 6px 12px;
+          border-radius: 6px;
+          border: 1px solid #d1d5db;
+          position: relative;
+        }
+        .kds-youtube-input {
+          border: none;
+          outline: none;
+          font-size: 13px;
+          width: 180px;
+          background: transparent;
+        }
+        .kds-action-btn {
+          padding: 8px 16px;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: bold;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          border: none;
+        }
+        .settings-modal-card {
+          background: #fff;
+          width: 500px;
+          max-width: 90%;
+          border-radius: 12px;
+          padding: 24px;
+          box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        }
+
+        /* MEDIA QUERIES EXCLUSIVAMENTE PARA CELULARES */
+        @media (max-width: 768px) {
+          #kds-panel {
+            padding: 12px !important; 
+          }
+          .kds-header-wrapper {
+            flex-direction: column;
+            align-items: stretch;
+            margin-bottom: 16px;
+          }
+          .kds-actions-group {
+            flex-direction: column;
+            align-items: stretch;
+            width: 100%;
+          }
+          .kds-youtube-bar {
+            width: 100%;
+            box-sizing: border-box;
+          }
+          .kds-youtube-input {
+            width: 100%;
+            flex: 1; /* Estira el campo de texto a lo que sobre de espacio */
+          }
+          .kds-action-btn {
+            width: 100%;
+            justify-content: center;
+            box-sizing: border-box;
+          }
+          .kds-youtube-dropdown {
+            width: 100% !important; /* El desplegable de Mis Listas ocupará todo el ancho en móvil */
+            right: 0;
+            left: 0;
+          }
+          .kds-grid-layout {
+            grid-template-columns: 1fr !important; /* Fuerza una sola columna vertical hacia abajo */
+            gap: 16px !important;
+          }
+          .settings-modal-card {
+            padding: 16px;
+            max-height: 95vh;
+            overflow-y: auto;
+          }
+        }
+      `}</style>
+
       {showSettingsModal && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 100000, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "#fff", width: "500px", maxWidth: "90%", borderRadius: "12px", padding: "24px", boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", borderBottom: "1px solid #e5e7eb", paddingBottom: "12px" }}>
-              <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-                <Settings size={20}/> Configurar Pantalla KDS
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100000,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div className="settings-modal-card">
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "20px",
+                borderBottom: "1px solid #e5e7eb",
+                paddingBottom: "12px",
+              }}
+            >
+              <h3
+                style={{
+                  margin: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <Settings size={20} /> Configurar Pantalla KDS
               </h3>
-              <button onClick={() => setShowSettingsModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#6b7280" }}><X size={20}/></button>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#6b7280",
+                }}
+              >
+                <X size={20} />
+              </button>
             </div>
 
             <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontWeight: "bold", color: "#111827", background: "#f8fafc", padding: "12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                <input 
-                  type="checkbox" 
-                  checked={kdsConfig.hideReady} 
-                  onChange={(e) => updateKdsConfig({...kdsConfig, hideReady: e.target.checked})} 
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                  color: "#111827",
+                  background: "#f8fafc",
+                  padding: "12px",
+                  borderRadius: "8px",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={kdsConfig.hideReady}
+                  onChange={(e) =>
+                    updateKdsConfig({
+                      ...kdsConfig,
+                      hideReady: e.target.checked,
+                    })
+                  }
                   style={{ width: "18px", height: "18px" }}
                 />
                 Ocultar comandas despachadas (Listas)
-                <span style={{ fontSize: "11px", color: "#64748b", fontWeight: "normal", display: "block" }}>Ideal para alto tráfico. Desaparece de la pantalla de la estación una vez completado.</span>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "#64748b",
+                    fontWeight: "normal",
+                    display: "block",
+                  }}
+                >
+                  Desaparece la orden en cada estación apenas la completen.
+                </span>
               </label>
             </div>
 
             <div style={{ marginBottom: "20px" }}>
-              <label style={{ fontWeight: "bold", color: "#111827", display: "block", marginBottom: "8px" }}>Diseño de Pantalla (Layout)</label>
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button onClick={() => updateKdsConfig({...kdsConfig, layout: 'grid'})} style={{ flex: 1, padding: "10px", borderRadius: "6px", border: kdsConfig.layout === 'grid' ? "2px solid #111827" : "1px solid #cbd5e1", background: kdsConfig.layout === 'grid' ? "#f8fafc" : "#fff", cursor: "pointer", fontWeight: "bold", fontSize: "12px", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}><LayoutGrid size={24} color={kdsConfig.layout === 'grid' ? '#111827' : '#94a3b8'}/> Cuadrícula Unificada</button>
-                <button onClick={() => updateKdsConfig({...kdsConfig, layout: '2-col'})} style={{ flex: 1, padding: "10px", borderRadius: "6px", border: kdsConfig.layout === '2-col' ? "2px solid #111827" : "1px solid #cbd5e1", background: kdsConfig.layout === '2-col' ? "#f8fafc" : "#fff", cursor: "pointer", fontWeight: "bold", fontSize: "12px", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}><Columns size={24} color={kdsConfig.layout === '2-col' ? '#111827' : '#94a3b8'}/> 2 Estaciones</button>
-                <button onClick={() => updateKdsConfig({...kdsConfig, layout: '3-col'})} style={{ flex: 1, padding: "10px", borderRadius: "6px", border: kdsConfig.layout === '3-col' ? "2px solid #111827" : "1px solid #cbd5e1", background: kdsConfig.layout === '3-col' ? "#f8fafc" : "#fff", cursor: "pointer", fontWeight: "bold", fontSize: "12px", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}><Columns size={24} color={kdsConfig.layout === '3-col' ? '#111827' : '#94a3b8'}/> 3 Estaciones</button>
+              <label
+                style={{
+                  fontWeight: "bold",
+                  color: "#111827",
+                  display: "block",
+                  marginBottom: "8px",
+                }}
+              >
+                Diseño de Pantalla (Layout)
+              </label>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button
+                  onClick={() => updateKdsConfig({ ...kdsConfig, layout: "grid" })}
+                  style={{
+                    flex: 1,
+                    minWidth: "100px",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border:
+                      kdsConfig.layout === "grid"
+                        ? "2px solid #111827"
+                        : "1px solid #cbd5e1",
+                    background:
+                      kdsConfig.layout === "grid" ? "#f8fafc" : "#fff",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    fontSize: "12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <LayoutGrid
+                    size={24}
+                    color={kdsConfig.layout === "grid" ? "#111827" : "#94a3b8"}
+                  />{" "}
+                  Cuadrícula
+                </button>
+                <button
+                  onClick={() =>
+                    updateKdsConfig({ ...kdsConfig, layout: "2-col" })
+                  }
+                  style={{
+                    flex: 1,
+                    minWidth: "100px",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border:
+                      kdsConfig.layout === "2-col"
+                        ? "2px solid #111827"
+                        : "1px solid #cbd5e1",
+                    background:
+                      kdsConfig.layout === "2-col" ? "#f8fafc" : "#fff",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    fontSize: "12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Columns
+                    size={24}
+                    color={kdsConfig.layout === "2-col" ? "#111827" : "#94a3b8"}
+                  />{" "}
+                  2 Estaciones
+                </button>
+                <button
+                  onClick={() =>
+                    updateKdsConfig({ ...kdsConfig, layout: "3-col" })
+                  }
+                  style={{
+                    flex: 1,
+                    minWidth: "100px",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border:
+                      kdsConfig.layout === "3-col"
+                        ? "2px solid #111827"
+                        : "1px solid #cbd5e1",
+                    background:
+                      kdsConfig.layout === "3-col" ? "#f8fafc" : "#fff",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    fontSize: "12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Columns
+                    size={24}
+                    color={kdsConfig.layout === "3-col" ? "#111827" : "#94a3b8"}
+                  />{" "}
+                  3 Estaciones
+                </button>
               </div>
             </div>
 
-            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "12px", borderRadius: "8px", maxHeight: "250px", overflowY: "auto" }}>
-              <p style={{ margin: "0 0 12px 0", fontSize: "12px", color: "#166534", fontWeight: "bold" }}>Asignar Categorías a cada Estación (Si dejas vacío mostrará todo)</p>
-
-              {[1, kdsConfig.layout === 'grid' ? null : 2, kdsConfig.layout === '3-col' ? 3 : null].filter(Boolean).map(colNum => {
-                const colKey = `col${colNum}Cats`;
-                return (
-                  <div key={colNum} style={{ marginBottom: "12px" }}>
-                    <strong style={{ fontSize: "12px", display: "block", marginBottom: "6px", color: "#111827" }}>
-                      {kdsConfig.layout === 'grid' ? 'Categorías a mostrar en este dispositivo' : `Categorías Estación ${colNum}`}
-                    </strong>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                      {availableCategories.map(cat => {
-                        const isActive = kdsConfig[colKey].includes(cat);
-                        return (
-                          <button
-                            key={cat}
-                            onClick={() => {
-                              const newCats = isActive ? kdsConfig[colKey].filter(c => c !== cat) : [...kdsConfig[colKey], cat];
-                              updateKdsConfig({...kdsConfig, [colKey]: newCats});
-                            }}
-                            style={{
-                              padding: "4px 10px", borderRadius: "12px", fontSize: "11px", cursor: "pointer", fontWeight: "bold",
-                              background: isActive ? "#16a34a" : "#fff",
-                              color: isActive ? "#fff" : "#4b5563",
-                              border: isActive ? "1px solid #16a34a" : "1px solid #cbd5e1"
-                            }}
-                          >
-                            {cat}
-                          </button>
-                        );
-                      })}
+            <div
+              style={{
+                background: "#f0fdf4",
+                border: "1px solid #bbf7d0",
+                padding: "12px",
+                borderRadius: "8px",
+                maxHeight: "250px",
+                overflowY: "auto",
+              }}
+            >
+              <p
+                style={{
+                  margin: "0 0 12px 0",
+                  fontSize: "12px",
+                  color: "#166534",
+                  fontWeight: "bold",
+                }}
+              >
+                Asignar Categorías a cada Estación (Si dejas vacío mostrará
+                todo)
+              </p>
+              {[
+                1,
+                kdsConfig.layout === "grid" ? null : 2,
+                kdsConfig.layout === "3-col" ? 3 : null,
+              ]
+                .filter(Boolean)
+                .map((colNum) => {
+                  const colKey = `col${colNum}Cats`;
+                  return (
+                    <div key={colNum} style={{ marginBottom: "12px" }}>
+                      <strong
+                        style={{
+                          fontSize: "12px",
+                          display: "block",
+                          marginBottom: "6px",
+                          color: "#111827",
+                        }}
+                      >
+                        {kdsConfig.layout === "grid"
+                          ? "Categorías en este dispositivo"
+                          : `Categorías Estación ${colNum}`}
+                      </strong>
+                      <div
+                        style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}
+                      >
+                        {availableCategories.map((cat) => {
+                          const isActive = kdsConfig[colKey].includes(cat);
+                          return (
+                            <button
+                              key={cat}
+                              onClick={() => {
+                                const newCats = isActive
+                                  ? kdsConfig[colKey].filter((c) => c !== cat)
+                                  : [...kdsConfig[colKey], cat];
+                                updateKdsConfig({
+                                  ...kdsConfig,
+                                  [colKey]: newCats,
+                                });
+                              }}
+                              style={{
+                                padding: "4px 10px",
+                                borderRadius: "12px",
+                                fontSize: "11px",
+                                cursor: "pointer",
+                                fontWeight: "bold",
+                                background: isActive ? "#16a34a" : "#fff",
+                                color: isActive ? "#fff" : "#4b5563",
+                                border: isActive
+                                  ? "1px solid #16a34a"
+                                  : "1px solid #cbd5e1",
+                              }}
+                            >
+                              {cat}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
-            
-            <button onClick={() => setShowSettingsModal(false)} style={{ width: "100%", padding: "12px", background: "#111827", color: "#fff", border: "none", borderRadius: "8px", fontWeight: "bold", marginTop: "20px", cursor: "pointer" }}>
+            <button
+              onClick={() => setShowSettingsModal(false)}
+              style={{
+                width: "100%",
+                padding: "12px",
+                background: "#111827",
+                color: "#fff",
+                border: "none",
+                borderRadius: "8px",
+                fontWeight: "bold",
+                marginTop: "20px",
+                cursor: "pointer",
+              }}
+            >
               Cerrar y Aplicar
             </button>
           </div>
@@ -1397,27 +1731,36 @@ export default function KitchenDashboard({
       )}
 
       {!isFullscreen && (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "24px",
-            flexWrap: "wrap",
-            gap: "12px",
-          }}
-        >
+        <div className="kds-header-wrapper">
           <div>
             <h2
-              style={{ margin: 0, color: "#111827", letterSpacing: "-0.5px", display: "flex", alignItems: "center", gap: "10px" }}
+              style={{
+                margin: 0,
+                color: "#111827",
+                letterSpacing: "-0.5px",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+              }}
             >
               Panel de Cocina (KDS)
-              <button 
+              <button
                 onClick={() => setShowSettingsModal(true)}
-                style={{ background: "#e2e8f0", border: "none", padding: "6px 10px", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", color: "#475569", gap: "4px", fontSize: "12px", fontWeight: "bold" }}
-                title="Configurar Estaciones y Layout"
+                style={{
+                  background: "#e2e8f0",
+                  border: "none",
+                  padding: "6px 10px",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  color: "#475569",
+                  gap: "4px",
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                }}
               >
-                <Settings size={16}/> Ajustes KDS
+                <Settings size={16} /> Ajustes
               </button>
             </h2>
             <p
@@ -1431,63 +1774,88 @@ export default function KitchenDashboard({
             </p>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              flexWrap: "wrap",
-            }}
-          >
-            {/* INPUT DE YOUTUBE Y CONTROLES DE RADIO */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                background: "#fff",
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: "1px solid #d1d5db",
-                marginRight: "8px",
-                position: "relative",
-              }}
-            >
+          <div className="kds-actions-group">
+            <div className="kds-youtube-bar">
               <PlayCircle size={18} color="#dc2626" />
               <input
                 type="text"
-                placeholder="Pegar link de YouTube o Mix..."
+                placeholder="Pegar link de YouTube..."
                 value={youtubeUrl}
                 onChange={(e) => setYoutubeUrl(e.target.value)}
-                style={{
-                  border: "none",
-                  outline: "none",
-                  fontSize: "13px",
-                  width: "180px",
-                  background: "transparent",
-                }}
-                title="Coloca el link de YouTube aquí"
+                className="kds-youtube-input"
               />
+              <div
+                style={{
+                  height: "20px",
+                  width: "1px",
+                  background: "#e5e7eb",
+                  margin: "0 4px",
+                }}
+              ></div>
+              <button
+                onClick={handleSaveLink}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "4px",
+                  color: "#16a34a",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+                title="Guardar Lista"
+              >
+                <BookmarkPlus size={18} />
+              </button>
+              <button
+                onClick={() => setShowSavedLinks(!showSavedLinks)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "4px",
+                  color: "#4b5563",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+                title="Mis Listas"
+              >
+                <ListVideo size={18} />
+              </button>
 
-              <div style={{ height: "20px", width: "1px", background: "#e5e7eb", margin: "0 4px" }}></div>
-              
-              <button onClick={handleSaveLink} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", color: "#16a34a", display: "flex", alignItems: "center" }} title="Guardar Lista"><BookmarkPlus size={18} /></button>
-              
-              <button onClick={() => setShowSavedLinks(!showSavedLinks)} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", color: "#4b5563", display: "flex", alignItems: "center" }} title="Mis Listas"><ListVideo size={18} /></button>
-              
-              {/* --- BOTÓN NUEVO: MODO RADIO --- */}
-              <div style={{ height: "20px", width: "1px", background: "#e5e7eb", margin: "0 4px" }}></div>
-              <button 
-                onClick={() => setIsRadioMode(!isRadioMode)} 
-                style={{ background: isRadioMode ? "#16a34a" : "transparent", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: "6px", color: isRadioMode ? "#fff" : "#4b5563", display: "flex", alignItems: "center", gap: "6px", fontWeight: "bold", fontSize: "12px", transition: "all 0.2s" }}
+              {/* BOTÓN MODO RADIO */}
+              <div
+                style={{
+                  height: "20px",
+                  width: "1px",
+                  background: "#e5e7eb",
+                  margin: "0 4px",
+                }}
+              ></div>
+              <button
+                onClick={() => setIsRadioMode(!isRadioMode)}
+                style={{
+                  background: isRadioMode ? "#16a34a" : "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "4px 8px",
+                  borderRadius: "6px",
+                  color: isRadioMode ? "#fff" : "#4b5563",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontWeight: "bold",
+                  fontSize: "12px",
+                  transition: "all 0.2s",
+                }}
                 title="Modo Radio: Oculta el video para reproducir solo el audio (Ideal para Fire TV)"
               >
                 <Headphones size={18} /> {isRadioMode && "Radio"}
               </button>
 
-              {/* DROPDOWN DE LISTAS GUARDADAS */}
               {showSavedLinks && (
                 <div
+                  className="kds-youtube-dropdown"
                   style={{
                     position: "absolute",
                     top: "100%",
@@ -1515,7 +1883,7 @@ export default function KitchenDashboard({
                       alignItems: "center",
                     }}
                   >
-                    <span>🎵 Mis Listas Guardadas</span>
+                    <span>🎵 Mis Listas</span>
                     <button
                       onClick={() => setShowSavedLinks(false)}
                       style={{
@@ -1528,7 +1896,6 @@ export default function KitchenDashboard({
                       <X size={16} />
                     </button>
                   </div>
-
                   <div style={{ maxHeight: "250px", overflowY: "auto" }}>
                     {savedLinks.length === 0 ? (
                       <div
@@ -1553,14 +1920,7 @@ export default function KitchenDashboard({
                             padding: "10px 12px",
                             borderBottom: "1px solid #f3f4f6",
                             cursor: "pointer",
-                            transition: "background 0.2s",
                           }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.background = "#f9fafb")
-                          }
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.background = "transparent")
-                          }
                           onClick={() => {
                             setYoutubeUrl(link.url);
                             setShowSavedLinks(false);
@@ -1587,19 +1947,7 @@ export default function KitchenDashboard({
                             >
                               {link.label}
                             </span>
-                            <span
-                              style={{
-                                fontSize: "10px",
-                                color: "#9ca3af",
-                                whiteSpace: "nowrap",
-                                textOverflow: "ellipsis",
-                                overflow: "hidden",
-                              }}
-                            >
-                              {link.url}
-                            </span>
                           </div>
-
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1612,11 +1960,7 @@ export default function KitchenDashboard({
                               cursor: "pointer",
                               padding: "6px",
                               borderRadius: "4px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
                             }}
-                            title="Eliminar lista"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -1627,10 +1971,9 @@ export default function KitchenDashboard({
                 </div>
               )}
             </div>
-            {/* FIN INPUT DE YOUTUBE */}
 
-            {/* BOTONES PRINCIPALES DE PANTALLA */}
             <button
+              className="kds-action-btn"
               onClick={() => {
                 setIsPublicMode(true);
                 const panel = document.getElementById("kds-panel");
@@ -1641,15 +1984,6 @@ export default function KitchenDashboard({
               style={{
                 background: "#16a34a",
                 color: "#fff",
-                border: "none",
-                padding: "8px 16px",
-                borderRadius: "6px",
-                fontSize: "13px",
-                fontWeight: "bold",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
                 boxShadow: "0 2px 6px rgba(22, 163, 74, 0.3)",
               }}
             >
@@ -1657,31 +1991,18 @@ export default function KitchenDashboard({
             </button>
 
             <button
+              className="kds-action-btn"
               onClick={() => {
                 const panel = document.getElementById("kds-panel");
                 if (!document.fullscreenElement) {
                   if (panel && panel.requestFullscreen) {
-                    panel
-                      .requestFullscreen()
-                      .catch((err) => console.error("Error fullscreen:", err));
+                    panel.requestFullscreen();
                   }
                 } else {
                   if (document.exitFullscreen) document.exitFullscreen();
                 }
               }}
-              style={{
-                background: "#111827",
-                color: "#fff",
-                border: "none",
-                padding: "8px 16px",
-                borderRadius: "6px",
-                fontSize: "13px",
-                fontWeight: "bold",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
+              style={{ background: "#111827", color: "#fff" }}
             >
               <Maximize2 size={16} /> Pantalla Completa Cocina
             </button>
@@ -1698,6 +2019,7 @@ export default function KitchenDashboard({
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
+                justifyContent: "center",
               }}
             >
               <span
@@ -1741,7 +2063,6 @@ export default function KitchenDashboard({
             cursor: "pointer",
             boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
           }}
-          title="Agrandar Letras"
         >
           <ZoomIn size={24} />
         </button>
@@ -1760,20 +2081,32 @@ export default function KitchenDashboard({
             cursor: "pointer",
             boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
           }}
-          title="Achicar Letras"
         >
           <ZoomOut size={24} />
         </button>
       </div>
 
       {(() => {
-        const ordersToRender = kdsConfig.hideReady 
-          ? waitingOrders.filter(o => !["ready", "listo", "espera_pago"].includes(String(o.status || "").toLowerCase())) 
+        const ordersToRender = kdsConfig.hideReady
+          ? waitingOrders.filter(
+              (o) =>
+                !["ready", "listo", "espera_pago"].includes(
+                  String(o.status || "").toLowerCase()
+                )
+            )
           : waitingOrders;
 
         if (ordersToRender.length === 0) {
           return (
-            <div style={{ textAlign: "center", padding: "60px", background: "#fff", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
+            <div
+              style={{
+                textAlign: "center",
+                padding: "60px",
+                background: "#fff",
+                borderRadius: "8px",
+                border: "1px solid #e5e7eb",
+              }}
+            >
               <p style={{ color: "#6b7280", fontSize: "15px", margin: 0 }}>
                 No hay comandas pendientes en este momento.
               </p>
@@ -1783,18 +2116,70 @@ export default function KitchenDashboard({
 
         if (kdsConfig.layout === "2-col") {
           return (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", paddingBottom: "80px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <h3 style={{ background: "#e2e8f0", padding: "12px", borderRadius: "8px", margin: 0, textAlign: "center", color: "#334155", fontSize: "14px", textTransform: "uppercase" }}>
-                  Estación 1 {kdsConfig.col1Cats.length > 0 ? `(${kdsConfig.col1Cats.length} cat.)` : "(Todas)"}
+            <div
+              className="kds-grid-layout"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "24px",
+                paddingBottom: "80px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                }}
+              >
+                <h3
+                  style={{
+                    background: "#e2e8f0",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    margin: 0,
+                    textAlign: "center",
+                    color: "#334155",
+                    fontSize: "14px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Estación 1{" "}
+                  {kdsConfig.col1Cats.length > 0
+                    ? `(${kdsConfig.col1Cats.length} cat.)`
+                    : "(Todas)"}
                 </h3>
-                {ordersToRender.map((o, idx) => renderOrderCard(o, idx, kdsConfig.col1Cats))}
+                {ordersToRender.map((o, idx) =>
+                  renderOrderCard(o, idx, kdsConfig.col1Cats)
+                )}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <h3 style={{ background: "#e2e8f0", padding: "12px", borderRadius: "8px", margin: 0, textAlign: "center", color: "#334155", fontSize: "14px", textTransform: "uppercase" }}>
-                  Estación 2 {kdsConfig.col2Cats.length > 0 ? `(${kdsConfig.col2Cats.length} cat.)` : "(Todas)"}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                }}
+              >
+                <h3
+                  style={{
+                    background: "#e2e8f0",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    margin: 0,
+                    textAlign: "center",
+                    color: "#334155",
+                    fontSize: "14px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Estación 2{" "}
+                  {kdsConfig.col2Cats.length > 0
+                    ? `(${kdsConfig.col2Cats.length} cat.)`
+                    : "(Todas)"}
                 </h3>
-                {ordersToRender.map((o, idx) => renderOrderCard(o, idx, kdsConfig.col2Cats))}
+                {ordersToRender.map((o, idx) =>
+                  renderOrderCard(o, idx, kdsConfig.col2Cats)
+                )}
               </div>
             </div>
           );
@@ -1802,37 +2187,119 @@ export default function KitchenDashboard({
 
         if (kdsConfig.layout === "3-col") {
           return (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", paddingBottom: "80px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <h3 style={{ background: "#e2e8f0", padding: "12px", borderRadius: "8px", margin: 0, textAlign: "center", color: "#334155", fontSize: "13px", textTransform: "uppercase" }}>
-                  Estación 1 {kdsConfig.col1Cats.length > 0 ? `(${kdsConfig.col1Cats.length} cat.)` : "(Todas)"}
+            <div
+              className="kds-grid-layout"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: "16px",
+                paddingBottom: "80px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                }}
+              >
+                <h3
+                  style={{
+                    background: "#e2e8f0",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    margin: 0,
+                    textAlign: "center",
+                    color: "#334155",
+                    fontSize: "13px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Estación 1{" "}
+                  {kdsConfig.col1Cats.length > 0
+                    ? `(${kdsConfig.col1Cats.length} cat.)`
+                    : "(Todas)"}
                 </h3>
-                {ordersToRender.map((o, idx) => renderOrderCard(o, idx, kdsConfig.col1Cats))}
+                {ordersToRender.map((o, idx) =>
+                  renderOrderCard(o, idx, kdsConfig.col1Cats)
+                )}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <h3 style={{ background: "#e2e8f0", padding: "12px", borderRadius: "8px", margin: 0, textAlign: "center", color: "#334155", fontSize: "13px", textTransform: "uppercase" }}>
-                  Estación 2 {kdsConfig.col2Cats.length > 0 ? `(${kdsConfig.col2Cats.length} cat.)` : "(Todas)"}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                }}
+              >
+                <h3
+                  style={{
+                    background: "#e2e8f0",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    margin: 0,
+                    textAlign: "center",
+                    color: "#334155",
+                    fontSize: "13px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Estación 2{" "}
+                  {kdsConfig.col2Cats.length > 0
+                    ? `(${kdsConfig.col2Cats.length} cat.)`
+                    : "(Todas)"}
                 </h3>
-                {ordersToRender.map((o, idx) => renderOrderCard(o, idx, kdsConfig.col2Cats))}
+                {ordersToRender.map((o, idx) =>
+                  renderOrderCard(o, idx, kdsConfig.col2Cats)
+                )}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <h3 style={{ background: "#e2e8f0", padding: "12px", borderRadius: "8px", margin: 0, textAlign: "center", color: "#334155", fontSize: "13px", textTransform: "uppercase" }}>
-                  Estación 3 {kdsConfig.col3Cats.length > 0 ? `(${kdsConfig.col3Cats.length} cat.)` : "(Todas)"}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                }}
+              >
+                <h3
+                  style={{
+                    background: "#e2e8f0",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    margin: 0,
+                    textAlign: "center",
+                    color: "#334155",
+                    fontSize: "13px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Estación 3{" "}
+                  {kdsConfig.col3Cats.length > 0
+                    ? `(${kdsConfig.col3Cats.length} cat.)`
+                    : "(Todas)"}
                 </h3>
-                {ordersToRender.map((o, idx) => renderOrderCard(o, idx, kdsConfig.col3Cats))}
+                {ordersToRender.map((o, idx) =>
+                  renderOrderCard(o, idx, kdsConfig.col3Cats)
+                )}
               </div>
             </div>
           );
         }
 
-        // Default: Layout Cuadrícula / Unificado
         return (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "20px", paddingBottom: "80px" }}>
-            {ordersToRender.map((o, idx) => renderOrderCard(o, idx, kdsConfig.col1Cats))}
+          <div
+            className="kds-grid-layout"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+              gap: "20px",
+              paddingBottom: "80px",
+            }}
+          >
+            {ordersToRender.map((o, idx) =>
+              renderOrderCard(o, idx, kdsConfig.col1Cats)
+            )}
           </div>
         );
       })()}
-
     </div>
   );
 }

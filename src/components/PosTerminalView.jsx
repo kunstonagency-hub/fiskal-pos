@@ -108,7 +108,8 @@ export default function PosTerminalView({
     <div className="pos-grid">
       {/* Estilos integrados - Corrección definitiva de altura, fondos blancos y centrado */}
       <style>{`
-        .mobile-fab {
+        /* ESTO OCULTA EL BOTÓN EN COMPUTADORAS */
+        .mobile-fab-container {
           display: none;
         }
         .mobile-close-header {
@@ -175,23 +176,6 @@ export default function PosTerminalView({
           .cart-summary-wrapper.open .cart-summary {
             transform: translateY(0);
           }
-          .mobile-fab {
-            display: flex;
-            position: fixed;
-            bottom: 85px; 
-            left: 16px;
-            right: 16px;
-            z-index: 9998;
-            background: #111827;
-            color: white;
-            padding: 16px 20px;
-            border-radius: 16px;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 8px 24px rgba(17, 24, 39, 0.3);
-            cursor: pointer;
-            font-weight: bold;
-          }
           .mobile-close-header {
             display: flex;
             justify-content: space-between;
@@ -202,6 +186,55 @@ export default function PosTerminalView({
           }
           .desktop-cart-title {
             display: none;
+          }
+
+          /* --- ESTILOS DEL NUEVO BOTÓN FLOTANTE MÓVIL --- */
+          .mobile-fab-container {
+            display: flex;
+            position: fixed;
+            bottom: 85px; 
+            right: 16px;
+            z-index: 9998;
+            align-items: center;
+            cursor: pointer;
+            filter: drop-shadow(0 8px 16px rgba(17, 24, 39, 0.4));
+          }
+          
+          .fab-price-tag {
+            background: #111827; 
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+            padding: 8px 16px 8px 16px;
+            border-radius: 12px 0 0 12px;
+            margin-right: -15px;
+            animation: slideOutLeft 0.3s ease-out forwards;
+          }
+          
+          .fab-circle {
+            background: #111827;
+            width: 75px;
+            height: 75px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            z-index: 2;
+            color: white;
+            gap: 6px;
+          }
+
+          .fab-count {
+            font-size: 26px;
+            font-weight: 600;
+            line-height: 1;
+            margin-top: 2px;
+          }
+
+          @keyframes slideOutLeft {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
           }
         }
       `}</style>
@@ -717,13 +750,20 @@ export default function PosTerminalView({
         )}
       </div>
 
-      {/* BARRA FLOTANTE MÓVIL */}
-      <div className="mobile-fab" onClick={() => setIsMobileCartOpen(true)}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <ShoppingCart size={20} />
-          <span>Ver Carrito ({totalCartItems})</span>
+      {/* BARRA FLOTANTE MÓVIL (NUEVO DISEÑO COMPACTO Y CIRCULAR) */}
+      <div className="mobile-fab-container" onClick={() => setIsMobileCartOpen(true)}>
+        {/* Etiqueta de precio: Solo aparece si hay ítems en el carrito */}
+        {totalCartItems > 0 && (
+          <div className="fab-price-tag">
+            ${totalUSD.toFixed(2)}
+          </div>
+        )}
+
+        {/* Círculo Principal con Icono y Cantidad */}
+        <div className="fab-circle">
+           <ShoppingCart size={24} strokeWidth={2} />
+          <span className="fab-count">{totalCartItems}</span>
         </div>
-        <span style={{ fontSize: "18px" }}>${totalUSD.toFixed(2)}</span>
       </div>
 
       {/* SECCIÓN DERECHA: RESUMEN DE VENTA (CARRITO) */}
