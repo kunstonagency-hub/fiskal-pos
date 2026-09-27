@@ -2,8 +2,6 @@ import React from "react";
 import { PlusCircle, MessageCircle, Eye, Trash2 } from "lucide-react";
 
 // Vista del directorio de clientes.
-// Se encarga de registrar clientes nuevos, filtrar la base por métricas y ofrecer acciones
-// rápidas como ver historial, enviar WhatsApp o eliminar registros cuando aplica.
 function ClientsView({
   clientName,
   setClientName,
@@ -23,6 +21,7 @@ function ClientsView({
   sendClientGeneralWhatsApp,
   currentUserRole,
   handleDeleteClient,
+  requestAdminAuth, // <--- 1. AGREGAMOS ESTA PROPIEDAD AQUÍ
 }) {
   return (
     <div className="products-layout">
@@ -240,16 +239,22 @@ function ClientsView({
                         >
                           <Eye size={16} />
                         </button>
-                        {(currentUserRole === "owner" ||
-                          currentUserRole === "super_admin") && (
-                          <button
-                            className="btn-icon-danger"
-                            onClick={() => handleDeleteClient(cli.id)}
-                            title="Eliminar"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
+                        
+                        {/* --- 2. MODIFICAMOS EL BOTÓN DE ELIMINAR AQUÍ --- */}
+                        <button
+                          type="button"
+                          className="btn-icon-danger"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            requestAdminAuth('delete_client', cli);
+                          }}
+                          title="Eliminar Cliente"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                        {/* ------------------------------------------------ */}
+                        
                       </div>
                     </td>
                   </tr>

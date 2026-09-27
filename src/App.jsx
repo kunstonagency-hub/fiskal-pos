@@ -301,31 +301,31 @@ function App() {
   const [authPinInput, setAuthPinInput] = useState('');
   const [pendingAction, setPendingAction] = useState(null);
 
-  const requestAdminAuth = (actionType, payload) => {
+  function requestAdminAuth(actionType, payload) {
     if (currentUserRole !== 'cajero') {
-      // Si es dueño o super admin, pasa directo sin pedir clave
       if (actionType === 'edit') handleStartEditProduct(payload);
-      if (actionType === 'delete') handleDeleteProduct(payload.id);
+      else if (actionType === 'delete') handleDeleteProduct(payload.id);
+      else if (actionType === 'delete_client') handleDeleteClient(payload);
     } else {
-      // Si es cajero, levanta el candado
       setPendingAction({ type: actionType, payload });
       setAuthPinInput('');
       setShowAuthModal(true);
     }
-  };
+  }
 
-  const verifyAdminPin = (e) => {
+  function verifyAdminPin(e) {
     e.preventDefault();
     if (authPinInput === storeAdminPin) {
       setShowAuthModal(false);
       if (pendingAction.type === 'edit') handleStartEditProduct(pendingAction.payload);
-      if (pendingAction.type === 'delete') handleDeleteProduct(pendingAction.payload.id);
+      else if (pendingAction.type === 'delete') handleDeleteProduct(pendingAction.payload.id);
+      else if (pendingAction.type === 'delete_client') handleDeleteClient(pendingAction.payload);
       setPendingAction(null);
     } else {
       alert("❌ PIN Incorrecto. Autorización denegada.");
       setAuthPinInput('');
     }
-  };
+  }
 
   const handleUpdatePassword = async (e) => {
     e.preventDefault();
@@ -4021,7 +4021,15 @@ function App() {
     }
   };
 
-  const handleDeleteClient = async (id) => {
+  const handleDeleteClient = async (client) => {
+    // 1. Ahora sí tenemos acceso a client.name
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar al cliente "${client.name}"? Esta acción no se puede deshacer y borrará su registro.`)) {
+      return;
+    }
+
+    // 2. Extraemos el ID para que el resto de tu código siga funcionando igual
+    const id = client.id;
+
     if (!isOnline) {
       if (id && String(id).startsWith("local_")) {
         const actions = await getOfflineActions();
@@ -6417,6 +6425,7 @@ function App() {
 
           {activeTab === "clients" && (
             <ClientsView
+              requestAdminAuth={requestAdminAuth} 
               clientName={clientName}
               setClientName={setClientName}
               clientDoc={clientDoc}
