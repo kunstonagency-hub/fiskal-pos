@@ -15,6 +15,10 @@ import {
   BookmarkPlus,
   ListVideo,
   Trash2,
+  Settings,
+  Columns,
+  LayoutGrid,
+  Headphones
 } from "lucide-react";
 
 // Dashboard de cocina y pantalla pública.
@@ -29,7 +33,6 @@ const GENERAL_KEYWORDS = [
   "disco duro",
   "cronch",
   "palitos",
-
 ];
 
 const FALLBACK_BANNERS = [
@@ -60,10 +63,45 @@ export default function KitchenDashboard({
   const [fontScale, setFontScale] = useState(1);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isRadioMode, setIsRadioMode] = useState(false); // <-- NUEVO ESTADO MODO RADIO
 
-  // NUEVOS ESTADOS: Listas guardadas de YouTube
+  // Listas guardadas de YouTube
   const [savedLinks, setSavedLinks] = useState([]);
   const [showSavedLinks, setShowSavedLinks] = useState(false);
+
+  // =========================================================================
+  // ESTADOS PARA CONFIGURACIÓN DEL KDS (LAYOUT Y ESTACIONES POR DISPOSITIVO)
+  // =========================================================================
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [kdsConfig, setKdsConfig] = useState({
+    layout: "grid", // 'grid', '2-col', '3-col'
+    hideReady: false,
+    col1Cats: [],
+    col2Cats: [],
+    col3Cats: [],
+  });
+
+  // NUEVOS ESTADOS PARA CATEGORÍAS (Garantizar que siempre aparezcan)
+  const [dbCategories, setDbCategories] = useState([]);
+  const [extraCats, setExtraCats] = useState([]);
+  const [customCat, setCustomCat] = useState("");
+
+  // Cargar configuraciones guardadas al iniciar
+  useEffect(() => {
+    const savedConfig = localStorage.getItem(`fiskal_kds_config_${currentStoreId}`);
+    if (savedConfig) {
+      try {
+        setKdsConfig(JSON.parse(savedConfig));
+      } catch (e) {
+        console.error("Error leyendo KDS Config", e);
+      }
+    }
+  }, [currentStoreId]);
+
+  const updateKdsConfig = (newConfig) => {
+    setKdsConfig(newConfig);
+    localStorage.setItem(`fiskal_kds_config_${currentStoreId}`, JSON.stringify(newConfig));
+  };
 
   // Cargar las listas de YouTube guardadas desde la base de datos al iniciar
   useEffect(() => {
@@ -83,6 +121,26 @@ export default function KitchenDashboard({
       }
     };
     fetchSavedLinks();
+  }, [currentStoreId]);
+
+  // Cargar categorías históricas de la base de datos para el Modal
+  useEffect(() => {
+    if (!currentStoreId) return;
+    const fetchCats = async () => {
+      try {
+        const { data } = await supabase
+          .from("products")
+          .select("category")
+          .eq("store_id", currentStoreId);
+        if (data) {
+          const uniqueCats = [...new Set(data.map(item => item.category?.trim()).filter(Boolean))];
+          setDbCategories(uniqueCats);
+        }
+      } catch (e) {
+        console.error("Error obteniendo categorías", e);
+      }
+    };
+    fetchCats();
   }, [currentStoreId]);
 
   // Funciones para Guardar y Eliminar Listas
@@ -134,7 +192,7 @@ export default function KitchenDashboard({
     }
   };
 
-  // Sincronizar salida de pantalla completa con el cierre automático del modo público
+  // Sincronizar salida de pantalla completa
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isFull = !!document.fullscreenElement;
@@ -148,20 +206,20 @@ export default function KitchenDashboard({
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  // Reloj de un segundo para que los cronómetros de cocina corran en vivo
+  // Reloj de un segundo
   const [, setTicker] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => setTicker((t) => t + 1), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Alerta gigante central de 10 segundos en pantalla pública
+  // Alerta gigante central de 10 segundos
   const [readyPopup, setReadyPopup] = useState(null);
   const prevReadyIdsRef = useRef(new Set());
   const isFirstLoadRef = useRef(true);
   const popupTimeoutRef = useRef(null);
 
-  // Extractor avanzado de YouTube (Soporta videos individuales y Mixes/Playlists completos)
+  // Extractor de YouTube
   const getYouTubeData = (url) => {
     if (!url) return { videoId: null, listId: null };
     const regExp =
@@ -177,18 +235,17 @@ export default function KitchenDashboard({
 
   const { videoId, listId } = getYouTubeData(youtubeUrl);
 
-  // Banners activos optimizados con useMemo
   const activeBanners = useMemo(() => {
     const base =
       kdsBanners && kdsBanners.length > 0 ? kdsBanners : FALLBACK_BANNERS;
-    return videoId
+    
+    // Si el modo radio está activado, ocultamos el video de la rotación de pantalla
+    return videoId && !isRadioMode
       ? [...base, { type: "youtube", videoId, listId, title: "YouTube Video" }]
       : base;
-  }, [kdsBanners, videoId, listId]);
+  }, [kdsBanners, videoId, listId, isRadioMode]);
 
-  // =========================================================================
-  // 1. ROTACIÓN DINÁMICA: DIAPOSITIVAS (5s IMAGEN / 10s YOUTUBE) Y TABLERO (7s)
-  // =========================================================================
+  // Rotación Dinámica
   useEffect(() => {
     if (!isPublicMode) return;
 
@@ -217,9 +274,7 @@ export default function KitchenDashboard({
     return () => clearTimeout(timer);
   }, [isPublicMode, displayMode, currentSlide, activeBanners]);
 
-  // =========================================================================
-  // 2. DETECCIÓN AUTOMÁTICA DE PEDIDOS LISTOS (ALERTA DE 10 SEGUNDOS)
-  // =========================================================================
+  // Alertas de pedidos listos
   useEffect(() => {
     if (!sales || !Array.isArray(sales)) return;
 
@@ -281,6 +336,29 @@ export default function KitchenDashboard({
 
   const rawOrders =
     typeof sales !== "undefined" && Array.isArray(sales) ? sales : [];
+
+  // EXTRACCIÓN AVANZADA DE CATEGORÍAS (Combinando BBDD + Actuales + Manuales)
+  const availableCategories = useMemo(() => {
+    const cats = new Set();
+    
+    // Categorías desde DB
+    dbCategories.forEach(c => cats.add(c));
+    
+    // Categorías añadidas manualmente en esta sesión
+    extraCats.forEach(c => cats.add(c));
+    
+    // Categorías de los pedidos actuales
+    rawOrders.forEach((s) => {
+      getItems(s).forEach((i) => cats.add(i.category ? i.category.trim() : "General"));
+    });
+    
+    // Categorías previamente guardadas en la config
+    if (kdsConfig.col1Cats) kdsConfig.col1Cats.forEach(c => cats.add(c));
+    if (kdsConfig.col2Cats) kdsConfig.col2Cats.forEach(c => cats.add(c));
+    if (kdsConfig.col3Cats) kdsConfig.col3Cats.forEach(c => cats.add(c));
+    
+    return Array.from(cats).filter(Boolean).sort();
+  }, [rawOrders, dbCategories, extraCats, kdsConfig]);
 
   const waitingOrders = rawOrders.filter((s) => {
     if (!s) return false;
@@ -344,9 +422,6 @@ export default function KitchenDashboard({
     return st === "ready" || st === "listo" || st === "espera_pago";
   });
 
-  // =========================================================================
-  // 3. CÁLCULO DEL CRONÓMETRO DE PREPARACIÓN
-  // =========================================================================
   const getTimerInfo = (order) => {
     const pd = order.payment_details || {};
     const startTime = pd.prep_started_at
@@ -382,6 +457,357 @@ export default function KitchenDashboard({
   const zoomOut = () => setFontScale((prev) => Math.max(prev - 0.2, 0.8));
 
   // =========================================================================
+  // RENDERIZADO INDEPENDIENTE POR ESTACIÓN DE COMANDAS
+  // =========================================================================
+  const renderOrderCard = (order, index, targetCats = []) => {
+    const orderId = order && order.id ? order.id.toString() : String(index + 1);
+
+    const itemsList = getItems(order).filter((item) => {
+      const name = String(item.name || "").toLowerCase();
+      return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
+    });
+
+    // 💡 FILTRADO EXCLUSIVO PARA ESTA ESTACIÓN
+    let stationItems = itemsList;
+    if (targetCats.length > 0) {
+      stationItems = itemsList.filter((i) => {
+        const c = i.category ? i.category.trim() : "General";
+        return targetCats.includes(c);
+      });
+    }
+
+    // Si la orden no tiene nada para esta estación (ej: es un perro pero esta es la estación hamburguesa), no la mostramos.
+    if (stationItems.length === 0) return null;
+
+    // ESTADOS INDEPENDIENTES DE LA ESTACIÓN
+    const currentStatus = String(order.status || order.estatus || "pending").trim().toLowerCase();
+    const globalIsReady = currentStatus === "ready" || currentStatus === "listo" || currentStatus === "espera_pago";
+
+    // Revisamos si TODOS los items de ESTA estación ya fueron marcados como despachados
+    const stationIsReady = stationItems.every(i => i.dispatched);
+    
+    // Revisamos si ALGÚN item de ESTA estación está marcado en preparación
+    const stationIsPreparing = stationItems.some(i => i.preparing) && !stationIsReady;
+
+    // Ocultar si el usuario lo pidió en la configuración y la estación ya despachó lo suyo
+    if (kdsConfig.hideReady && (stationIsReady || globalIsReady)) {
+      return null;
+    }
+
+    const displayItems = stationItems.filter((item) => !item.dispatched);
+
+    // Si esta estación ya despachó pero NO ocultamos las órdenes listas, lo mantenemos pero mostramos estado
+    if (displayItems.length === 0 && !stationIsReady && !globalIsReady) {
+      return null;
+    }
+
+    const timerInfo = getTimerInfo(order);
+
+    let headerBg = "#e05d5d"; 
+    let headerColor = "#fff";
+    let borderColor = "#e5e7eb";
+    let statusText = "PENDIENTE";
+
+    if (stationIsPreparing) {
+      headerBg = "#f59e0b";
+      headerColor = "#111827";
+      statusText = "PREPARANDO";
+    } else if (stationIsReady) {
+      headerBg = "#16a34a";
+      headerColor = "#fff";
+      statusText = globalIsReady ? "LISTO PARA ENTREGAR" : "ESTACIÓN LISTA";
+    }
+
+    const timeStr = order.created_at
+      ? new Date(order.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : "--:--";
+
+    return (
+      <div
+        key={`${orderId}-${targetCats.join('-')}`}
+        style={{
+          background: "#fff",
+          borderRadius: "8px",
+          border: `1px solid ${borderColor}`,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+        }}
+      >
+        <div
+          style={{
+            background: headerBg,
+            color: headerColor,
+            padding: "14px 16px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+            <strong style={{ fontSize: `${18 * fontScale}px`, lineHeight: 1 }}>
+              #{order.invoice_number || orderId.slice(-4)}
+            </strong>
+            <span style={{ fontSize: `${11 * fontScale}px`, opacity: 0.9 }}>
+              {timeStr} | {order.client_name || "Cliente"}
+            </span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+            <span style={{ fontSize: `${12 * fontScale}px`, fontWeight: "900", letterSpacing: "0.5px" }}>
+              {statusText}
+            </span>
+
+            {timerInfo && (stationIsPreparing || (!stationIsReady && currentStatus === "preparando")) && (
+              <span
+                style={{
+                  background: "#ffffff",
+                  color: timerInfo.badgeColor,
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  fontSize: `${12 * fontScale}px`,
+                  fontWeight: "900",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                }}
+              >
+                <Timer size={13 * fontScale} /> {timerInfo.formatted}
+              </span>
+            )}
+
+            {timerInfo && stationIsReady && (
+              <span
+                style={{
+                  background: "rgba(255,255,255,0.25)",
+                  color: "#ffffff",
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  fontSize: `${11 * fontScale}px`,
+                  fontWeight: "bold",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                ⏱️ {timerInfo.formatted}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div style={{ padding: "16px", flex: 1 }}>
+          {displayItems.length > 0 ? (
+            displayItems.map((item, i) => {
+              const itemName = item && item.name ? item.name : "Producto";
+              const itemQty = item && item.quantity ? item.quantity : 1;
+              const customizationText = item.customization || item.customNote || "";
+
+              return (
+                <div
+                  key={i}
+                  style={{
+                    paddingBottom: "12px",
+                    marginBottom: "12px",
+                    borderBottom: i === displayItems.length - 1 ? "none" : "1px dashed #e5e7eb",
+                  }}
+                >
+                  <div style={{ fontWeight: "700", fontSize: `${16 * fontScale}px`, color: "#111827" }}>
+                    {itemQty} x {itemName}
+                  </div>
+
+                  {customizationText && (
+                    <div
+                      style={{
+                        fontSize: `${13 * fontScale}px`,
+                        color: customizationText.includes("+") ? "#16a34a" : "#e05d5d",
+                        marginTop: "4px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "2px",
+                        paddingLeft: "8px",
+                        borderLeft: `2px solid ${customizationText.includes("+") ? "#16a34a" : "#e05d5d"}`,
+                      }}
+                    >
+                      <span style={{ fontWeight: "bold" }}>• {customizationText}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <p
+              style={{
+                textAlign: "center",
+                color: "#9ca3af",
+                fontStyle: "italic",
+                margin: 0,
+                fontSize: `${14 * fontScale}px`,
+              }}
+            >
+              Todo despachado por esta estación
+            </p>
+          )}
+        </div>
+
+        <div style={{ display: "flex", borderTop: "1px solid #e5e7eb" }}>
+          {!stationIsPreparing && !stationIsReady && (
+            <button
+              onClick={async (e) => {
+                e.currentTarget.blur();
+                const nowIso = new Date().toISOString();
+                const updatedPd = { ...(order.payment_details || {}) };
+                if (!updatedPd.prep_started_at) updatedPd.prep_started_at = nowIso;
+
+                // Modificamos a estado de preparación SÓLO los ítems de ESTA estación
+                const updatedItems = getItems(order).map((item) => {
+                  const c = item.category ? item.category.trim() : "General";
+                  const belongsToStation = targetCats.length === 0 || targetCats.includes(c);
+                  if (belongsToStation) return { ...item, preparing: true };
+                  return item;
+                });
+
+                const isAnyItemPreparing = updatedItems.some(i => i.preparing);
+                const newStatus = (isAnyItemPreparing && currentStatus === "pending") ? "preparando" : order.status;
+
+                if (typeof setSales === "function") {
+                  setSales(
+                    sales.map((s) =>
+                      s.id === order.id ? { ...s, status: newStatus, payment_details: updatedPd, items: updatedItems } : s
+                    )
+                  );
+                }
+                try {
+                  await supabase
+                    .from("sales")
+                    .update({ status: newStatus, payment_details: updatedPd, items: updatedItems })
+                    .eq("id", order.id)
+                    .eq("store_id", currentStoreId);
+                } catch (err) {
+                  console.error("Error estatus:", err);
+                }
+              }}
+              style={{
+                flex: 1,
+                background: "#fff",
+                color: "#111827",
+                border: "none",
+                padding: "14px",
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontSize: "13px",
+                textTransform: "uppercase",
+              }}
+            >
+              Preparar (Iniciar)
+            </button>
+          )}
+
+          {!stationIsReady && (
+            <button
+              onClick={async (e) => {
+                e.currentTarget.blur();
+                const nowIso = new Date().toISOString();
+                const updatedPd = { ...(order.payment_details || {}) };
+
+                // Despachamos SÓLO los ítems de ESTA estación
+                const updatedItems = getItems(order).map((item) => {
+                  const c = item.category ? item.category.trim() : "General";
+                  const belongsToStation = targetCats.length === 0 || targetCats.includes(c);
+                  if (belongsToStation) return { ...item, dispatched: true };
+                  return item;
+                });
+
+                // Verificamos si, gracias a este despacho, TODA la orden está lista globalmente
+                const allKitchenItems = updatedItems.filter((item) => {
+                  const name = String(item.name || "").toLowerCase();
+                  return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
+                });
+                
+                const allDispatched = allKitchenItems.length > 0 && allKitchenItems.every(i => i.dispatched);
+                const newStatus = allDispatched ? "ready" : order.status;
+
+                if (allDispatched && !updatedPd.prep_finished_at) {
+                  updatedPd.prep_finished_at = nowIso;
+                }
+
+                if (typeof setSales === "function") {
+                  setSales(
+                    sales.map((s) =>
+                      s.id === order.id
+                        ? { ...s, status: newStatus, payment_details: updatedPd, items: updatedItems }
+                        : s
+                    )
+                  );
+                }
+                try {
+                  await supabase
+                    .from("sales")
+                    .update({ status: newStatus, payment_details: updatedPd, items: updatedItems })
+                    .eq("id", order.id)
+                    .eq("store_id", currentStoreId);
+                } catch (err) {
+                  console.error("Error estatus:", err);
+                }
+              }}
+              style={{
+                flex: 1,
+                background: stationIsPreparing ? "#16a34a" : "#f9fafb",
+                color: stationIsPreparing ? "#fff" : "#4b5563",
+                border: "none",
+                borderLeft: stationIsPreparing ? "none" : "1px solid #e5e7eb",
+                padding: "14px",
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontSize: "13px",
+                textTransform: "uppercase",
+              }}
+            >
+              Despachar (Listo)
+            </button>
+          )}
+
+          {stationIsReady && !globalIsReady && (
+            <div
+              style={{
+                width: "100%",
+                textAlign: "center",
+                padding: "14px",
+                background: "#16a34a",
+                color: "#fff",
+                fontSize: "13px",
+                fontWeight: "bold",
+                textTransform: "uppercase",
+              }}
+            >
+              ✓ Estación Lista (Esperando Otras)
+            </div>
+          )}
+
+          {stationIsReady && globalIsReady && (
+            <div
+              style={{
+                width: "100%",
+                textAlign: "center",
+                padding: "14px",
+                background: "#16a34a",
+                color: "#fff",
+                fontSize: "13px",
+                fontWeight: "bold",
+                textTransform: "uppercase",
+              }}
+            >
+              ✓ Esperando Entrega al Cliente
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
   // VISTA 1: MODO PÚBLICO (PANTALLA SALÓN)
   // =========================================================================
   if (isPublicMode) {
@@ -397,7 +823,6 @@ export default function KitchenDashboard({
           overflow: "hidden",
         }}
       >
-        {/* BOTÓN FLOTANTE DE SALIDA (PARA SMART TV O TOUCH) */}
         <button
           onClick={async () => {
             if (document.fullscreenElement && document.exitFullscreen) {
@@ -426,7 +851,15 @@ export default function KitchenDashboard({
           <X size={20} />
         </button>
 
-        {/* FASE A: DIAPOSITIVAS (IMÁGENES Y VIDEO/MIX DE YOUTUBE INTERCALADOS CON TRANSPARENCIA) */}
+        {/* REPRODUCTOR OCULTO DE MODO RADIO (Audio fluido, 0 consumo gráfico) */}
+        {isRadioMode && videoId && (
+          <iframe
+            style={{ width: "1px", height: "1px", position: "absolute", opacity: 0, pointerEvents: "none" }}
+            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&controls=0&modestbranding=1&rel=0&iv_load_policy=3&disablekb=1&playsinline=1${listId ? `&list=${listId}` : ""}`}
+            allow="autoplay; encrypted-media"
+          />
+        )}
+
         {activeBanners.map((banner, idx) => {
           const isCurrent = displayMode === "banner" && idx === currentSlide;
 
@@ -445,7 +878,6 @@ export default function KitchenDashboard({
                   filter: readyPopup ? "brightness(0.2) blur(6px)" : "none",
                   pointerEvents: "none",
                   background: "#000",
-                  // Agregamos Flexbox al contenedor para centrar el video escalado
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -454,17 +886,12 @@ export default function KitchenDashboard({
               >
                 <iframe
                   style={{
-                    // TRUCO DE RENDIMIENTO PARA SMART TVs:
-                    // Engañamos a YouTube dándole un tamaño interno pequeño (qHD)
-                    // para que envíe una calidad baja/media (480p/720p).
                     width: "960px",
                     height: "540px",
-                    // Y luego lo multiplicamos x 2.1 por CSS para que llene la pantalla (aprox 1080p)
                     transform: "scale(2.2)",
                     border: "none",
                     pointerEvents: "none",
                   }}
-                  // Parámetros optimizados: quitamos branding, sugeridos, teclado y anotaciones para ahorrar RAM
                   src={`https://www.youtube.com/embed/${banner.videoId}?autoplay=1&mute=0&controls=0&modestbranding=1&rel=0&iv_load_policy=3&disablekb=1&playsinline=1${banner.listId ? `&list=${banner.listId}` : ""}`}
                   allow="autoplay; encrypted-media"
                   allowFullScreen
@@ -496,7 +923,6 @@ export default function KitchenDashboard({
           );
         })}
 
-        {/* FASE B: TABLERO DE PEDIDOS CON TRANSPARENCIA Y EFECTO DIFUMINADO */}
         <div
           style={{
             position: "absolute",
@@ -516,7 +942,6 @@ export default function KitchenDashboard({
             pointerEvents: displayMode === "board" ? "auto" : "none",
           }}
         >
-          {/* Columna 1: En Preparación */}
           <div
             style={{
               background: "rgba(255,255,255,0.03)",
@@ -612,7 +1037,6 @@ export default function KitchenDashboard({
             </div>
           </div>
 
-          {/* Columna 2: Listos para Entregar */}
           <div
             style={{
               background: "rgba(255,255,255,0.03)",
@@ -711,7 +1135,6 @@ export default function KitchenDashboard({
           </div>
         </div>
 
-        {/* BARRA PERMANENTE INFERIOR */}
         <div
           style={{
             position: "absolute",
@@ -784,7 +1207,6 @@ export default function KitchenDashboard({
           </span>
         </div>
 
-        {/* ALERTA GIGANTE CENTRAL */}
         {readyPopup && (
           <div
             style={{
@@ -882,7 +1304,7 @@ export default function KitchenDashboard({
   }
 
   // =========================================================================
-  // VISTA 2: MODO OPERATIVO DE COCINA (CON CRONÓMETROS Y ZOOM)
+  // VISTA 2: MODO OPERATIVO DE COCINA
   // =========================================================================
   return (
     <div
@@ -897,7 +1319,83 @@ export default function KitchenDashboard({
         position: "relative",
       }}
     >
-      {/* ENCABEZADO: Se oculta automáticamente al activar Pantalla Completa */}
+      {/* MODAL DE CONFIGURACIÓN DEL KDS */}
+      {showSettingsModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 100000, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#fff", width: "500px", maxWidth: "90%", borderRadius: "12px", padding: "24px", boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", borderBottom: "1px solid #e5e7eb", paddingBottom: "12px" }}>
+              <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                <Settings size={20}/> Configurar Pantalla KDS
+              </h3>
+              <button onClick={() => setShowSettingsModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#6b7280" }}><X size={20}/></button>
+            </div>
+
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontWeight: "bold", color: "#111827", background: "#f8fafc", padding: "12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                <input 
+                  type="checkbox" 
+                  checked={kdsConfig.hideReady} 
+                  onChange={(e) => updateKdsConfig({...kdsConfig, hideReady: e.target.checked})} 
+                  style={{ width: "18px", height: "18px" }}
+                />
+                Ocultar comandas despachadas (Listas)
+                <span style={{ fontSize: "11px", color: "#64748b", fontWeight: "normal", display: "block" }}>Ideal para alto tráfico. Desaparece de la pantalla de la estación una vez completado.</span>
+              </label>
+            </div>
+
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ fontWeight: "bold", color: "#111827", display: "block", marginBottom: "8px" }}>Diseño de Pantalla (Layout)</label>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button onClick={() => updateKdsConfig({...kdsConfig, layout: 'grid'})} style={{ flex: 1, padding: "10px", borderRadius: "6px", border: kdsConfig.layout === 'grid' ? "2px solid #111827" : "1px solid #cbd5e1", background: kdsConfig.layout === 'grid' ? "#f8fafc" : "#fff", cursor: "pointer", fontWeight: "bold", fontSize: "12px", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}><LayoutGrid size={24} color={kdsConfig.layout === 'grid' ? '#111827' : '#94a3b8'}/> Cuadrícula Unificada</button>
+                <button onClick={() => updateKdsConfig({...kdsConfig, layout: '2-col'})} style={{ flex: 1, padding: "10px", borderRadius: "6px", border: kdsConfig.layout === '2-col' ? "2px solid #111827" : "1px solid #cbd5e1", background: kdsConfig.layout === '2-col' ? "#f8fafc" : "#fff", cursor: "pointer", fontWeight: "bold", fontSize: "12px", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}><Columns size={24} color={kdsConfig.layout === '2-col' ? '#111827' : '#94a3b8'}/> 2 Estaciones</button>
+                <button onClick={() => updateKdsConfig({...kdsConfig, layout: '3-col'})} style={{ flex: 1, padding: "10px", borderRadius: "6px", border: kdsConfig.layout === '3-col' ? "2px solid #111827" : "1px solid #cbd5e1", background: kdsConfig.layout === '3-col' ? "#f8fafc" : "#fff", cursor: "pointer", fontWeight: "bold", fontSize: "12px", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}><Columns size={24} color={kdsConfig.layout === '3-col' ? '#111827' : '#94a3b8'}/> 3 Estaciones</button>
+              </div>
+            </div>
+
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "12px", borderRadius: "8px", maxHeight: "250px", overflowY: "auto" }}>
+              <p style={{ margin: "0 0 12px 0", fontSize: "12px", color: "#166534", fontWeight: "bold" }}>Asignar Categorías a cada Estación (Si dejas vacío mostrará todo)</p>
+
+              {[1, kdsConfig.layout === 'grid' ? null : 2, kdsConfig.layout === '3-col' ? 3 : null].filter(Boolean).map(colNum => {
+                const colKey = `col${colNum}Cats`;
+                return (
+                  <div key={colNum} style={{ marginBottom: "12px" }}>
+                    <strong style={{ fontSize: "12px", display: "block", marginBottom: "6px", color: "#111827" }}>
+                      {kdsConfig.layout === 'grid' ? 'Categorías a mostrar en este dispositivo' : `Categorías Estación ${colNum}`}
+                    </strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {availableCategories.map(cat => {
+                        const isActive = kdsConfig[colKey].includes(cat);
+                        return (
+                          <button
+                            key={cat}
+                            onClick={() => {
+                              const newCats = isActive ? kdsConfig[colKey].filter(c => c !== cat) : [...kdsConfig[colKey], cat];
+                              updateKdsConfig({...kdsConfig, [colKey]: newCats});
+                            }}
+                            style={{
+                              padding: "4px 10px", borderRadius: "12px", fontSize: "11px", cursor: "pointer", fontWeight: "bold",
+                              background: isActive ? "#16a34a" : "#fff",
+                              color: isActive ? "#fff" : "#4b5563",
+                              border: isActive ? "1px solid #16a34a" : "1px solid #cbd5e1"
+                            }}
+                          >
+                            {cat}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            <button onClick={() => setShowSettingsModal(false)} style={{ width: "100%", padding: "12px", background: "#111827", color: "#fff", border: "none", borderRadius: "8px", fontWeight: "bold", marginTop: "20px", cursor: "pointer" }}>
+              Cerrar y Aplicar
+            </button>
+          </div>
+        </div>
+      )}
+
       {!isFullscreen && (
         <div
           style={{
@@ -911,9 +1409,16 @@ export default function KitchenDashboard({
         >
           <div>
             <h2
-              style={{ margin: 0, color: "#111827", letterSpacing: "-0.5px" }}
+              style={{ margin: 0, color: "#111827", letterSpacing: "-0.5px", display: "flex", alignItems: "center", gap: "10px" }}
             >
               Panel de Cocina (KDS)
+              <button 
+                onClick={() => setShowSettingsModal(true)}
+                style={{ background: "#e2e8f0", border: "none", padding: "6px 10px", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", color: "#475569", gap: "4px", fontSize: "12px", fontWeight: "bold" }}
+                title="Configurar Estaciones y Layout"
+              >
+                <Settings size={16}/> Ajustes KDS
+              </button>
             </h2>
             <p
               style={{
@@ -934,7 +1439,7 @@ export default function KitchenDashboard({
               flexWrap: "wrap",
             }}
           >
-            {/* INPUT PARA YOUTUBE Y MIS LISTAS GUARDADAS */}
+            {/* INPUT DE YOUTUBE Y CONTROLES DE RADIO */}
             <div
               style={{
                 display: "flex",
@@ -961,48 +1466,23 @@ export default function KitchenDashboard({
                   width: "180px",
                   background: "transparent",
                 }}
-                title="Coloca el link de YouTube aquí para agregarlo como diapositiva con música en la Pantalla de Clientes"
+                title="Coloca el link de YouTube aquí"
               />
 
-              <div
-                style={{
-                  height: "20px",
-                  width: "1px",
-                  background: "#e5e7eb",
-                  margin: "0 4px",
-                }}
-              ></div>
-
-              <button
-                onClick={handleSaveLink}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "4px",
-                  color: "#16a34a",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-                title="Guardar lista actual"
+              <div style={{ height: "20px", width: "1px", background: "#e5e7eb", margin: "0 4px" }}></div>
+              
+              <button onClick={handleSaveLink} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", color: "#16a34a", display: "flex", alignItems: "center" }} title="Guardar Lista"><BookmarkPlus size={18} /></button>
+              
+              <button onClick={() => setShowSavedLinks(!showSavedLinks)} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", color: "#4b5563", display: "flex", alignItems: "center" }} title="Mis Listas"><ListVideo size={18} /></button>
+              
+              {/* --- BOTÓN NUEVO: MODO RADIO --- */}
+              <div style={{ height: "20px", width: "1px", background: "#e5e7eb", margin: "0 4px" }}></div>
+              <button 
+                onClick={() => setIsRadioMode(!isRadioMode)} 
+                style={{ background: isRadioMode ? "#16a34a" : "transparent", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: "6px", color: isRadioMode ? "#fff" : "#4b5563", display: "flex", alignItems: "center", gap: "6px", fontWeight: "bold", fontSize: "12px", transition: "all 0.2s" }}
+                title="Modo Radio: Oculta el video para reproducir solo el audio (Ideal para Fire TV)"
               >
-                <BookmarkPlus size={18} />
-              </button>
-
-              <button
-                onClick={() => setShowSavedLinks(!showSavedLinks)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "4px",
-                  color: "#4b5563",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-                title="Ver mis listas guardadas"
-              >
-                <ListVideo size={18} />
+                <Headphones size={18} /> {isRadioMode && "Radio"}
               </button>
 
               {/* DROPDOWN DE LISTAS GUARDADAS */}
@@ -1147,7 +1627,9 @@ export default function KitchenDashboard({
                 </div>
               )}
             </div>
+            {/* FIN INPUT DE YOUTUBE */}
 
+            {/* BOTONES PRINCIPALES DE PANTALLA */}
             <button
               onClick={() => {
                 setIsPublicMode(true);
@@ -1233,7 +1715,6 @@ export default function KitchenDashboard({
         </div>
       )}
 
-      {/* CONTROLES FLOTANTES DE ZOOM (ESQUINA INFERIOR DERECHA - PERMANECEN EN PANTALLA COMPLETA) */}
       <div
         style={{
           position: "fixed",
@@ -1285,390 +1766,73 @@ export default function KitchenDashboard({
         </button>
       </div>
 
-      {waitingOrders.length === 0 ? (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "60px",
-            background: "#fff",
-            borderRadius: "8px",
-            border: "1px solid #e5e7eb",
-          }}
-        >
-          <p style={{ color: "#6b7280", fontSize: "15px", margin: 0 }}>
-            No hay comandas pendientes en este momento.
-          </p>
-        </div>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-            gap: "20px",
-            paddingBottom: "80px",
-          }}
-        >
-          {waitingOrders.map((order, index) => {
-            const orderId =
-              order && order.id ? order.id.toString() : String(index + 1);
+      {(() => {
+        const ordersToRender = kdsConfig.hideReady 
+          ? waitingOrders.filter(o => !["ready", "listo", "espera_pago"].includes(String(o.status || "").toLowerCase())) 
+          : waitingOrders;
 
-            const itemsList = getItems(order).filter((item) => {
-              const name = String(item.name || "").toLowerCase();
-              return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
-            });
-            const displayItems = itemsList.filter((item) => !item.dispatched);
+        if (ordersToRender.length === 0) {
+          return (
+            <div style={{ textAlign: "center", padding: "60px", background: "#fff", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
+              <p style={{ color: "#6b7280", fontSize: "15px", margin: 0 }}>
+                No hay comandas pendientes en este momento.
+              </p>
+            </div>
+          );
+        }
 
-            if (
-              displayItems.length === 0 &&
-              !["ready", "listo", "espera_pago"].includes(
-                String(order.status || "").toLowerCase(),
-              )
-            ) {
-              return null;
-            }
-
-            const currentStatus = String(
-              order.status || order.estatus || "pending",
-            )
-              .trim()
-              .toLowerCase();
-            const isPreparing =
-              currentStatus === "preparando" ||
-              currentStatus === "en preparación";
-            const isReady =
-              currentStatus === "ready" ||
-              currentStatus === "listo" ||
-              currentStatus === "espera_pago";
-
-            const timerInfo = getTimerInfo(order);
-
-            let headerBg = "#e05d5d"; // Rojo pastel
-            let headerColor = "#fff";
-            let borderColor = "#e5e7eb";
-            let statusText = "PENDIENTE";
-
-            if (isPreparing) {
-              headerBg = "#f59e0b";
-              headerColor = "#111827";
-              statusText = "PREPARANDO";
-            } else if (isReady) {
-              headerBg = "#16a34a";
-              headerColor = "#fff";
-              statusText = "LISTO PARA ENTREGAR";
-            }
-
-            const timeStr = order.created_at
-              ? new Date(order.created_at).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "--:--";
-
-            return (
-              <div
-                key={orderId}
-                style={{
-                  background: "#fff",
-                  borderRadius: "8px",
-                  border: `1px solid ${borderColor}`,
-                  display: "flex",
-                  flexDirection: "column",
-                  overflow: "hidden",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
-                }}
-              >
-                <div
-                  style={{
-                    background: headerBg,
-                    color: headerColor,
-                    padding: "14px 16px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "2px",
-                    }}
-                  >
-                    <strong
-                      style={{ fontSize: `${18 * fontScale}px`, lineHeight: 1 }}
-                    >
-                      #{order.invoice_number || orderId.slice(-4)}
-                    </strong>
-                    <span
-                      style={{ fontSize: `${11 * fontScale}px`, opacity: 0.9 }}
-                    >
-                      {timeStr} | {order.client_name || "Cliente"}
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-end",
-                      gap: "4px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: `${12 * fontScale}px`,
-                        fontWeight: "900",
-                        letterSpacing: "0.5px",
-                      }}
-                    >
-                      {statusText}
-                    </span>
-
-                    {timerInfo && isPreparing && (
-                      <span
-                        style={{
-                          background: "#ffffff",
-                          color: timerInfo.badgeColor,
-                          padding: "2px 8px",
-                          borderRadius: "4px",
-                          fontSize: `${12 * fontScale}px`,
-                          fontWeight: "900",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                        }}
-                      >
-                        <Timer size={13 * fontScale} /> {timerInfo.formatted}
-                      </span>
-                    )}
-
-                    {timerInfo && isReady && (
-                      <span
-                        style={{
-                          background: "rgba(255,255,255,0.25)",
-                          color: "#ffffff",
-                          padding: "2px 8px",
-                          borderRadius: "4px",
-                          fontSize: `${11 * fontScale}px`,
-                          fontWeight: "bold",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        ⏱️ {timerInfo.formatted}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ padding: "16px", flex: 1 }}>
-                  {displayItems.length > 0 ? (
-                    displayItems.map((item, i) => {
-                      const itemName =
-                        item && item.name ? item.name : "Producto";
-                      const itemQty = item && item.quantity ? item.quantity : 1;
-                      const customizationText =
-                        item.customization || item.customNote || "";
-
-                      return (
-                        <div
-                          key={i}
-                          style={{
-                            paddingBottom: "12px",
-                            marginBottom: "12px",
-                            borderBottom:
-                              i === displayItems.length - 1
-                                ? "none"
-                                : "1px dashed #e5e7eb",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: "700",
-                              fontSize: `${16 * fontScale}px`,
-                              color: "#111827",
-                            }}
-                          >
-                            {itemQty} x {itemName}
-                          </div>
-
-                          {customizationText && (
-                            <div
-                              style={{
-                                fontSize: `${13 * fontScale}px`,
-                                color: customizationText.includes("+")
-                                  ? "#16a34a"
-                                  : "#e05d5d",
-                                marginTop: "4px",
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: "2px",
-                                paddingLeft: "8px",
-                                borderLeft: `2px solid ${customizationText.includes("+") ? "#16a34a" : "#e05d5d"}`,
-                              }}
-                            >
-                              <span style={{ fontWeight: "bold" }}>
-                                • {customizationText}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <p
-                      style={{
-                        textAlign: "center",
-                        color: "#9ca3af",
-                        fontStyle: "italic",
-                        margin: 0,
-                        fontSize: `${14 * fontScale}px`,
-                      }}
-                    >
-                      Todo despachado
-                    </p>
-                  )}
-                </div>
-
-                <div
-                  style={{ display: "flex", borderTop: "1px solid #e5e7eb" }}
-                >
-                  {!isPreparing && !isReady && (
-                    <button
-                      onClick={async (e) => {
-                        e.currentTarget.blur();
-                        const nowIso = new Date().toISOString();
-                        const updatedPd = {
-                          ...(order.payment_details || {}),
-                          prep_started_at: nowIso,
-                        };
-
-                        if (typeof setSales === "function") {
-                          setSales(
-                            sales.map((s) =>
-                              s.id === order.id
-                                ? {
-                                    ...s,
-                                    status: "preparando",
-                                    payment_details: updatedPd,
-                                  }
-                                : s,
-                            ),
-                          );
-                        }
-                        try {
-                          await supabase
-                            .from("sales")
-                            .update({
-                              status: "preparando",
-                              payment_details: updatedPd,
-                            })
-                            .eq("id", order.id)
-                            .eq("store_id", currentStoreId);
-                        } catch (err) {
-                          console.error("Error estatus:", err);
-                        }
-                      }}
-                      style={{
-                        flex: 1,
-                        background: "#fff",
-                        color: "#111827",
-                        border: "none",
-                        padding: "14px",
-                        cursor: "pointer",
-                        fontWeight: "bold",
-                        fontSize: "13px",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Preparar (Iniciar)
-                    </button>
-                  )}
-
-                  {!isReady && (
-                    <button
-                      onClick={async (e) => {
-                        e.currentTarget.blur();
-                        const nowIso = new Date().toISOString();
-                        const updatedPd = {
-                          ...(order.payment_details || {}),
-                          prep_finished_at: nowIso,
-                        };
-
-                        const updatedItems = getItems(order).map((item) => ({
-                          ...item,
-                          dispatched: true,
-                        }));
-
-                        if (typeof setSales === "function") {
-                          setSales(
-                            sales.map((s) =>
-                              s.id === order.id
-                                ? {
-                                    ...s,
-                                    status: "ready",
-                                    payment_details: updatedPd,
-                                    items: updatedItems,
-                                  }
-                                : s,
-                            ),
-                          );
-                        }
-                        try {
-                          await supabase
-                            .from("sales")
-                            .update({
-                              status: "ready",
-                              payment_details: updatedPd,
-                              items: updatedItems,
-                            })
-                            .eq("id", order.id)
-                            .eq("store_id", currentStoreId);
-                        } catch (err) {
-                          console.error("Error estatus:", err);
-                        }
-                      }}
-                      style={{
-                        flex: 1,
-                        background: isPreparing ? "#16a34a" : "#f9fafb",
-                        color: isPreparing ? "#fff" : "#4b5563",
-                        border: "none",
-                        borderLeft: isPreparing ? "none" : "1px solid #e5e7eb",
-                        padding: "14px",
-                        cursor: "pointer",
-                        fontWeight: "bold",
-                        fontSize: "13px",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Despachar (Listo)
-                    </button>
-                  )}
-
-                  {isReady && (
-                    <div
-                      style={{
-                        width: "100%",
-                        textAlign: "center",
-                        padding: "14px",
-                        background: "#16a34a",
-                        color: "#fff",
-                        fontSize: "13px",
-                        fontWeight: "bold",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      ✓ Esperando Entrega al Cliente
-                    </div>
-                  )}
-                </div>
+        if (kdsConfig.layout === "2-col") {
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", paddingBottom: "80px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <h3 style={{ background: "#e2e8f0", padding: "12px", borderRadius: "8px", margin: 0, textAlign: "center", color: "#334155", fontSize: "14px", textTransform: "uppercase" }}>
+                  Estación 1 {kdsConfig.col1Cats.length > 0 ? `(${kdsConfig.col1Cats.length} cat.)` : "(Todas)"}
+                </h3>
+                {ordersToRender.map((o, idx) => renderOrderCard(o, idx, kdsConfig.col1Cats))}
               </div>
-            );
-          })}
-        </div>
-      )}
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <h3 style={{ background: "#e2e8f0", padding: "12px", borderRadius: "8px", margin: 0, textAlign: "center", color: "#334155", fontSize: "14px", textTransform: "uppercase" }}>
+                  Estación 2 {kdsConfig.col2Cats.length > 0 ? `(${kdsConfig.col2Cats.length} cat.)` : "(Todas)"}
+                </h3>
+                {ordersToRender.map((o, idx) => renderOrderCard(o, idx, kdsConfig.col2Cats))}
+              </div>
+            </div>
+          );
+        }
+
+        if (kdsConfig.layout === "3-col") {
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", paddingBottom: "80px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <h3 style={{ background: "#e2e8f0", padding: "12px", borderRadius: "8px", margin: 0, textAlign: "center", color: "#334155", fontSize: "13px", textTransform: "uppercase" }}>
+                  Estación 1 {kdsConfig.col1Cats.length > 0 ? `(${kdsConfig.col1Cats.length} cat.)` : "(Todas)"}
+                </h3>
+                {ordersToRender.map((o, idx) => renderOrderCard(o, idx, kdsConfig.col1Cats))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <h3 style={{ background: "#e2e8f0", padding: "12px", borderRadius: "8px", margin: 0, textAlign: "center", color: "#334155", fontSize: "13px", textTransform: "uppercase" }}>
+                  Estación 2 {kdsConfig.col2Cats.length > 0 ? `(${kdsConfig.col2Cats.length} cat.)` : "(Todas)"}
+                </h3>
+                {ordersToRender.map((o, idx) => renderOrderCard(o, idx, kdsConfig.col2Cats))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <h3 style={{ background: "#e2e8f0", padding: "12px", borderRadius: "8px", margin: 0, textAlign: "center", color: "#334155", fontSize: "13px", textTransform: "uppercase" }}>
+                  Estación 3 {kdsConfig.col3Cats.length > 0 ? `(${kdsConfig.col3Cats.length} cat.)` : "(Todas)"}
+                </h3>
+                {ordersToRender.map((o, idx) => renderOrderCard(o, idx, kdsConfig.col3Cats))}
+              </div>
+            </div>
+          );
+        }
+
+        // Default: Layout Cuadrícula / Unificado
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "20px", paddingBottom: "80px" }}>
+            {ordersToRender.map((o, idx) => renderOrderCard(o, idx, kdsConfig.col1Cats))}
+          </div>
+        );
+      })()}
+
     </div>
   );
 }
