@@ -909,6 +909,7 @@ function App() {
   const [payPagoMovil, setPayPagoMovil] = useState("");
   const [payZelle, setPayZelle] = useState("");
   const [payDebit, setPayDebit] = useState("");
+  const [payCashea, setPayCashea] = useState(""); 
   const [paymentRef, setPaymentRef] = useState("");
   const [changeCurrencyType, setChangeCurrencyType] = useState("USD"); // 'USD', 'BS' o 'PAGO_MOVIL'
   const [pagoMovilRateMode, setPagoMovilRateMode] = useState("actual"); // 'actual' o 'personalizada'
@@ -920,6 +921,7 @@ function App() {
     pagoMovil: 0,
     zelle: 0,
     debit: 0,
+    cashea: 0, // NUEVO
   });
 
   const [settlingSale, setSettlingSale] = useState(null);
@@ -4170,6 +4172,7 @@ function App() {
       pagoMovil: parseFloat(payPagoMovil) || 0,
       zelle: parseFloat(payZelle) || 0,
       debit: parseFloat(payDebit) || 0,
+      cashea: parseFloat(payCashea) || 0, // NUEVO
     });
   };
 
@@ -4230,13 +4233,15 @@ function App() {
     currentStoreCountry === "venezuela"
       ? calcPayments.debit / (bcvRate || 1)
       : calcPayments.debit;
+  const paidUSDFromCashea = calcPayments.cashea; // NUEVO
 
   const totalPaidUSD =
     paidUSDFromCashUSD +
     paidUSDFromCashBs +
     paidUSDFromPagoMovil +
     paidUSDFromZelle +
-    paidUSDFromDebit;
+    paidUSDFromDebit +
+    paidUSDFromCashea; // NUEVO
   const remainingUSD = Math.max(
     0,
     parseFloat((totalUSD - totalPaidUSD).toFixed(2)),
@@ -4446,6 +4451,8 @@ function App() {
       pago_movil: 0,
       zelle: 0,
       debit: 0,
+      cashea: 0, // NUEVO
+      cashea_settled: false, // NUEVO
       reference: "VENTA A CRÉDITO",
       applied_bcv_rate: bcvRate,
       client_document: clientDocToSave,
@@ -4560,6 +4567,7 @@ function App() {
     setPayCashBs("");
     setPayPagoMovil("");
     setPayZelle("");
+    setPayCashea("");
     setPayDebit("");
     setPaymentRef("");
     setCalcPayments({
@@ -4590,10 +4598,12 @@ function App() {
     const finalPagoMovil = parseFloat(payPagoMovil) || 0;
     const finalZelle = parseFloat(payZelle) || 0;
     const finalDebit = parseFloat(payDebit) || 0;
+    const finalCashea = parseFloat(payCashea) || 0; // NUEVO
 
     const currentTotalPaidUSD =
       finalCashUSD +
       finalZelle +
+      finalCashea + // NUEVO
       (finalCashBs + finalPagoMovil + finalDebit) / (bcvRate || 1);
 
     if (currentTotalPaidUSD <= 0)
@@ -4639,6 +4649,8 @@ function App() {
       pago_movil: finalPagoMovil,
       zelle: finalZelle,
       debit: finalDebit,
+      cashea: finalCashea, // NUEVO
+      cashea_settled: false, // NUEVO
       reference: paymentRef,
       change_usd: calculatedChangeUSD,
       change_bs: calculatedChangeBs,
@@ -4710,6 +4722,7 @@ function App() {
         setPayPagoMovil("");
         setPayZelle("");
         setPayDebit("");
+        setPayCashea("");
         setPaymentRef("");
         setCalcPayments({
           cashUSD: 0,
@@ -4717,6 +4730,7 @@ function App() {
           pagoMovil: 0,
           zelle: 0,
           debit: 0,
+          cashea: 0,
         });
         fetchSales(currentStoreId);
       }
@@ -4782,6 +4796,7 @@ function App() {
         setPayPagoMovil("");
         setPayZelle("");
         setPayDebit("");
+        setPayCashea("");
         setPaymentRef("");
         setCalcPayments({
           cashUSD: 0,
@@ -4789,6 +4804,7 @@ function App() {
           pagoMovil: 0,
           zelle: 0,
           debit: 0,
+          cashea: 0,
         });
         fetchSales(currentStoreId);
         alert(
@@ -7684,6 +7700,19 @@ function App() {
                     placeholder="0.00"
                   />
                 </div>
+                {/* --- NUEVO: INPUT CASHEA --- */}
+                <div className="form-group">
+                  <label>Cashea ($ USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={payCashea}
+                    onChange={(e) => setPayCashea(e.target.value)}
+                    onBlur={updateCalculations}
+                    placeholder="0.00"
+                  />
+                </div>
+                {/* --------------------------- */}
                 <div className="form-group">
                   <label>Referencia Bancaria (Opcional)</label>
                   <input

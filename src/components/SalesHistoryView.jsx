@@ -28,6 +28,35 @@ function SalesHistoryView({
   currentStoreId,
   setSales,
 }) {
+  // Lógica Cashea
+  const pendingCasheaSales = filteredSales.filter(s => s.payment_details?.cashea > 0 && !s.payment_details?.cashea_settled);
+  const totalCasheaPending = pendingCasheaSales.reduce((sum, s) => sum + (s.payment_details?.cashea || 0), 0);
+
+  const handleSettleCashea = async () => {
+    if(totalCasheaPending <= 0) return;
+    if(!window.confirm(`¿Confirmar que Cashea ha depositado/liquidado los $${totalCasheaPending.toFixed(2)} pendientes en tu banco?`)) return;
+    
+    try {
+      const promises = pendingCasheaSales.map(sale => {
+        const updatedDetails = { ...sale.payment_details, cashea_settled: true };
+        return supabase.from('sales').update({ payment_details: updatedDetails }).eq('id', sale.id).eq('store_id', currentStoreId);
+      });
+      await Promise.all(promises);
+      
+      if (typeof setSales === "function") {
+        setSales(prev => prev.map(s => {
+          if (pendingCasheaSales.find(ps => ps.id === s.id)) {
+            return { ...s, payment_details: { ...s.payment_details, cashea_settled: true } };
+          }
+          return s;
+        }));
+      }
+      alert("¡Saldo de Cashea liquidado y sumado a las cuentas correctamente!");
+    } catch (err) {
+      alert("Error al liquidar: " + err.message);
+    }
+  };
+
   return (
     <div
       className="product-list-card"
@@ -39,6 +68,42 @@ function SalesHistoryView({
         padding: "24px",
       }}
     >
+      {/* Panel Detallado de Cashea (Solo aparece si hay deuda) */}
+      {totalCasheaPending > 0 && (
+        <div style={{ background: "#fef9c3", border: "1px solid #fde047", borderRadius: "8px", padding: "16px", marginBottom: "20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #fde047", paddingBottom: "12px", marginBottom: "12px", flexWrap: "wrap", gap: "10px" }}>
+            <div>
+              <h4 style={{ margin: 0, color: "#854d0e", fontSize: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <DollarSign size={18} /> Estado de Cuenta: Cashea
+              </h4>
+              <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: "#a16207" }}>
+                Deuda total acumulada por liquidar: <strong>${totalCasheaPending.toFixed(2)} USD</strong>
+              </p>
+            </div>
+            <button 
+              onClick={handleSettleCashea}
+              style={{ background: "#eab308", color: "#111827", border: "none", padding: "10px 16px", borderRadius: "6px", fontWeight: "900", cursor: "pointer", fontSize: "13px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
+              Marcar todo como Liquidado/Pagado
+            </button>
+          </div>
+          
+          <div>
+            <span style={{ fontSize: "12px", fontWeight: "bold", color: "#854d0e", display: "block", marginBottom: "8px" }}>Facturas financiadas pendientes de cobro:</span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "8px", maxHeight: "150px", overflowY: "auto", paddingRight: "4px" }}>
+              {pendingCasheaSales.map(s => (
+                <div key={s.id} style={{ background: "#fff", border: "1px solid #fde047", borderRadius: "6px", padding: "8px 12px", fontSize: "12px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <strong style={{ color: "#713f12" }}>{s.invoice_number || `A-${String(s.id).padStart(3, "0")}`}</strong>
+                    <strong style={{ color: "#a16207" }}>${s.payment_details.cashea.toFixed(2)}</strong>
+                  </div>
+                  <div style={{ color: "#6b7280", fontSize: "11px" }}>{new Date(s.created_at).toLocaleDateString()} - {s.client_name || "Cliente"}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
         style={{
           display: "flex",
@@ -223,6 +288,11 @@ function SalesHistoryView({
                     <td>{sale.client_name || "Cliente General"}</td>
                     <td>
                       <strong>${Number(sale.total_usd || 0).toFixed(2)}</strong>
+                      {sale.payment_details?.cashea > 0 && (
+                         <div style={{fontSize: "10px", marginTop: "2px", color: sale.payment_details.cashea_settled ? "#16a34a" : "#ca8a04", fontWeight: "bold"}}>
+                           Cashea: ${sale.payment_details.cashea.toFixed(2)} {sale.payment_details.cashea_settled ? "(Liquidado)" : "(Pendiente)"}
+                         </div>
+                      )}
                     </td>
                     <td>
                       {isCredit ? (

@@ -258,6 +258,16 @@ function CashShiftsView({
                             +${(shiftCashUSD + shiftZelle).toFixed(2)} USD
                           </strong>
                         </div>
+                        {(() => {
+                           const shiftCashea = (sales || []).filter(s => s.shift_id === currentShift?.id && s.status === "completed").reduce((sum, s) => sum + (s.payment_details?.cashea || 0), 0);
+                           if (shiftCashea > 0) return (
+                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                               <span style={{ fontSize: "11px", color: "#4f46e5", fontWeight: "600" }}>Ventas por Cashea:</span>
+                               <strong style={{ fontSize: "12px", color: "#4f46e5", fontWeight: "800" }}>+${shiftCashea.toFixed(2)} USD</strong>
+                             </div>
+                           );
+                           return null;
+                        })()}
 
                         {hasEgresos ? (
                           <div
