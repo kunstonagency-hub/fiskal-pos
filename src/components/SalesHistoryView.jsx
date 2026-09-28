@@ -8,6 +8,7 @@ import {
   MessageCircle,
   Eye,
   Trash2,
+  TrendingUp,
 } from "lucide-react";
 import { supabase } from "../supabase";
 
@@ -28,30 +29,70 @@ function SalesHistoryView({
   currentStoreId,
   setSales,
 }) {
-  // Lógica Cashea
+  // --- Lógica de Seguridad ---
+  const isOwnerOrAdmin = currentUserRole === "owner" || currentUserRole === "super_admin";
+
+  // --- Lógica de Gráfica de Ventas (Agrupada por Día de la Semana) ---
+  const salesByDay = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 0: 0 };
+  filteredSales.forEach(sale => {
+    if (sale.status === 'completed' || sale.status === 'credit') {
+      const date = new Date(sale.created_at);
+      const day = date.getDay(); // 0 = Dom, 1 = Lun...
+      salesByDay[day] += (sale.total_usd || 0);
+    }
+  });
+  
+  const chartData = [
+    { day: 'Lun', total: salesByDay[1] },
+    { day: 'Mar', total: salesByDay[2] },
+    { day: 'Mié', total: salesByDay[3] },
+    { day: 'Jue', total: salesByDay[4] },
+    { day: 'Vie', total: salesByDay[5] },
+    { day: 'Sáb', total: salesByDay[6] },
+    { day: 'Dom', total: salesByDay[0] },
+  ];
+  const maxChartValue = Math.max(...chartData.map(d => d.total));
+
+  // Lógica Cashea con Selección de Facturas
+  const [casheaSelectedIds, setCasheaSelectedIds] = React.useState([]);
+  const [casheaRate, setCasheaRate] = React.useState("");
+
   const pendingCasheaSales = filteredSales.filter(s => s.payment_details?.cashea > 0 && !s.payment_details?.cashea_settled);
   const totalCasheaPending = pendingCasheaSales.reduce((sum, s) => sum + (s.payment_details?.cashea || 0), 0);
 
+  const selectedCasheaSales = pendingCasheaSales.filter(s => casheaSelectedIds.includes(s.id));
+  const selectedCasheaTotal = selectedCasheaSales.reduce((sum, s) => sum + (s.payment_details?.cashea || 0), 0);
+
+  const handleToggleCashea = (id) => {
+    setCasheaSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
   const handleSettleCashea = async () => {
-    if(totalCasheaPending <= 0) return;
-    if(!window.confirm(`¿Confirmar que Cashea ha depositado/liquidado los $${totalCasheaPending.toFixed(2)} pendientes en tu banco?`)) return;
+    if(selectedCasheaSales.length === 0) {
+      alert("⚠️ Selecciona al menos una factura haciendo clic sobre ella para poder liquidar.");
+      return;
+    }
+    if(!window.confirm(`¿Confirmar que Cashea ha depositado/liquidado las ${selectedCasheaSales.length} facturas seleccionadas por un total de $${selectedCasheaTotal.toFixed(2)} USD?`)) return;
     
     try {
-      const promises = pendingCasheaSales.map(sale => {
+      const promises = selectedCasheaSales.map(sale => {
         const updatedDetails = { ...sale.payment_details, cashea_settled: true };
+        if(casheaRate) updatedDetails.cashea_settled_rate = parseFloat(casheaRate);
         return supabase.from('sales').update({ payment_details: updatedDetails }).eq('id', sale.id).eq('store_id', currentStoreId);
       });
       await Promise.all(promises);
       
       if (typeof setSales === "function") {
         setSales(prev => prev.map(s => {
-          if (pendingCasheaSales.find(ps => ps.id === s.id)) {
-            return { ...s, payment_details: { ...s.payment_details, cashea_settled: true } };
+          if (casheaSelectedIds.includes(s.id)) {
+            return { ...s, payment_details: { ...s.payment_details, cashea_settled: true, cashea_settled_rate: parseFloat(casheaRate) } };
           }
           return s;
         }));
       }
-      alert("¡Saldo de Cashea liquidado y sumado a las cuentas correctamente!");
+      setCasheaSelectedIds([]);
+      setCasheaRate("");
+      alert("¡Facturas seleccionadas liquidadas correctamente!");
     } catch (err) {
       alert("Error al liquidar: " + err.message);
     }
@@ -68,41 +109,108 @@ function SalesHistoryView({
         padding: "24px",
       }}
     >
-      {/* Panel Detallado de Cashea (Solo aparece si hay deuda) */}
-      {totalCasheaPending > 0 && (
+      {/* ====== SECCIÓN FINANCIERA EXCLUSIVA PARA DUEÑOS ====== */}
+      {isOwnerOrAdmin && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px", marginBottom: "20px" }}>
+          
+          {/* Gráfica de Ventas */}
+          <div style={{ background: "#f8f9fa", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "16px" }}>
+            <h4 style={{ margin: "0 0 24px 0", color: "#111827", fontSize: "15px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <TrendingUp size={18} color="#10b981" /> 
+              Rendimiento por Día de la Semana (Filtro actual)
+            </h4>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", height: "120px", paddingBottom: "20px", borderBottom: "1px solid #e5e7eb", margin: "0 10px" }}>
+              {chartData.map((d, i) => {
+                const heightPx = maxChartValue > 0 ? (d.total / maxChartValue) * 100 : 0;
+                return (
+                  <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", position: "relative", height: "100%" }}>
+                    <span style={{ fontSize: "11px", color: "#4b5563", fontWeight: "bold", position: "absolute", bottom: `${heightPx + 4}px` }}>
+                      ${d.total.toFixed(0)}
+                    </span>
+                    <div style={{ width: "40%", maxWidth: "40px", background: heightPx > 0 ? "#10b981" : "transparent", height: `${heightPx}px`, borderRadius: "4px 4px 0 0", minHeight: heightPx > 0 ? "4px" : "0", transition: "height 0.3s ease" }}></div>
+                    <span style={{ fontSize: "12px", fontWeight: "600", color: "#6b7280", position: "absolute", bottom: "-24px" }}>{d.day}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Panel Detallado de Cashea (Solo aparece si hay deuda) */}
+          {totalCasheaPending > 0 && (
         <div style={{ background: "#fef9c3", border: "1px solid #fde047", borderRadius: "8px", padding: "16px", marginBottom: "20px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #fde047", paddingBottom: "12px", marginBottom: "12px", flexWrap: "wrap", gap: "10px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #fde047", paddingBottom: "12px", marginBottom: "12px", flexWrap: "wrap", gap: "10px" }}>
             <div>
               <h4 style={{ margin: 0, color: "#854d0e", fontSize: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
                 <DollarSign size={18} /> Estado de Cuenta: Cashea
               </h4>
               <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: "#a16207" }}>
-                Deuda total acumulada por liquidar: <strong>${totalCasheaPending.toFixed(2)} USD</strong>
+                Deuda total acumulada: <strong>${totalCasheaPending.toFixed(2)} USD</strong>
               </p>
             </div>
-            <button 
-              onClick={handleSettleCashea}
-              style={{ background: "#eab308", color: "#111827", border: "none", padding: "10px 16px", borderRadius: "6px", fontWeight: "900", cursor: "pointer", fontSize: "13px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
-              Marcar todo como Liquidado/Pagado
-            </button>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-end", background: "#fffbeb", padding: "10px", borderRadius: "8px", border: "1px solid #fde047" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "12px", color: "#854d0e", fontWeight: "bold" }}>Tasa a la que pagaron (Bs/$):</span>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  placeholder="Ej. 36.50" 
+                  value={casheaRate} 
+                  onChange={e => setCasheaRate(e.target.value)} 
+                  style={{ padding: "6px 8px", width: "90px", border: "1px solid #eab308", borderRadius: "4px", fontSize: "13px", outline: "none", fontWeight: "bold", color: "#713f12" }}
+                />
+              </div>
+              <div style={{ fontSize: "13px", color: "#854d0e", textAlign: "right" }}>
+                Has seleccionado: <strong>${selectedCasheaTotal.toFixed(2)}</strong>
+                <br/>
+                {casheaRate > 0 ? (
+                  <span style={{color: "#16a34a", fontWeight: "900", fontSize: "14px"}}>Recibirás en banco: Bs. {(selectedCasheaTotal * casheaRate).toLocaleString("es-VE", {minimumFractionDigits: 2})}</span>
+                ) : (
+                  <span style={{color: "#a16207", fontSize: "11px"}}>(Ingresa la tasa para ver en Bs)</span>
+                )}
+              </div>
+              <button 
+                onClick={handleSettleCashea}
+                disabled={selectedCasheaSales.length === 0}
+                style={{ background: selectedCasheaSales.length > 0 ? "#eab308" : "#fef08a", color: selectedCasheaSales.length > 0 ? "#111827" : "#a16207", border: "none", padding: "8px 16px", borderRadius: "6px", fontWeight: "900", cursor: selectedCasheaSales.length > 0 ? "pointer" : "not-allowed", fontSize: "12px", width: "100%", marginTop: "4px", transition: "all 0.2s" }}>
+                Liquidar Seleccionadas ({selectedCasheaSales.length})
+              </button>
+            </div>
           </div>
           
           <div>
-            <span style={{ fontSize: "12px", fontWeight: "bold", color: "#854d0e", display: "block", marginBottom: "8px" }}>Facturas financiadas pendientes de cobro:</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <span style={{ fontSize: "12px", fontWeight: "bold", color: "#854d0e" }}>Facturas financiadas (Haz clic para seleccionar las que te están pagando):</span>
+              <button 
+                onClick={() => setCasheaSelectedIds(casheaSelectedIds.length === pendingCasheaSales.length ? [] : pendingCasheaSales.map(s=>s.id))} 
+                style={{ background: "none", border: "none", color: "#a16207", fontSize: "12px", textDecoration: "underline", cursor: "pointer", fontWeight: "bold" }}>
+                {casheaSelectedIds.length === pendingCasheaSales.length ? "Desmarcar Todas" : "Marcar Todas"}
+              </button>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "8px", maxHeight: "150px", overflowY: "auto", paddingRight: "4px" }}>
-              {pendingCasheaSales.map(s => (
-                <div key={s.id} style={{ background: "#fff", border: "1px solid #fde047", borderRadius: "6px", padding: "8px 12px", fontSize: "12px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <strong style={{ color: "#713f12" }}>{s.invoice_number || `A-${String(s.id).padStart(3, "0")}`}</strong>
-                    <strong style={{ color: "#a16207" }}>${s.payment_details.cashea.toFixed(2)}</strong>
+              {pendingCasheaSales.map(s => {
+                const isSelected = casheaSelectedIds.includes(s.id);
+                return (
+                  <div key={s.id} onClick={() => handleToggleCashea(s.id)} style={{ background: isSelected ? "#fef08a" : "#fff", border: isSelected ? "2px solid #eab308" : "1px solid #fde047", borderRadius: "6px", padding: "8px 12px", fontSize: "12px", display: "flex", flexDirection: "column", gap: "4px", cursor: "pointer", transition: "all 0.15s" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <input type="checkbox" checked={isSelected} readOnly style={{ cursor: "pointer", accentColor: "#eab308" }} />
+                        <strong style={{ color: "#713f12" }}>{s.invoice_number || `A-${String(s.id).padStart(3, "0")}`}</strong>
+                      </div>
+                      <strong style={{ color: "#a16207" }}>${s.payment_details.cashea.toFixed(2)}</strong>
+                    </div>
+                    <div style={{ color: "#6b7280", fontSize: "11px", marginLeft: "20px" }}>{new Date(s.created_at).toLocaleDateString()} - {s.client_name || "Cliente"}</div>
                   </div>
-                  <div style={{ color: "#6b7280", fontSize: "11px" }}>{new Date(s.created_at).toLocaleDateString()} - {s.client_name || "Cliente"}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
       )}
+      
+      </div>
+      )}
+      {/* ====== FIN SECCIÓN EXCLUSIVA PARA DUEÑOS ====== */}
 
       <div
         style={{
