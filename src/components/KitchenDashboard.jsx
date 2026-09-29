@@ -504,6 +504,7 @@ export default function KitchenDashboard({
           flexDirection: "column",
           overflow: "hidden",
           boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+          height: "fit-content", 
         }}
       >
         <div
@@ -2431,6 +2432,8 @@ export default function KitchenDashboard({
               gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
               gap: "20px",
               flex: 1,
+              alignItems: "flex-start",   
+              alignContent: "flex-start",
             }}
           >
             {ordersToRender.map((o, idx) =>
