@@ -1372,6 +1372,8 @@ export default function KitchenDashboard({
         boxSizing: "border-box",
         overflowY: "auto",
         position: "relative",
+        display: "flex",          
+        flexDirection: "column",  
       }}
     >
       {/* ========================================================================================= */}
@@ -1692,23 +1694,69 @@ export default function KitchenDashboard({
                 .filter(Boolean)
                 .map((colNum) => {
                   const colKey = `col${colNum}Cats`;
+                  const colorKey = `col${colNum}Color`;
+                  
+                  // Paleta de colores pasteles predefinida
+                  const pastelColors = [
+                    { name: "Sin Color", hex: "transparent" },
+                    { name: "Azul Pastel", hex: "#e0f2fe" },
+                    { name: "Verde Pastel", hex: "#dcfce7" },
+                    { name: "Amarillo Pastel", hex: "#fef08a" },
+                    { name: "Rojo Pastel", hex: "#fee2e2" },
+                    { name: "Morado Pastel", hex: "#f3e8ff" },
+                    { name: "Gris Suave", hex: "#f1f5f9" }
+                  ];
+
                   return (
-                    <div key={colNum} style={{ marginBottom: "12px" }}>
+                    <div key={colNum} style={{ marginBottom: "20px", paddingBottom: "12px", borderBottom: "1px dashed #cbd5e1" }}>
                       <strong
                         style={{
-                          fontSize: "12px",
+                          fontSize: "13px",
                           display: "block",
-                          marginBottom: "6px",
+                          marginBottom: "8px",
                           color: "#111827",
                         }}
                       >
                         {kdsConfig.layout === "grid"
-                          ? "Categorías en este dispositivo"
-                          : `Categorías Estación ${colNum}`}
+                          ? "Configuración de este dispositivo"
+                          : `Configuración Estación ${colNum}`}
                       </strong>
-                      <div
-                        style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}
-                      >
+                      
+                      {/* --- NUEVO: Selector de Color --- */}
+                      {kdsConfig.layout !== "grid" && (
+                        <div style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontSize: "11px", color: "#64748b", fontWeight: "bold" }}>Fondo:</span>
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            {pastelColors.map(color => {
+                              const isSelected = (kdsConfig[colorKey] === color.hex) || (!kdsConfig[colorKey] && color.hex === "transparent");
+                              return (
+                                <button
+                                  key={color.hex}
+                                  onClick={() => updateKdsConfig({ ...kdsConfig, [colorKey]: color.hex })}
+                                  title={color.name}
+                                  style={{
+                                    width: "24px",
+                                    height: "24px",
+                                    borderRadius: "50%",
+                                    background: color.hex === "transparent" ? "#fff" : color.hex,
+                                    border: isSelected ? "2px solid #111827" : "1px solid #cbd5e1",
+                                    position: "relative",
+                                    cursor: "pointer",
+                                    padding: 0,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center"
+                                  }}
+                                >
+                                  {color.hex === "transparent" && <div style={{width: "100%", height: "1px", background:"#ef4444", transform:"rotate(45deg)", position:"absolute"}}></div>}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                         {availableCategories.map((cat) => {
                           const isActive = kdsConfig[colKey].includes(cat);
                           return (
@@ -2134,7 +2182,7 @@ export default function KitchenDashboard({
             )
           : waitingOrders;
 
-        if (ordersToRender.length === 0) {
+        if (ordersToRender.length === 0 && (!kdsConfig.layout || kdsConfig.layout === "grid")) {
           return (
             <div
               style={{
@@ -2143,6 +2191,10 @@ export default function KitchenDashboard({
                 background: "#fff",
                 borderRadius: "8px",
                 border: "1px solid #e5e7eb",
+                flex: 1, // <-- Ocupa todo el espacio
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
               }}
             >
               <p style={{ color: "#6b7280", fontSize: "15px", margin: 0 }}>
@@ -2160,14 +2212,18 @@ export default function KitchenDashboard({
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",
                 gap: "24px",
-                paddingBottom: "80px",
+                flex: 1, // <-- CLAVE: Rellena el 100% de la pantalla hacia abajo
               }}
             >
+              {/* ESTACIÓN 1 */}
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
                   gap: "16px",
+                  background: kdsConfig.col1Color || "transparent",
+                  padding: kdsConfig.col1Color && kdsConfig.col1Color !== "transparent" ? "16px" : "0",
+                  borderRadius: "16px",
                 }}
               >
                 <h3
@@ -2190,12 +2246,22 @@ export default function KitchenDashboard({
                 {ordersToRender.map((o, idx) =>
                   renderOrderCard(o, idx, kdsConfig.col1Cats)
                 )}
+                {ordersToRender.length === 0 && (
+                  <div style={{textAlign: "center", color: "#64748b", marginTop: "40px", fontSize: "13px", fontWeight: "bold"}}>
+                    Estación despejada ✓
+                  </div>
+                )}
               </div>
+              
+              {/* ESTACIÓN 2 */}
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
                   gap: "16px",
+                  background: kdsConfig.col2Color || "transparent",
+                  padding: kdsConfig.col2Color && kdsConfig.col2Color !== "transparent" ? "16px" : "0",
+                  borderRadius: "16px",
                 }}
               >
                 <h3
@@ -2217,6 +2283,11 @@ export default function KitchenDashboard({
                 </h3>
                 {ordersToRender.map((o, idx) =>
                   renderOrderCard(o, idx, kdsConfig.col2Cats)
+                )}
+                {ordersToRender.length === 0 && (
+                  <div style={{textAlign: "center", color: "#64748b", marginTop: "40px", fontSize: "13px", fontWeight: "bold"}}>
+                    Estación despejada ✓
+                  </div>
                 )}
               </div>
             </div>
@@ -2231,14 +2302,18 @@ export default function KitchenDashboard({
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr 1fr",
                 gap: "16px",
-                paddingBottom: "80px",
+                flex: 1, // <-- CLAVE: Rellena el 100% de la pantalla hacia abajo
               }}
             >
+              {/* ESTACIÓN 1 */}
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
                   gap: "16px",
+                  background: kdsConfig.col1Color || "transparent",
+                  padding: kdsConfig.col1Color && kdsConfig.col1Color !== "transparent" ? "12px" : "0",
+                  borderRadius: "16px",
                 }}
               >
                 <h3
@@ -2261,12 +2336,22 @@ export default function KitchenDashboard({
                 {ordersToRender.map((o, idx) =>
                   renderOrderCard(o, idx, kdsConfig.col1Cats)
                 )}
+                {ordersToRender.length === 0 && (
+                  <div style={{textAlign: "center", color: "#64748b", marginTop: "30px", fontSize: "12px", fontWeight: "bold"}}>
+                    Estación despejada ✓
+                  </div>
+                )}
               </div>
+              
+              {/* ESTACIÓN 2 */}
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
                   gap: "16px",
+                  background: kdsConfig.col2Color || "transparent",
+                  padding: kdsConfig.col2Color && kdsConfig.col2Color !== "transparent" ? "12px" : "0",
+                  borderRadius: "16px",
                 }}
               >
                 <h3
@@ -2289,12 +2374,22 @@ export default function KitchenDashboard({
                 {ordersToRender.map((o, idx) =>
                   renderOrderCard(o, idx, kdsConfig.col2Cats)
                 )}
+                {ordersToRender.length === 0 && (
+                  <div style={{textAlign: "center", color: "#64748b", marginTop: "30px", fontSize: "12px", fontWeight: "bold"}}>
+                    Estación despejada ✓
+                  </div>
+                )}
               </div>
+
+              {/* ESTACIÓN 3 */}
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
                   gap: "16px",
+                  background: kdsConfig.col3Color || "transparent",
+                  padding: kdsConfig.col3Color && kdsConfig.col3Color !== "transparent" ? "12px" : "0",
+                  borderRadius: "16px",
                 }}
               >
                 <h3
@@ -2317,11 +2412,17 @@ export default function KitchenDashboard({
                 {ordersToRender.map((o, idx) =>
                   renderOrderCard(o, idx, kdsConfig.col3Cats)
                 )}
+                {ordersToRender.length === 0 && (
+                  <div style={{textAlign: "center", color: "#64748b", marginTop: "30px", fontSize: "12px", fontWeight: "bold"}}>
+                    Estación despejada ✓
+                  </div>
+                )}
               </div>
             </div>
           );
         }
 
+        // Diseño en Cuadrícula (Por defecto)
         return (
           <div
             className="kds-grid-layout"
@@ -2329,7 +2430,7 @@ export default function KitchenDashboard({
               display: "grid",
               gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
               gap: "20px",
-              paddingBottom: "80px",
+              flex: 1,
             }}
           >
             {ordersToRender.map((o, idx) =>

@@ -201,6 +201,31 @@ const compressImage = (file, maxWidth = 800, quality = 0.7) => {
   });
 };
 
+const handleCurrencyInput = (val, setter) => {
+  // 1. Quitar cualquier carácter que no sea un número (puntos, letras, espacios)
+  let cleanValue = val.replace(/\D/g, '');
+  
+  // 2. Si el usuario borra todo, la casilla queda vacía
+  if (!cleanValue) {
+    setter("");
+    return;
+  }
+  
+  // 3. Quitar los ceros a la izquierda para destrabar el cálculo
+  cleanValue = cleanValue.replace(/^0+/, '');
+  
+  // 4. Si al quitar los ceros se quedó vacío (ej: el usuario tecleó puro "0"), mostramos 0.00
+  if (!cleanValue) {
+    setter("0.00");
+    return;
+  }
+  
+  // 5. Convertir a número entero y dividir entre 100
+  // Ej: Escribes "135202" -> se convierte en 1352.02 automáticamente
+  const numericValue = (parseInt(cleanValue, 10) / 100).toFixed(2);
+  setter(numericValue);
+};
+
 // Componente principal de la aplicación.
 // Centraliza la autenticación, el estado global, la navegación entre módulos y
 // la coordinación de todas las vistas del sistema Fiskal.
@@ -923,12 +948,22 @@ function App() {
   const [payPagoMovil, setPayPagoMovil] = useState("");
   const [payZelle, setPayZelle] = useState("");
   const [payDebit, setPayDebit] = useState("");
-  const [payCashea, setPayCashea] = useState(""); 
+  const [payCashea, setPayCashea] = useState("");
+  const [activePayMethods, setActivePayMethods] = useState({
+    cashUSD: false,
+    pagoMovil: false,
+    debit: false,
+    zelle: false,
+    cashBs: false,
+    cashea: false
+  }); 
+  const [isIntlCard, setIsIntlCard] = useState(false);
+  const [intlCardFeePct, setIntlCardFeePct] = useState("3"); // 3% por defecto
   const [paymentRef, setPaymentRef] = useState("");
   const [changeCurrencyType, setChangeCurrencyType] = useState("USD"); // 'USD', 'BS' o 'PAGO_MOVIL'
   const [pagoMovilRateMode, setPagoMovilRateMode] = useState("actual"); // 'actual' o 'personalizada'
   const [pagoMovilCustomRate, setPagoMovilCustomRate] = useState("");
-
+  
   const [calcPayments, setCalcPayments] = useState({
     cashUSD: 0,
     cashBs: 0,
@@ -4602,9 +4637,7 @@ const handleCreditCheckout = async () => {
       currentStoreCountry.toLowerCase().includes("venezuela") &&
       (!bcvRate || bcvRate <= 0)
     ) {
-      alert(
-        "No se puede cobrar: la tasa de cambio (BCV) no está configurada o es inválida en este momento. Ve a Ajustes, sincroniza o ingresa la tasa manualmente, y vuelve a intentarlo.",
-      );
+      alert("No se puede cobrar: la tasa de cambio (BCV) no está configurada o es inválida en este momento.");
       return;
     }
 
@@ -4613,46 +4646,40 @@ const handleCreditCheckout = async () => {
     const finalPagoMovil = parseFloat(payPagoMovil) || 0;
     const finalZelle = parseFloat(payZelle) || 0;
     const finalDebit = parseFloat(payDebit) || 0;
-    const finalCashea = parseFloat(payCashea) || 0; // NUEVO
+    const finalCashea = parseFloat(payCashea) || 0;
 
     const currentTotalPaidUSD =
       finalCashUSD +
       finalZelle +
-      finalCashea + // NUEVO
+      finalCashea +
       (finalCashBs + finalPagoMovil + finalDebit) / (bcvRate || 1);
 
-    if (currentTotalPaidUSD <= 0)
-      return alert("Debes ingresar un monto a pagar válido.");
+    // --- NUEVO: CÁLCULOS DE RECARGO DE TARJETA ---
+    const baseDebt = settlingSale ? (settlingSale.status === "pending" ? totalUSD : (settlingSale.balance_due_usd || settlingSale.total_usd)) : totalUSD;
+    const intlFeeAmount = (activePayMethods.debit && isIntlCard) ? (baseDebt * (parseFloat(intlCardFeePct) || 0) / 100) : 0;
+    const targetDebtUSD = baseDebt + intlFeeAmount;
+    // ---------------------------------------------
+
+    if (currentTotalPaidUSD <= 0) return alert("Debes ingresar un monto a pagar válido.");
 
     setProcessing(true);
     const clientData = clients.find((c) => c.name === selectedClient);
-    const changeRateToUse =
-      changeCurrencyType === "PAGO_MOVIL" &&
-      pagoMovilRateMode === "personalizada"
-        ? parseFloat(pagoMovilCustomRate)
-        : bcvRate || 1;
-    const calculatedChangeUSD = parseFloat(
-      Math.max(0, currentTotalPaidUSD - totalUSD).toFixed(2),
-    );
-    const calculatedChangeBs = parseFloat(
-      (calculatedChangeUSD * changeRateToUse).toFixed(2),
-    );
+    const changeRateToUse = changeCurrencyType === "PAGO_MOVIL" && pagoMovilRateMode === "personalizada" ? parseFloat(pagoMovilCustomRate) : bcvRate || 1;
+    
+    // Calcular vuelto sobre la deuda REAL (con recargo sumado)
+    const calculatedChangeUSD = parseFloat(Math.max(0, currentTotalPaidUSD - targetDebtUSD).toFixed(2));
+    const calculatedChangeBs = parseFloat((calculatedChangeUSD * changeRateToUse).toFixed(2));
 
     let netCashUsdToRegister = finalCashUSD;
     let netCashBsToRegister = finalCashBs;
 
-    if (
-      calculatedChangeUSD > 0 &&
-      currentStoreCountry &&
-      currentStoreCountry.toLowerCase().includes("venezuela")
-    ) {
+    if (calculatedChangeUSD > 0 && currentStoreCountry && currentStoreCountry.toLowerCase().includes("venezuela")) {
       if (changeCurrencyType === "BS")
         netCashBsToRegister = Math.max(0, finalCashBs - calculatedChangeBs);
       else if (changeCurrencyType === "USD")
         netCashUsdToRegister = Math.max(0, finalCashUSD - calculatedChangeUSD);
     }
 
-    // Descontar inventario solo de lo que falta (platos nuevos)
     const itemsToDeduct = cart.filter((item) => !item.stock_deducted);
     const finalCart = cart.map((item) => ({ ...item, stock_deducted: true }));
 
@@ -4664,118 +4691,85 @@ const handleCreditCheckout = async () => {
       pago_movil: finalPagoMovil,
       zelle: finalZelle,
       debit: finalDebit,
-      cashea: finalCashea, // NUEVO
-      cashea_settled: false, // NUEVO
+      cashea: finalCashea,
+      cashea_settled: false,
+      international_fee: intlFeeAmount, // Guardamos el recargo registrado en la BD
       reference: paymentRef,
       change_usd: calculatedChangeUSD,
       change_bs: calculatedChangeBs,
       change_currency_type: changeCurrencyType || "USD",
       change_rate_used: changeRateToUse,
       applied_bcv_rate: bcvRate,
-      client_document: clientData
-        ? clientData.document
-        : settlingSale?.payment_details?.client_document || "",
+      client_document: clientData ? clientData.document : settlingSale?.payment_details?.client_document || "",
       ...(settlingSale?.payment_details || {}),
     };
 
     if (settlingSale) {
-      // PAGAR UNA CUENTA EXISTENTE
       const isPendingOrder = settlingSale.status === "pending";
-      const currentDebt = isPendingOrder
-        ? totalUSD
-        : settlingSale.balance_due_usd || settlingSale.total_usd;
+      const currentDebt = targetDebtUSD; 
       const netPaidForDebt = Math.min(currentTotalPaidUSD, currentDebt);
-      const newBalanceDue = parseFloat(
-        (currentDebt - netPaidForDebt).toFixed(2),
-      );
+      const newBalanceDue = parseFloat((currentDebt - netPaidForDebt).toFixed(2));
       const isFullyPaid = newBalanceDue <= 0.01;
 
-      // --- NUEVO: Validar que exista un cliente si van a dejar saldo pendiente ---
       if (newBalanceDue > 0 && selectedClient === "Cliente General") {
         alert("Para dejar un saldo pendiente / crédito debes asociar un cliente específico.");
         setProcessing(false);
         return;
       }
 
+      // Actualizar el total de la factura sumándole el recargo internacional
+      const updatedTotalUSD = isPendingOrder ? (totalUSD + intlFeeAmount) : (settlingSale.total_usd + intlFeeAmount);
+
       const updatePayload = {
         status: isFullyPaid ? "completed" : "credit",
         balance_due_usd: newBalanceDue,
+        total_usd: updatedTotalUSD,
+        total_bs: updatedTotalUSD * (bcvRate || 1),
         payment_details: paymentDetails,
         items: finalCart,
-        client_name: selectedClient, // <-- ¡CORRECCIÓN CRÍTICA AÑADIDA AQUÍ!
+        client_name: selectedClient,
       };
       
       if (isPendingOrder) {
-        updatePayload.total_usd = totalUSD;
-        updatePayload.total_bs = totalBs;
         updatePayload.subtotal_usd = cartSubtotalUSD;
         updatePayload.tax_usd = calculatedTaxUSD;
-        
-        // --- NUEVO: Si la cuenta venía de la cocina y se está cerrando, le asignamos su factura oficial ---
         if (!settlingSale.invoice_number) {
           updatePayload.invoice_number = await getNextInvoiceNumber(currentStoreId);
         }
       }
 
-      await supabase
-        .from("payment_history")
-        .insert([
-          {
-            sale_id: settlingSale.id,
-            amount_usd: netPaidForDebt,
-            payment_details: paymentDetails,
-            store_id: currentStoreId,
-          },
-        ]);
+      await supabase.from("payment_history").insert([{
+        sale_id: settlingSale.id,
+        amount_usd: netPaidForDebt,
+        payment_details: paymentDetails,
+        store_id: currentStoreId,
+      }]);
         
-      const { error } = await supabase
-        .from("sales")
-        .update(updatePayload)
-        .eq("id", settlingSale.id)
-        .eq("store_id", currentStoreId);
+      const { error } = await supabase.from("sales").update(updatePayload).eq("id", settlingSale.id).eq("store_id", currentStoreId);
 
       if (error) alert("Error al procesar el abono: " + error.message);
       else {
-        if (itemsToDeduct.length > 0 && isOnline)
-          await deductInventory(itemsToDeduct);
-        alert(
-          isFullyPaid
-            ? "¡Cuenta pagada por completo!"
-            : `¡Abono registrado! Saldo pendiente: $${newBalanceDue.toFixed(2)}`,
-        );
+        if (itemsToDeduct.length > 0 && isOnline) await deductInventory(itemsToDeduct);
+        alert(isFullyPaid ? "¡Cuenta pagada por completo!" : `¡Abono registrado! Saldo pendiente: $${newBalanceDue.toFixed(2)}`);
+        
+        // Reset global
         setSettlingSale(null);
         setShowPaymentModal(false);
         setCart([]);
         setSelectedClient("Cliente General");
-        setPayCashUSD("");
-        setPayCashBs("");
-        setPayPagoMovil("");
-        setPayZelle("");
-        setPayDebit("");
-        setPayCashea("");
-        setPaymentRef("");
-        setCalcPayments({
-          cashUSD: 0,
-          cashBs: 0,
-          pagoMovil: 0,
-          zelle: 0,
-          debit: 0,
-          cashea: 0,
-        });
+        setPayCashUSD(""); setPayCashBs(""); setPayPagoMovil(""); setPayZelle(""); setPayDebit(""); setPayCashea(""); setPaymentRef("");
+        setIsIntlCard(false); setIntlCardFeePct("3");
+        setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0, cashea: 0 });
         fetchSales(currentStoreId);
       }
     } else {
-      // COBRAR UNA VENTA DIRECTA NUEVA
-      const newBalanceDue = parseFloat(
-        Math.max(0, totalUSD - currentTotalPaidUSD).toFixed(2),
-      );
+      const finalSaleTotalUSD = totalUSD + intlFeeAmount;
+      const newBalanceDue = parseFloat(Math.max(0, finalSaleTotalUSD - currentTotalPaidUSD).toFixed(2));
       const finalStatus = newBalanceDue > 0 ? "credit" : "completed";
-      const actualPaidToRecord = Math.min(currentTotalPaidUSD, totalUSD);
+      const actualPaidToRecord = Math.min(currentTotalPaidUSD, finalSaleTotalUSD);
 
       if (newBalanceDue > 0 && selectedClient === "Cliente General") {
-        alert(
-          "Para dejar un saldo pendiente / crédito debes asociar un cliente específico.",
-        );
+        alert("Para dejar un saldo pendiente / crédito debes asociar un cliente específico.");
         setProcessing(false);
         return;
       }
@@ -4783,8 +4777,8 @@ const handleCreditCheckout = async () => {
       const invoiceNumber = await getNextInvoiceNumber(currentStoreId);
       const saleData = {
         invoice_number: invoiceNumber,
-        total_usd: totalUSD,
-        total_bs: totalBs,
+        total_usd: finalSaleTotalUSD,
+        total_bs: finalSaleTotalUSD * (bcvRate || 1),
         subtotal_usd: cartSubtotalUSD,
         tax_usd: calculatedTaxUSD,
         items: finalCart,
@@ -4796,52 +4790,29 @@ const handleCreditCheckout = async () => {
         payment_details: paymentDetails,
       };
 
-      const { data: newSale, error } = await supabase
-        .from("sales")
-        .insert([saleData])
-        .select()
-        .single();
+      const { data: newSale, error } = await supabase.from("sales").insert([saleData]).select().single();
+      
       if (error) alert("Error al procesar el pago: " + error.message);
       else {
         if (newSale && actualPaidToRecord > 0) {
-          await supabase
-            .from("payment_history")
-            .insert([
-              {
-                sale_id: newSale.id,
-                amount_usd: actualPaidToRecord,
-                payment_details: paymentDetails,
-                store_id: currentStoreId,
-              },
-            ]);
+          await supabase.from("payment_history").insert([{
+            sale_id: newSale.id,
+            amount_usd: actualPaidToRecord,
+            payment_details: paymentDetails,
+            store_id: currentStoreId,
+          }]);
         }
-        if (itemsToDeduct.length > 0 && isOnline)
-          await deductInventory(itemsToDeduct);
+        if (itemsToDeduct.length > 0 && isOnline) await deductInventory(itemsToDeduct);
 
+        // Reset global
         setCart([]);
         setSelectedClient("Cliente General");
         setShowPaymentModal(false);
-        setPayCashUSD("");
-        setPayCashBs("");
-        setPayPagoMovil("");
-        setPayZelle("");
-        setPayDebit("");
-        setPayCashea("");
-        setPaymentRef("");
-        setCalcPayments({
-          cashUSD: 0,
-          cashBs: 0,
-          pagoMovil: 0,
-          zelle: 0,
-          debit: 0,
-          cashea: 0,
-        });
+        setPayCashUSD(""); setPayCashBs(""); setPayPagoMovil(""); setPayZelle(""); setPayDebit(""); setPayCashea(""); setPaymentRef("");
+        setIsIntlCard(false); setIntlCardFeePct("3");
+        setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0, cashea: 0 });
         fetchSales(currentStoreId);
-        alert(
-          newBalanceDue > 0
-            ? `¡Venta ${invoiceNumber} registrada con crédito pendiente!`
-            : `¡Venta ${invoiceNumber} procesada con éxito!`,
-        );
+        alert(newBalanceDue > 0 ? `¡Venta ${invoiceNumber} registrada con crédito pendiente!` : `¡Venta ${invoiceNumber} procesada con éxito!`);
       }
     }
     setProcessing(false);
@@ -7218,17 +7189,21 @@ const handleCreditCheckout = async () => {
               {(() => {
                 const isAbono = !!settlingSale;
                 
-                // Leemos DIRECTAMENTE las columnas que me mostraste en Supabase
                 const originalTotal = isAbono ? Number(settlingSale.total_usd || 0) : Number(totalUSD);
+                const baseTargetUSD = isAbono ? Number(settlingSale.balance_due_usd || 0) : originalTotal;
                 
-                // La deuda actual es exactamente el "balance_due_usd"
-                const targetUSD = isAbono ? Number(settlingSale.balance_due_usd || 0) : originalTotal;
-                
-                // Por lo tanto, lo que pagó antes es el Total menos lo que debe ahora
-                const previouslyPaid = isAbono ? (originalTotal - targetUSD) : 0;
+                // --- NUEVO: CÁLCULO DE RECARGO INTERNACIONAL ---
+                const intlFeeAmount = (activePayMethods.debit && isIntlCard) 
+                  ? (baseTargetUSD * (parseFloat(intlCardFeePct) || 0) / 100) 
+                  : 0;
 
+                const targetUSD = baseTargetUSD + intlFeeAmount; // Se suma el recargo a la deuda
+                // -----------------------------------------------
+
+                const previouslyPaid = isAbono ? (originalTotal - baseTargetUSD) : 0;
                 const targetBs = targetUSD * (bcvRate || 1);
                 
+                              
                 // Cálculo de Vuelto y Restante con lo que el usuario está escribiendo AHORA en los inputs
                 const currentPaid = Number(totalPaidUSD) || 0;
                 const calcRemaining = targetUSD - currentPaid;
@@ -7339,12 +7314,18 @@ const handleCreditCheckout = async () => {
                         >
                           ${targetUSD.toFixed(2)}
                         </h2>
+                        {intlFeeAmount > 0 && (
+                          <div style={{ fontSize: "11px", color: "#e05d5d", fontWeight: "bold", marginTop: "2px" }}>
+                            Incluye +${intlFeeAmount.toFixed(2)} de recargo
+                          </div>
+                        )}
                         {currentStoreCountry === "venezuela" && (
                           <span
                             style={{
                               fontSize: "13px",
                               color: "#6b7280",
                               fontWeight: "600",
+                              display: "block"
                             }}
                           >
                             Bs.{" "}
@@ -7684,99 +7665,148 @@ const handleCreditCheckout = async () => {
                 );
               })()}
 
-              {/* Inputs de Cobro */}
-              <div className="payment-inputs-grid">
-                <div className="form-group">
-                  <label>Efectivo ($ USD)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={payCashUSD}
-                    onChange={(e) => setPayCashUSD(e.target.value)}
-                    onBlur={updateCalculations}
-                    placeholder="0.00"
-                  />
+              {/* --- NUEVO: SELECTOR DE MÉTODOS DE PAGO --- */}
+              <div style={{ marginBottom: "20px", background: "#f8f9fa", padding: "14px", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
+                <label style={{ fontSize: "12px", fontWeight: "800", color: "#374151", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px", display: "block" }}>
+                  ¿Cómo va a pagar el cliente? (Selecciona uno o varios)
+                </label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                  {[
+                    { id: "cashUSD", label: "💵 Efectivo USD" },
+                    { id: "pagoMovil", label: "📱 Pago Móvil / Transf.", vzlaOnly: true },
+                    { id: "debit", label: "💳 Punto de Venta" },
+                    { id: "zelle", label: "🟣 Zelle" },
+                    { id: "cashBs", label: "💵 Efectivo Bs", vzlaOnly: true },
+                    { id: "cashea", label: "🛍️ Cashea" }
+                  ].map(method => {
+                    if (method.vzlaOnly && currentStoreCountry !== "venezuela") return null;
+                    const isActive = activePayMethods[method.id];
+                    return (
+                      <button
+                        key={method.id}
+                        type="button"
+                        onClick={() => setActivePayMethods(prev => ({ ...prev, [method.id]: !prev[method.id] }))}
+                        style={{
+                          padding: "8px 14px",
+                          fontSize: "13px",
+                          borderRadius: "20px",
+                          fontWeight: "bold",
+                          cursor: "pointer",
+                          border: isActive ? "2px solid #111827" : "1px solid #cbd5e1",
+                          background: isActive ? "#111827" : "#fff",
+                          color: isActive ? "#fff" : "#4b5563",
+                          boxShadow: isActive ? "0 4px 10px rgba(0,0,0,0.15)" : "none",
+                          transition: "all 0.15s"
+                        }}
+                      >
+                        {method.label}
+                      </button>
+                    )
+                  })}
                 </div>
-                <div className="form-group">
-                  <label>
-                    {currentStoreCountry === "panama"
-                      ? "Yappy ($)"
-                      : currentStoreCountry === "el_salvador"
-                        ? "Transferencia / Chivo ($)"
-                        : "Zelle ($)"}
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={payZelle}
-                    onChange={(e) => setPayZelle(e.target.value)}
-                    onBlur={updateCalculations}
-                    placeholder="0.00"
-                  />
-                </div>
+              </div>
 
-                {currentStoreCountry === "venezuela" && (
-                  <>
-                    <div className="form-group">
-                      <label>Efectivo (Bs)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={payCashBs}
-                        onChange={(e) => setPayCashBs(e.target.value)}
-                        onBlur={updateCalculations}
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Pago Móvil / Transf. (Bs)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={payPagoMovil}
-                        onChange={(e) => setPayPagoMovil(e.target.value)}
-                        onBlur={updateCalculations}
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </>
+              {/* Inputs de Cobro (Aparecen dinámicamente) */}
+              <div className="payment-inputs-grid">
+                
+                {activePayMethods.cashUSD && (
+                  <div className="form-group">
+                    <label>Efectivo ($ USD)</label>
+                    <input type="text" inputMode="numeric" value={payCashUSD} onChange={(e) => handleCurrencyInput(e.target.value, setPayCashUSD)} onBlur={updateCalculations} placeholder="0.00" autoFocus />
+                  </div>
+                )}
+                
+                {activePayMethods.zelle && (
+                  <div className="form-group">
+                    <label>{currentStoreCountry === "panama" ? "Yappy ($)" : currentStoreCountry === "el_salvador" ? "Transferencia / Chivo ($)" : "Zelle ($)"}</label>
+                    <input type="text" inputMode="numeric" value={payZelle} onChange={(e) => handleCurrencyInput(e.target.value, setPayZelle)} onBlur={updateCalculations} placeholder="0.00" autoFocus />
+                  </div>
                 )}
 
-                <div className="form-group">
-                  <label>
-                    Punto de Venta / Débito{" "}
-                    {currentStoreCountry === "venezuela" ? "(Bs)" : "($ USD)"}
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={payDebit}
-                    onChange={(e) => setPayDebit(e.target.value)}
-                    onBlur={updateCalculations}
-                    placeholder="0.00"
-                  />
-                </div>
-                {/* --- NUEVO: INPUT CASHEA --- */}
-                <div className="form-group">
-                  <label>Cashea ($ USD)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={payCashea}
-                    onChange={(e) => setPayCashea(e.target.value)}
-                    onBlur={updateCalculations}
-                    placeholder="0.00"
-                  />
-                </div>
-                {/* --------------------------- */}
-                <div className="form-group">
+                {activePayMethods.cashBs && currentStoreCountry === "venezuela" && (
+                  <div className="form-group">
+                    <label>Efectivo (Bs)</label>
+                    <input type="text" inputMode="numeric" value={payCashBs} onChange={(e) => handleCurrencyInput(e.target.value, setPayCashBs)} onBlur={updateCalculations} placeholder="0.00" autoFocus />
+                  </div>
+                )}
+
+                {activePayMethods.pagoMovil && currentStoreCountry === "venezuela" && (
+                  <div className="form-group">
+                    <label>Pago Móvil / Transf. (Bs)</label>
+                    <input type="text" inputMode="numeric" value={payPagoMovil} onChange={(e) => handleCurrencyInput(e.target.value, setPayPagoMovil)} onBlur={updateCalculations} placeholder="0.00" autoFocus />
+                  </div>
+                )}
+
+                {activePayMethods.debit && (
+                  <div className="form-group" style={{ background: "#f8fafc", padding: "12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <label>Punto de Venta {currentStoreCountry === "venezuela" ? "(Bs)" : "($ USD)"}</label>
+                    <input type="text" inputMode="numeric" value={payDebit} onChange={(e) => handleCurrencyInput(e.target.value, setPayDebit)} onBlur={updateCalculations} placeholder="0.00" autoFocus />
+                    
+                    <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "8px", borderTop: "1px dashed #cbd5e1", paddingTop: "8px" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", cursor: "pointer", fontWeight: "bold", color: "#475569", margin: 0 }}>
+                        <input 
+                          type="checkbox" 
+                          checked={isIntlCard} 
+                          onChange={(e) => setIsIntlCard(e.target.checked)} 
+                          style={{ width: "16px", height: "16px", accentColor: "#0f172a", cursor: "pointer" }} 
+                        />
+                        🌐 Tarjeta Internacional (Recargo)
+                      </label>
+                      {isIntlCard && (
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px", marginLeft: "auto" }}>
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            value={intlCardFeePct} 
+                            onChange={(e) => setIntlCardFeePct(e.target.value)} 
+                            placeholder="Ej. 3" 
+                            style={{ width: "60px", padding: "4px 8px", fontSize: "12px", border: "1px solid #cbd5e1", borderRadius: "4px", fontWeight: "bold", textAlign: "center" }} 
+                          />
+                          <span style={{ fontSize: "12px", fontWeight: "bold", color: "#475569" }}>%</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* LOGICA INTELIGENTE DE CASHEA */}
+                {activePayMethods.cashea && (
+                  <div className="form-group" style={{ gridColumn: "1 / -1", background: "#f0fdf4", padding: "16px", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
+                    <label style={{ color: "#166534", fontWeight: "900", fontSize: "14px", marginBottom: "8px" }}>🛍️ Financiamiento Cashea ($ USD)</label>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <input 
+                            type="text" 
+                            inputMode="numeric" 
+                            value={payCashea} 
+                            onChange={(e) => handleCurrencyInput(e.target.value, setPayCashea)} 
+                            onBlur={updateCalculations} 
+                            placeholder="Monto de Cashea" 
+                            style={{ flex: 1, borderColor: "#86efac", fontSize: "16px", fontWeight: "bold", color: "#166534" }}
+                            autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const debt = settlingSale ? Number(settlingSale.balance_due_usd || settlingSale.total_usd || 0) : Number(totalUSD);
+                          const paidWithoutCashea = (parseFloat(payCashUSD)||0) + (parseFloat(payZelle)||0) + ((parseFloat(payCashBs)||0) + (parseFloat(payPagoMovil)||0) + (parseFloat(payDebit)||0)) / (bcvRate||1);
+                          const remaining = Math.max(0, debt - paidWithoutCashea);
+                          setPayCashea(remaining.toFixed(2));
+                          setCalcPayments(prev => ({ ...prev, cashea: remaining }));
+                        }}
+                        style={{ background: "#16a34a", color: "#fff", border: "none", padding: "0 20px", borderRadius: "6px", fontWeight: "bold", cursor: "pointer", fontSize: "13px", boxShadow: "0 4px 6px rgba(22, 163, 74, 0.2)" }}
+                      >
+                        ⚡ Autocompletar Restante
+                      </button>
+                    </div>
+                    <p style={{ fontSize: "12px", color: "#15803d", marginTop: "8px", marginBottom: 0 }}>
+                      <strong>Tip:</strong> Ingresa el pago de la inicial en los métodos de arriba (Ej. Pago Móvil) y presiona "Autocompletar" para calcular la cuota de Cashea automáticamente.
+                    </p>
+                  </div>
+                )}
+
+                <div className="form-group" style={{ gridColumn: "1 / -1" }}>
                   <label>Referencia Bancaria (Opcional)</label>
-                  <input
-                    type="text"
-                    value={paymentRef}
-                    onChange={(e) => setPaymentRef(e.target.value)}
-                    placeholder="Últimos 4 dígitos o ref"
-                  />
+                  <input type="text" value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)} placeholder="Últimos 4 dígitos o ref" />
                 </div>
               </div>
             </div>
