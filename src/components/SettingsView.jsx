@@ -460,7 +460,7 @@ function SettingsView({
         </div>
       )}
       
-      {/* NUEVO: CÓDIGO QR DE AUTO-SERVICIO */}
+      {/* NUEVO: CÓDIGO QR DE AUTO-SERVICIO (SÓLO RESTAURANTES) */}
       {currentStoreType === 'restaurant' && (
         <div className="product-form-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#862e9c' }}>
@@ -489,8 +489,8 @@ function SettingsView({
                 Probar QR
               </a>
               <button 
+                type="button"
                 onClick={async () => {
-                  // Generamos la imagen en altísima calidad (1000x1000) para imprenta
                   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${window.location.origin}/menu/${currentStoreId}`;
                   try {
                     const response = await fetch(qrUrl);
@@ -515,6 +515,53 @@ function SettingsView({
           </div>
         </div>
       )}
+
+      {/* --- NUEVO: ENLACE DE DELIVERY (VISIBLE PARA TODOS LOS COMERCIOS) --- */}
+      <div className="product-form-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#8b5cf6' }}>
+          <Monitor size={20} /> Enlace de Delivery (WhatsApp)
+        </h3>
+        <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '16px' }}>
+          Copia este enlace y compártelo en WhatsApp o Instagram. Al entrar, el sistema le pedirá al cliente su ubicación (GPS) y datos de entrega. Los pedidos llegarán a la pestaña "Pedidos Web" por cobrar.
+        </p>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#f5f3ff', padding: '24px', borderRadius: '12px', border: '1px solid #ddd6fe' }}>
+          
+          <input 
+            type="text" 
+            readOnly 
+            value={`${window.location.origin}/menu/${currentStoreId}?mode=delivery`} 
+            style={{ 
+              width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #c4b5fd', 
+              fontSize: '12px', color: '#4c1d95', background: '#fff', textAlign: 'center', 
+              marginBottom: '16px', fontWeight: 'bold', outline: 'none'
+            }}
+          />
+          
+          <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+            <a 
+              href={`${window.location.origin}/menu/${currentStoreId}?mode=delivery`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ flex: 1, textAlign: 'center', background: '#fff', color: '#8b5cf6', border: '1px solid #8b5cf6', padding: '10px', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold', fontSize: '13px' }}
+            >
+              Probar Enlace
+            </a>
+            <button 
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(`${window.location.origin}/menu/${currentStoreId}?mode=delivery`);
+                alert("¡Enlace de Delivery copiado al portapapeles!");
+              }}
+              style={{ flex: 1, background: '#8b5cf6', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+            >
+              <Monitor size={16} /> Copiar Enlace
+            </button>
+          </div>
+        </div>
+      </div>
+
+
 
       {/* 3. Mapa GPS Krono */}
       <div

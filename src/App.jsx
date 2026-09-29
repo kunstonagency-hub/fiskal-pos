@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   ShoppingCart,
+  Monitor,
   Settings,
   Package,
   Users,
@@ -83,6 +84,7 @@ import SettingsView from "./components/SettingsView";
 import PosTerminalView from "./components/PosTerminalView";
 import RecipesCostView from "./components/RecipesCostView";
 import LocalMenuView from './components/LocalMenuView';
+import WebOrdersView from "./components/WebOrdersView";
 
 const customIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -465,6 +467,8 @@ function App() {
   const [currentStoreLat, setCurrentStoreLat] = useState(10.3755);
   const [currentStoreLng, setCurrentStoreLng] = useState(-66.9587);
 
+  const webOrdersCount = sales.filter(s => s.status === 'web_unpaid').length;
+
   // NUEVO: Estado de permiso de Krono
   const [currentStoreKronoEnabled, setCurrentStoreKronoEnabled] =
     useState(false);
@@ -673,13 +677,11 @@ function App() {
     // Cargar ingredientes base (todos marcados por defecto)
     let modsArray = [];
     if (prod.modifiers) {
-      modsArray =
-        typeof prod.modifiers === "string"
-          ? prod.modifiers
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : prod.modifiers;
+      if (typeof prod.modifiers === 'string') {
+        modsArray = prod.modifiers.split(',').map(s => s.trim()).filter(s => s && s.toLowerCase() !== 'null' && s.toLowerCase() !== 'undefined' && s !== '[]');
+      } else if (Array.isArray(prod.modifiers)) {
+        modsArray = prod.modifiers.filter(s => s && String(s).toLowerCase() !== 'null' && String(s).toLowerCase() !== 'undefined');
+      }
     }
     const initialToggles = {};
     modsArray.forEach((m) => {
@@ -4720,8 +4722,20 @@ const handleCreditCheckout = async () => {
       // Actualizar el total de la factura sumándole el recargo internacional
       const updatedTotalUSD = isPendingOrder ? (totalUSD + intlFeeAmount) : (settlingSale.total_usd + intlFeeAmount);
 
+      // --- LÓGICA DE ESTATUS: Si es Delivery y se paga, va a Cocina ("pending"). No se completa hasta que lo entreguen ---
+      let nextStatus = isFullyPaid ? "completed" : "credit";
+      if (settlingSale.payment_details?.is_delivery) {
+        if (newBalanceDue > 0) {
+          nextStatus = "credit";
+        } else {
+          // Si debía, pero ya pagó completo, y era web_unpaid, entra a la cocina (pending).
+          // Si ya estaba en la cocina (preparando, ready), se queda en ese estatus hasta entregarlo.
+          nextStatus = settlingSale.status === 'web_unpaid' ? "pending" : settlingSale.status;
+        }
+      }
+
       const updatePayload = {
-        status: isFullyPaid ? "completed" : "credit",
+        status: nextStatus,
         balance_due_usd: newBalanceDue,
         total_usd: updatedTotalUSD,
         total_bs: updatedTotalUSD * (bcvRate || 1),
@@ -5814,6 +5828,33 @@ const handleCreditCheckout = async () => {
             <Users size={20} /> <span>Clientes</span>
           </button>
 
+          {/* --- BOTÓN PEDIDOS WEB / DELIVERY CON NOTIFICACIÓN --- */}
+          <button
+            className={activeTab === "web_orders" ? "nav-btn active" : "nav-btn"}
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveTab("web_orders");
+              setIsSidebarExpanded(false);
+            }}
+            style={{ 
+              color: "#8b5cf6", 
+              fontWeight: "bold", 
+              display: "flex", 
+              justifyContent: "space-between", 
+              alignItems: "center",
+              width: "100%"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <Monitor size={20} /> <span>Pedidos Web</span>
+            </div>
+            {webOrdersCount > 0 && (
+              <span style={{ background: "#ef4444", color: "#fff", padding: "2px 6px", borderRadius: "10px", fontSize: "11px", fontWeight: "900", animation: "pulse 2s infinite" }}>
+                {webOrdersCount}
+              </span>
+            )}
+          </button>
+
           {currentStoreKronoEnabled && (
             <button
               className={
@@ -5952,6 +5993,8 @@ const handleCreditCheckout = async () => {
                     ? "Historial de Ventas"
                     : activeTab === "clients"
                       ? "Gestión de Clientes y Rendimiento"
+                      : activeTab === "web_orders"
+                        ? "Recepción de Pedidos Web y Delivery"
                       : activeTab === "delivery"
                         ? "Dashboard de Delivery Krono"
                         : activeTab === "vendor_portal"
@@ -6460,6 +6503,17 @@ const handleCreditCheckout = async () => {
               sendClientGeneralWhatsApp={sendClientGeneralWhatsApp}
               currentUserRole={currentUserRole}
               handleDeleteClient={handleDeleteClient}
+            />
+          )}
+
+          {activeTab === "web_orders" && (
+            <WebOrdersView
+              sales={sales}
+              currentStoreType={currentStoreType}
+              handleResumeOrder={handleResumeOrder}
+              supabase={supabase}
+              currentStoreId={currentStoreId}
+              fetchSales={fetchSales}
             />
           )}
 

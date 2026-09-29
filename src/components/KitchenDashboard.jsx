@@ -350,6 +350,7 @@ export default function KitchenDashboard({
       "ready",
       "listo",
       "espera_pago",
+      "web_unpaid" ,
     ];
     if (!validKitchenStates.includes(status)) return false;
     const itemsList = getItems(s);
@@ -471,17 +472,23 @@ export default function KitchenDashboard({
 
     const timerInfo = getTimerInfo(order);
 
-    let headerBg = "#e05d5d";
+    let headerBg = "#e05d5d"; // Rojo por defecto
     let headerColor = "#fff";
     let borderColor = "#e5e7eb";
     let statusText = "PENDIENTE";
+    const isWebUnpaid = currentStatus === "web_unpaid";
 
-    if (stationIsPreparing) {
-      headerBg = "#f59e0b";
+    if (isWebUnpaid) {
+      headerBg = "#8b5cf6"; // Morado para Delivery Web
+      headerColor = "#fff";
+      borderColor = "#8b5cf6";
+      statusText = "🌐 DELIVERY WEB (POR COBRAR)";
+    } else if (stationIsPreparing) {
+      headerBg = "#f59e0b"; // Naranja
       headerColor = "#111827";
       statusText = "PREPARANDO";
     } else if (stationIsReady) {
-      headerBg = "#16a34a";
+      headerBg = "#16a34a"; // Verde
       headerColor = "#fff";
       statusText = globalIsReady ? "LISTO PARA ENTREGAR" : "ESTACIÓN LISTA";
     }
@@ -684,7 +691,7 @@ export default function KitchenDashboard({
         </div>
 
         <div style={{ display: "flex", borderTop: "1px solid #e5e7eb" }}>
-          {!stationIsPreparing && !stationIsReady && (
+          {!stationIsPreparing && !stationIsReady && !isWebUnpaid && (
             <button
               onClick={async (e) => {
                 e.currentTarget.blur();
@@ -698,7 +705,6 @@ export default function KitchenDashboard({
                   const belongsToStation =
                     targetCats.length === 0 || targetCats.includes(c);
                   
-                  // CORRECCIÓN: Solo marca como preparando los items que NO han sido despachados
                   if (belongsToStation && !item.dispatched) return { ...item, preparing: true };
                   
                   return item;
@@ -716,47 +722,22 @@ export default function KitchenDashboard({
                   setSales(
                     sales.map((s) =>
                       s.id === order.id
-                        ? {
-                            ...s,
-                            status: newStatus,
-                            payment_details: updatedPd,
-                            items: updatedItems,
-                          }
+                        ? { ...s, status: newStatus, payment_details: updatedPd, items: updatedItems }
                         : s
                     )
                   );
                 }
                 try {
-                  await supabase
-                    .from("sales")
-                    .update({
-                      status: newStatus,
-                      payment_details: updatedPd,
-                      items: updatedItems,
-                    })
-                    .eq("id", order.id)
-                    .eq("store_id", currentStoreId);
-                } catch (err) {
-                  console.error(err);
-                }
+                  await supabase.from("sales").update({ status: newStatus, payment_details: updatedPd, items: updatedItems }).eq("id", order.id).eq("store_id", currentStoreId);
+                } catch (err) { console.error(err); }
               }}
-              style={{
-                flex: 1,
-                background: "#fff",
-                color: "#111827",
-                border: "none",
-                padding: "14px",
-                cursor: "pointer",
-                fontWeight: "bold",
-                fontSize: "13px",
-                textTransform: "uppercase",
-              }}
+              style={{ flex: 1, background: "#fff", color: "#111827", border: "none", padding: "14px", cursor: "pointer", fontWeight: "bold", fontSize: "13px", textTransform: "uppercase" }}
             >
               Preparar
             </button>
           )}
 
-          {!stationIsReady && (
+          {!stationIsReady && !isWebUnpaid && (
             <button
               onClick={async (e) => {
                 e.currentTarget.blur();
@@ -765,8 +746,7 @@ export default function KitchenDashboard({
 
                 const updatedItems = getItems(order).map((item) => {
                   const c = item.category ? item.category.trim() : "General";
-                  const belongsToStation =
-                    targetCats.length === 0 || targetCats.includes(c);
+                  const belongsToStation = targetCats.length === 0 || targetCats.includes(c);
                   if (belongsToStation) return { ...item, dispatched: true };
                   return item;
                 });
@@ -776,9 +756,7 @@ export default function KitchenDashboard({
                   return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
                 });
 
-                const allDispatched =
-                  allKitchenItems.length > 0 &&
-                  allKitchenItems.every((i) => i.dispatched);
+                const allDispatched = allKitchenItems.length > 0 && allKitchenItems.every((i) => i.dispatched);
                 const newStatus = allDispatched ? "ready" : order.status;
                 if (allDispatched && !updatedPd.prep_finished_at) {
                   updatedPd.prep_finished_at = nowIso;
@@ -788,77 +766,29 @@ export default function KitchenDashboard({
                   setSales(
                     sales.map((s) =>
                       s.id === order.id
-                        ? {
-                            ...s,
-                            status: newStatus,
-                            payment_details: updatedPd,
-                            items: updatedItems,
-                          }
+                        ? { ...s, status: newStatus, payment_details: updatedPd, items: updatedItems }
                         : s
                     )
                   );
                 }
                 try {
-                  await supabase
-                    .from("sales")
-                    .update({
-                      status: newStatus,
-                      payment_details: updatedPd,
-                      items: updatedItems,
-                    })
-                    .eq("id", order.id)
-                    .eq("store_id", currentStoreId);
-                } catch (err) {
-                  console.error(err);
-                }
+                  await supabase.from("sales").update({ status: newStatus, payment_details: updatedPd, items: updatedItems }).eq("id", order.id).eq("store_id", currentStoreId);
+                } catch (err) { console.error(err); }
               }}
-              style={{
-                flex: 1,
-                background: stationIsPreparing ? "#16a34a" : "#f9fafb",
-                color: stationIsPreparing ? "#fff" : "#4b5563",
-                border: "none",
-                borderLeft: stationIsPreparing ? "none" : "1px solid #e5e7eb",
-                padding: "14px",
-                cursor: "pointer",
-                fontWeight: "bold",
-                fontSize: "13px",
-                textTransform: "uppercase",
-              }}
+              style={{ flex: 1, background: stationIsPreparing ? "#16a34a" : "#f9fafb", color: stationIsPreparing ? "#fff" : "#4b5563", border: "none", borderLeft: stationIsPreparing ? "none" : "1px solid #e5e7eb", padding: "14px", cursor: "pointer", fontWeight: "bold", fontSize: "13px", textTransform: "uppercase" }}
             >
               Despachar
             </button>
           )}
 
-          {stationIsReady && !globalIsReady && (
-            <div
-              style={{
-                width: "100%",
-                textAlign: "center",
-                padding: "14px",
-                background: "#16a34a",
-                color: "#fff",
-                fontSize: "13px",
-                fontWeight: "bold",
-                textTransform: "uppercase",
-              }}
-            >
+          {stationIsReady && !globalIsReady && !isWebUnpaid && (
+            <div style={{ width: "100%", textAlign: "center", padding: "14px", background: "#16a34a", color: "#fff", fontSize: "13px", fontWeight: "bold", textTransform: "uppercase" }}>
               ✓ Estación Lista (Esperando Otras)
             </div>
           )}
 
-          {stationIsReady && globalIsReady && (
-            <div
-              style={{
-                width: "100%",
-                textAlign: "center",
-                padding: "14px",
-                background: "#16a34a",
-                color: "#fff",
-                fontSize: "13px",
-                fontWeight: "bold",
-                textTransform: "uppercase",
-              }}
-            >
+          {stationIsReady && globalIsReady && !isWebUnpaid && (
+            <div style={{ width: "100%", textAlign: "center", padding: "14px", background: "#16a34a", color: "#fff", fontSize: "13px", fontWeight: "bold", textTransform: "uppercase" }}>
               ✓ Esperando Entrega al Cliente
             </div>
           )}
