@@ -4426,7 +4426,7 @@ function App() {
     setShowPaymentModal(true);
   };
 
-  const handleCreditCheckout = async () => {
+const handleCreditCheckout = async () => {
     if (!currentShift || !currentStoreId) return alert("La caja está cerrada.");
     if (selectedClient === "Cliente General")
       return alert("Para registrar crédito debes asociar un cliente.");
@@ -4471,6 +4471,7 @@ function App() {
           payment_details: paymentDetails,
           items: finalCart,
           invoice_number: settlingSale.invoice_number || invoiceNumber,
+          client_name: selectedClient, // <-- ¡CORRECCIÓN CRÍTICA AÑADIDA AQUÍ!
         })
         .eq("id", settlingSale.id)
         .eq("store_id", currentStoreId);
@@ -4675,17 +4676,31 @@ function App() {
       );
       const isFullyPaid = newBalanceDue <= 0.01;
 
+      // --- NUEVO: Validar que exista un cliente si van a dejar saldo pendiente ---
+      if (newBalanceDue > 0 && selectedClient === "Cliente General") {
+        alert("Para dejar un saldo pendiente / crédito debes asociar un cliente específico.");
+        setProcessing(false);
+        return;
+      }
+
       const updatePayload = {
         status: isFullyPaid ? "completed" : "credit",
         balance_due_usd: newBalanceDue,
         payment_details: paymentDetails,
         items: finalCart,
+        client_name: selectedClient, // <-- ¡CORRECCIÓN CRÍTICA AÑADIDA AQUÍ!
       };
+      
       if (isPendingOrder) {
         updatePayload.total_usd = totalUSD;
         updatePayload.total_bs = totalBs;
         updatePayload.subtotal_usd = cartSubtotalUSD;
         updatePayload.tax_usd = calculatedTaxUSD;
+        
+        // --- NUEVO: Si la cuenta venía de la cocina y se está cerrando, le asignamos su factura oficial ---
+        if (!settlingSale.invoice_number) {
+          updatePayload.invoice_number = await getNextInvoiceNumber(currentStoreId);
+        }
       }
 
       await supabase
@@ -4698,6 +4713,7 @@ function App() {
             store_id: currentStoreId,
           },
         ]);
+        
       const { error } = await supabase
         .from("sales")
         .update(updatePayload)
@@ -7736,24 +7752,24 @@ function App() {
                 borderTop: "1px solid #f1f3f5",
               }}
             >
-              {!settlingSale && (
-                <button
-                  className="btn-secondary"
-                  onClick={handleCreditCheckout}
-                  style={{
-                    border: "1px solid #e05d5d",
-                    color: "#e05d5d",
-                    fontWeight: "700",
-                  }}
-                >
-                  Pasar a Crédito
-                </button>
-              )}
+              
+              <button
+                className="btn-secondary"
+                onClick={handleCreditCheckout}
+                style={{
+                  border: "1px solid #e05d5d",
+                  color: "#e05d5d",
+                  fontWeight: "700",
+                }}
+              >
+                Pasar a Crédito
+              </button>
+              
               <div
                 style={{
                   display: "flex",
                   gap: "8px",
-                  marginLeft: settlingSale ? "auto" : "0",
+                  marginLeft: "auto",
                 }}
               >
                 <button
@@ -8953,13 +8969,62 @@ function App() {
                 </div>
               </div>
             </div>
-            <div className="modal-footer">
+            <div
+              className="modal-footer"
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "14px 20px",
+                background: "#f9fafb",
+                borderTop: "1px solid #f1f3f5",
+              }}
+            >
+              {/* EL BOTÓN AHORA SIEMPRE ES VISIBLE, INCLUSO PARA CUENTAS RETOMADAS DE COCINA */}
               <button
                 className="btn-secondary"
-                onClick={() => setSelectedClientDetail(null)}
+                onClick={handleCreditCheckout}
+                style={{
+                  border: "1px solid #e05d5d",
+                  color: "#e05d5d",
+                  fontWeight: "700",
+                }}
               >
-                Cerrar
+                Pasar a Crédito
               </button>
+              
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  marginLeft: "auto", /* Forzamos a que estos botones se vayan a la derecha */
+                }}
+              >
+                <button
+                  className="btn-secondary"
+                  onClick={() => {
+                    setShowPaymentModal(false);
+                    setSettlingSale(null);
+                  }}
+                  style={{ border: "1px solid #d1d5db", color: "#4b5563" }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={handleCheckoutSubmit}
+                  disabled={totalPaidUSD <= 0 || processing}
+                  style={{
+                    background: "#111827",
+                    color: "#ffffff",
+                    border: "none",
+                    fontWeight: "700",
+                    padding: "10px 20px",
+                  }}
+                >
+                  {processing ? "Procesando..." : "Confirmar Pago"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
