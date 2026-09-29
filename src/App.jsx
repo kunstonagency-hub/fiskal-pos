@@ -5758,7 +5758,6 @@ const handleCreditCheckout = async () => {
               e.stopPropagation();
               setActiveTab("pos");
               setSelectedRestaurantCategory(null);
-              setSettlingSale(null);
               setIsSidebarExpanded(false);
             }}
           >
@@ -7165,7 +7164,6 @@ const handleCreditCheckout = async () => {
                 className="btn-close-modal"
                 onClick={() => {
                   setShowPaymentModal(false);
-                  setSettlingSale(null);
                 }}
               >
                 <X size={18} color="#6b7280" />
@@ -7776,7 +7774,6 @@ const handleCreditCheckout = async () => {
                   className="btn-secondary"
                   onClick={() => {
                     setShowPaymentModal(false);
-                    setSettlingSale(null);
                   }}
                   style={{ border: "1px solid #d1d5db", color: "#4b5563" }}
                 >
@@ -8969,62 +8966,13 @@ const handleCreditCheckout = async () => {
                 </div>
               </div>
             </div>
-            <div
-              className="modal-footer"
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "14px 20px",
-                background: "#f9fafb",
-                borderTop: "1px solid #f1f3f5",
-              }}
-            >
-              {/* EL BOTÓN AHORA SIEMPRE ES VISIBLE, INCLUSO PARA CUENTAS RETOMADAS DE COCINA */}
+            <div className="modal-footer">
               <button
                 className="btn-secondary"
-                onClick={handleCreditCheckout}
-                style={{
-                  border: "1px solid #e05d5d",
-                  color: "#e05d5d",
-                  fontWeight: "700",
-                }}
+                onClick={() => setSelectedClientDetail(null)}
               >
-                Pasar a Crédito
+                Cerrar
               </button>
-              
-              <div
-                style={{
-                  display: "flex",
-                  gap: "8px",
-                  marginLeft: "auto", /* Forzamos a que estos botones se vayan a la derecha */
-                }}
-              >
-                <button
-                  className="btn-secondary"
-                  onClick={() => {
-                    setShowPaymentModal(false);
-                    setSettlingSale(null);
-                  }}
-                  style={{ border: "1px solid #d1d5db", color: "#4b5563" }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  className="btn-primary"
-                  onClick={handleCheckoutSubmit}
-                  disabled={totalPaidUSD <= 0 || processing}
-                  style={{
-                    background: "#111827",
-                    color: "#ffffff",
-                    border: "none",
-                    fontWeight: "700",
-                    padding: "10px 20px",
-                  }}
-                >
-                  {processing ? "Procesando..." : "Confirmar Pago"}
-                </button>
-              </div>
             </div>
           </div>
         </div>

@@ -451,15 +451,20 @@ export default function KitchenDashboard({
       currentStatus === "ready" ||
       currentStatus === "listo" ||
       currentStatus === "espera_pago";
-    const stationIsReady = stationItems.every((i) => i.dispatched);
-    const stationIsPreparing =
-      stationItems.some((i) => i.preparing) && !stationIsReady;
+
+    // --- CORRECCIÓN: Filtramos los items que faltan por despachar ---
+    const displayItems = stationItems.filter((item) => !item.dispatched);
+    
+    // La estación está lista solo si TODOS los items de la mesa están despachados
+    const stationIsReady = stationItems.length > 0 && displayItems.length === 0;
+    
+    // La estación está preparando SOLO si hay items NUEVOS/Pendientes que ya se empezaron a preparar
+    const stationIsPreparing = displayItems.some((i) => i.preparing) && !stationIsReady;
 
     if (kdsConfig.hideReady && (stationIsReady || globalIsReady)) {
       return null;
     }
 
-    const displayItems = stationItems.filter((item) => !item.dispatched);
     if (displayItems.length === 0 && !stationIsReady && !globalIsReady) {
       return null;
     }
@@ -664,7 +669,10 @@ export default function KitchenDashboard({
                   const c = item.category ? item.category.trim() : "General";
                   const belongsToStation =
                     targetCats.length === 0 || targetCats.includes(c);
-                  if (belongsToStation) return { ...item, preparing: true };
+                  
+                  // CORRECCIÓN: Solo marca como preparando los items que NO han sido despachados
+                  if (belongsToStation && !item.dispatched) return { ...item, preparing: true };
+                  
                   return item;
                 });
 

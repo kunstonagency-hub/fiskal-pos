@@ -498,7 +498,7 @@ function SalesHistoryView({
                               gap: "4px",
                             }}
                           >
-                            <Play size={14} /> Cobrar
+                            <Play size={14} /> Continuar / Cobrar
                           </button>
                         )}
                         {isCredit && (
