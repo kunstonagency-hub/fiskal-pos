@@ -560,6 +560,8 @@ function App() {
   const [productForModifiers, setProductForModifiers] = useState(null);
   const [dynamicToggles, setDynamicToggles] = useState({}); // Toggles dinámicos
   const [isParaLlevar, setIsParaLlevar] = useState(false);
+  const [isSpecialNote, setIsSpecialNote] = useState(false);
+  const [specialNoteText, setSpecialNoteText] = useState("");
   // NUEVO: Estados para Extras con Precio en Restaurante
   const [productExtras, setProductExtras] = useState([]); // [{ name: 'Huevo', price: 1.0 }]
   const [newExtraName, setNewExtraName] = useState("");
@@ -596,12 +598,18 @@ function App() {
       if (selectedExtrasToggles[ex.name]) {
         const p = parseFloat(ex.price) || 0;
         extrasTotalCost += p;
-        chosenExtrasText.push(`+ ${ex.name} (+$${p.toFixed(2)})`);
+        // CORRECCIÓN: Ahora solo dice "Extra: [Nombre]" sin el precio
+        chosenExtrasText.push(`Extra: ${ex.name}`);
       }
     });
 
     if (chosenExtrasText.length > 0) {
       customizationText += ` | ${chosenExtrasText.join(", ")}`;
+    }
+
+    // --- NUEVO: Agregar la Nota Especial ---
+    if (isSpecialNote && specialNoteText.trim()) {
+      customizationText += ` | NOTA: ${specialNoteText.trim()}`;
     }
 
     // 3. Para llevar
@@ -626,12 +634,16 @@ function App() {
     setShowModifierModal(false);
     setProductForModifiers(null);
     setIsParaLlevar(false);
+    setIsSpecialNote(false); // Resetear
+    setSpecialNoteText("");  // Resetear
     setSelectedExtrasToggles({});
   };
 
   const handleOpenModifierModal = (prod) => {
     setProductForModifiers(prod);
     setIsParaLlevar(false);
+    setIsSpecialNote(false); // Asegurar que esté limpio
+    setSpecialNoteText("");  // Asegurar que esté limpio
 
     // Cargar ingredientes base (todos marcados por defecto)
     let modsArray = [];
@@ -670,6 +682,8 @@ function App() {
 
     setShowModifierModal(true);
   };
+
+
   const handleOpenWeightModal = (prod) => {
     setProductForWeight(prod);
     setWeightValue("1");
@@ -6863,35 +6877,63 @@ const handleCreditCheckout = async () => {
                 );
               })()}
 
-              {/* SECCIÓN 3: PARA LLEVAR */}
-              <div
-                style={{
-                  background: "#f9fafb",
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #e5e7eb",
-                }}
-              >
-                <label
+              {/* SECCIÓN 3: NOTA ESPECIAL Y PARA LLEVAR */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                
+                {/* --- NUEVO: CAJA DE NOTA ESPECIAL --- */}
+                <div style={{ background: "#fffbeb", padding: "10px 12px", borderRadius: "8px", border: "1px solid #fde68a" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "13px", fontWeight: "700", color: "#92400e", margin: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={isSpecialNote}
+                      onChange={(e) => setIsSpecialNote(e.target.checked)}
+                      style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#d97706" }}
+                    />
+                    📝 Añadir Nota Especial para Cocina
+                  </label>
+                  {isSpecialNote && (
+                    <textarea
+                      value={specialNoteText}
+                      onChange={(e) => setSpecialNoteText(e.target.value)}
+                      placeholder="Ej. Pura salchicha, calentar bien el pan..."
+                      style={{ width: "100%", marginTop: "10px", padding: "8px", borderRadius: "6px", border: "1px solid #fcd34d", fontSize: "13px", outline: "none", resize: "none" }}
+                      rows="2"
+                      autoFocus
+                    />
+                  )}
+                </div>
+
+                {/* CAJA DE EMPAQUE PARA LLEVAR */}
+                <div
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    cursor: "pointer",
-                    fontSize: "13px",
-                    fontWeight: "700",
-                    color: "#111827",
-                    margin: 0,
+                    background: "#f9fafb",
+                    padding: "10px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #e5e7eb",
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={isParaLlevar}
-                    onChange={(e) => setIsParaLlevar(e.target.checked)}
-                    style={{ width: "16px", height: "16px", cursor: "pointer" }}
-                  />
-                  📦 Empacar Para Llevar
-                </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      cursor: "pointer",
+                      fontSize: "13px",
+                      fontWeight: "700",
+                      color: "#111827",
+                      margin: 0,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isParaLlevar}
+                      onChange={(e) => setIsParaLlevar(e.target.checked)}
+                      style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                    />
+                    📦 Empacar Para Llevar
+                  </label>
+                </div>
+
               </div>
 
               {/* RESUMEN DEL PRECIO FINAL EN VIVO */}

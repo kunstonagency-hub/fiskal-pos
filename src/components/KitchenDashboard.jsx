@@ -617,24 +617,51 @@ export default function KitchenDashboard({
                     <div
                       style={{
                         fontSize: `${13 * fontScale}px`,
-                        color: customizationText.includes("+")
-                          ? "#16a34a"
-                          : "#e05d5d",
                         marginTop: "4px",
                         display: "flex",
                         flexDirection: "column",
-                        gap: "2px",
-                        paddingLeft: "8px",
-                        borderLeft: `2px solid ${
-                          customizationText.includes("+")
-                            ? "#16a34a"
-                            : "#e05d5d"
-                        }`,
+                        gap: "6px", // Un poco de espacio entre las notas
                       }}
                     >
-                      <span style={{ fontWeight: "bold" }}>
-                        • {customizationText}
-                      </span>
+                      {/* Dividimos el texto por el separador ' | ' para evaluar cada nota individualmente */}
+                      {customizationText.split(" | ").map((part, idx) => {
+                        let partColor = "#4b5563"; // Gris oscuro por defecto
+                        let borderColor = "#cbd5e1"; // Gris claro para el borde
+
+                        const lowerPart = part.toLowerCase();
+
+                        // Lógica de colores según el contenido
+                        if (lowerPart.includes("con todo")) {
+                          partColor = "#16a34a"; // Verde
+                          borderColor = "#16a34a";
+                        } else if (lowerPart.includes("extra:")) {
+                          partColor = "#2563eb"; // Azul
+                          borderColor = "#2563eb";
+                        } else if (lowerPart.includes("sin ") || lowerPart.includes("nota:")) {
+                          partColor = "#dc2626"; // Rojo
+                          borderColor = "#dc2626";
+                        } else if (lowerPart.includes("para llevar")) {
+                          partColor = "#d97706"; // Naranja para empaques
+                          borderColor = "#f59e0b";
+                        }
+
+                        return (
+                          <div
+                            key={idx}
+                            style={{
+                              color: partColor,
+                              paddingLeft: "8px",
+                              borderLeft: `3px solid ${borderColor}`,
+                              display: "flex",
+                              alignItems: "flex-start",
+                            }}
+                          >
+                            <span style={{ fontWeight: "900", letterSpacing: "0.2px" }}>
+                              • {part}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
