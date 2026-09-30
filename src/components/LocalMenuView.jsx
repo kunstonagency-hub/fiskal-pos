@@ -59,8 +59,13 @@ export default function LocalMenuView({ storeId }) {
   const [qty, setQty] = useState(1);
   const [modifiers, setModifiers] = useState([]);
   const [extras, setExtras] = useState([]);
-  // NUEVO: Estado para guardar la selección de las Opciones Múltiples (Proteínas)
+  
+  // Opciones Múltiples (Proteínas)
   const [selectedChoicesToggles, setSelectedChoicesToggles] = useState({});
+
+  // NUEVO: Estados para la Nota Especial
+  const [isSpecialNote, setIsSpecialNote] = useState(false);
+  const [specialNoteText, setSpecialNoteText] = useState("");
 
   const [showCartModal, setShowCartModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -172,6 +177,8 @@ export default function LocalMenuView({ storeId }) {
   const openProductModal = (prod) => {
     setSelectedProduct(prod);
     setQty(1);
+    setIsSpecialNote(false);
+    setSpecialNoteText("");
     
     // Filtro estricto para evitar que salgan modificadores basura o vacíos
     let modsArray = [];
@@ -193,31 +200,29 @@ export default function LocalMenuView({ storeId }) {
     }
     setExtras(extraList.map(e => ({ ...e, qty: 0 })));
 
-    // NUEVO: Inicializar Opciones Múltiples vacías
     let availableChoices = [];
     if (prod.choices) {
       try { availableChoices = typeof prod.choices === "string" ? JSON.parse(prod.choices) : prod.choices; } catch(e) {}
     }
     const initialChoices = {};
     availableChoices.forEach(group => {
-      initialChoices[group.name] = []; // Ninguna seleccionada al principio
+      initialChoices[group.name] = []; 
     });
     setSelectedChoicesToggles(initialChoices);
   };
 
   const handleAddToCart = () => {
-    // NUEVO: Validación estricta para Opciones Múltiples
+    // Validación estricta para Opciones Múltiples
     let availableChoices = [];
     if (selectedProduct.choices) {
       try { availableChoices = typeof selectedProduct.choices === "string" ? JSON.parse(selectedProduct.choices) : selectedProduct.choices; } catch(e){}
     }
     
-    // Validar que eligió al menos 1 por cada grupo
     for (let group of availableChoices) {
       const selected = selectedChoicesToggles[group.name] || [];
       if (selected.length === 0) {
         alert(`Por favor, selecciona al menos una opción en "${group.name}".`);
-        return; // Detiene el carrito si no eligió nada
+        return; 
       }
     }
 
@@ -237,7 +242,7 @@ export default function LocalMenuView({ storeId }) {
       customizationText = activeExtras.join(', ');
     }
 
-    // NUEVO: Agregamos las Opciones Múltiples (Proteínas) al texto de personalización
+    // Agregamos las Opciones Múltiples (Proteínas) al texto
     availableChoices.forEach((group) => {
       const selected = selectedChoicesToggles[group.name] || [];
       if (selected.length > 0) {
@@ -248,6 +253,15 @@ export default function LocalMenuView({ storeId }) {
         }
       }
     });
+
+    // NUEVO: Agregamos la Nota Especial al final del texto
+    if (isSpecialNote && specialNoteText.trim()) {
+      if (customizationText === "") {
+        customizationText = `NOTA: ${specialNoteText.trim()}`;
+      } else {
+        customizationText += ` | NOTA: ${specialNoteText.trim()}`;
+      }
+    }
 
     const extrasTotal = extras.reduce((sum, e) => sum + (Number(e.price || 0) * (e.qty || 0)), 0);
     const unitPriceWithExtras = Number(selectedProduct.price || 0) + extrasTotal;
@@ -299,7 +313,6 @@ export default function LocalMenuView({ storeId }) {
     
     setIsProcessing(true);
 
-    // --- NUEVO: Validar y Auto-Registrar Cliente en la Base de Datos ---
     let finalClientName = clientName.trim();
     try {
       const { data: existingClient } = await supabase
@@ -310,7 +323,6 @@ export default function LocalMenuView({ storeId }) {
         .maybeSingle();
 
       if (!existingClient) {
-        // El cliente es nuevo, lo guardamos para el futuro
         await supabase.from('clients').insert([{
           store_id: storeId,
           document: clientDoc.trim(),
@@ -318,14 +330,13 @@ export default function LocalMenuView({ storeId }) {
           phone: clientPhone.trim() || null,
         }]);
       } else {
-        // El cliente existe, usamos el nombre EXACTO de la base de datos
         finalClientName = existingClient.name; 
       }
     } catch(err) { console.error("Error con cliente:", err); }
 
     const saleData = {
       store_id: storeId,
-      client_name: finalClientName, // <--- Nombre real vinculado a la BD
+      client_name: finalClientName,
       items: cart,
       total_usd: cartTotal,
       total_bs: cartTotal * (bcvRate || 1),
@@ -347,7 +358,7 @@ export default function LocalMenuView({ storeId }) {
             client_document: clientDoc.trim(),
             kitchen_sent_at: new Date().toISOString(),
             applied_bcv_rate: bcvRate,
-            table_name: clientName.trim() // Guardamos la mesa en los detalles para no manchar el nombre del cliente
+            table_name: clientName.trim() 
           }
     };
 
@@ -539,7 +550,6 @@ export default function LocalMenuView({ storeId }) {
                 </div>
               )}
 
-              {/* NUEVO: BLOQUE DE OPCIONES MÚLTIPLES (PROTEÍNAS) PARA CLIENTE WEB */}
               {(() => {
                 let availableChoices = [];
                 if (selectedProduct.choices) {
@@ -598,6 +608,29 @@ export default function LocalMenuView({ storeId }) {
                   );
                 });
               })()}
+
+              {/* ⬇️ AQUÍ ESTÁ LA CAJITA DE LA NOTA ESPECIAL ⬇️ */}
+              <div style={{ background: "#fffbeb", padding: "16px", borderRadius: "16px", border: "1px solid #fde68a", marginBottom: "16px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "14px", fontWeight: "800", color: "#92400e", margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={isSpecialNote}
+                    onChange={(e) => setIsSpecialNote(e.target.checked)}
+                    style={{ width: "20px", height: "20px", cursor: "pointer", accentColor: "#d97706" }}
+                  />
+                  📝 Añadir Nota Especial para Cocina
+                </label>
+                {isSpecialNote && (
+                  <textarea
+                    value={specialNoteText}
+                    onChange={(e) => setSpecialNoteText(e.target.value)}
+                    placeholder="Ej. La carne bien cocida, sin salsas..."
+                    style={{ width: "100%", marginTop: "12px", padding: "12px", borderRadius: "8px", border: "1px solid #fcd34d", fontSize: "14px", outline: "none", resize: "none", boxSizing: "border-box" }}
+                    rows="2"
+                    autoFocus
+                  />
+                )}
+              </div>
               
             </div>
 
