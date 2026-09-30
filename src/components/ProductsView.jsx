@@ -6,7 +6,8 @@ import {
   Edit2,
   Trash2,
   Copy,
-  Camera, // <-- IMPORTAMOS EL ÍCONO DE LA CÁMARA
+  Camera,
+  Search, // <-- IMPORTAMOS LA LUPA
 } from "lucide-react";
 
 // Vista de gestión del catálogo.
@@ -55,9 +56,12 @@ function ProductsView({
   handleOpenLabel,
   handleStartEditProduct,
   handleDeleteProduct,
-  onStartCameraScanner, // <--- NUEVA PROPIEDAD PARA ABRIR LA CÁMARA
+  onStartCameraScanner,
 }) {
   const [addedUnits, setAddedUnits] = useState("");
+  
+  // <-- ESTADO PARA EL BUSCADOR INTELIGENTE
+  const [searchTerm, setSearchTerm] = useState("");
 
   const handleAddUnitsChange = (val) => {
     setAddedUnits(val);
@@ -127,6 +131,14 @@ function ProductsView({
     setAddedUnits("");
     resetProductForm();
   };
+
+  // <-- LÓGICA DE FILTRADO INTELIGENTE
+  const filteredProducts = products.filter((prod) => {
+    const term = searchTerm.toLowerCase();
+    const matchName = prod.name?.toLowerCase().includes(term);
+    const matchBarcode = prod.barcode?.toLowerCase().includes(term);
+    return matchName || matchBarcode;
+  });
 
   return (
     <div
@@ -271,7 +283,6 @@ function ProductsView({
             />
           </div>
           
-          {/* --- AQUÍ FUE MODIFICADO EL CAMPO DEL CÓDIGO DE BARRAS --- */}
           <div className="form-group">
             <label>Código de Barras / SKU (Autogenerado al duplicar)</label>
             <div style={{ position: "relative", width: "100%", display: "flex", alignItems: "center" }}>
@@ -286,7 +297,7 @@ function ProductsView({
               />
               <button
                 type="button"
-                onClick={onStartCameraScanner}
+                onClick={() => onStartCameraScanner('form')}
                 title="Escanear Código de Barras"
                 style={{
                   position: "absolute",
@@ -307,7 +318,6 @@ function ProductsView({
               </button>
             </div>
           </div>
-          {/* --------------------------------------------------------- */}
 
           <div className="form-group">
             <label>Precio de Venta ($ USD)</label>
@@ -949,7 +959,7 @@ function ProductsView({
           }}
         >
           <h3 style={{ margin: 0 }}>
-            Inventario Registrado ({products.length})
+            Inventario Registrado ({filteredProducts.length})
           </h3>
           <button
             className="btn-secondary"
@@ -960,7 +970,47 @@ function ProductsView({
           </button>
         </div>
 
-        {/* Aquí blindamos la tabla para que haga scroll interno si es necesario y no rompa el contenedor */}
+        {/* <-- BARRA DE BÚSQUEDA INTELIGENTE CON BOTÓN DE ESCÁNER --> */}
+        <div style={{ marginBottom: "16px", position: "relative", width: "100%", display: "flex", alignItems: "center" }}>
+          <Search size={18} style={{ position: "absolute", left: "10px", color: "#6c757d", zIndex: 2 }} />
+          <input
+            type="text"
+            placeholder="Buscar por nombre o escanear código..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "10px 40px 10px 36px", 
+              borderRadius: "6px",
+              border: "1px solid #ced4da",
+              boxSizing: "border-box",
+              fontSize: "14px",
+              background: "#fff"
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => onStartCameraScanner('search')} 
+            title="Escanear Código para Buscar"
+            style={{
+              position: "absolute",
+              right: "4px",
+              background: "#212529",
+              color: "#fff",
+              border: "none",
+              borderRadius: "4px",
+              padding: "6px 8px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 2
+            }}
+          >
+            <Camera size={15} />
+          </button>
+        </div>
+
         <div
           className="table-responsive"
           style={{
@@ -981,14 +1031,14 @@ function ProductsView({
               </tr>
             </thead>
             <tbody>
-              {products.length === 0 ? (
+              {filteredProducts.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="empty-text">
-                    No hay productos registrados.
+                    {searchTerm !== "" ? "No se encontraron coincidencias." : "No hay productos registrados."}
                   </td>
                 </tr>
               ) : (
-                products.map((prod) => (
+                filteredProducts.map((prod) => (
                   <tr key={prod.id}>
                     <td>
                       <strong>{prod.name}</strong>
@@ -1043,7 +1093,6 @@ function ProductsView({
                       </span>
                     </td>
                     <td className="action-cell">
-                      {/* Flex wrap en los botones para que bajen en vez de estirar la tabla */}
                       <div
                         className="action-buttons"
                         style={{
