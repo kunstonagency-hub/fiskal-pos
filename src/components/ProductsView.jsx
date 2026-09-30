@@ -7,12 +7,10 @@ import {
   Trash2,
   Copy,
   Camera,
-  Search, // <-- IMPORTAMOS LA LUPA
+  Search,
 } from "lucide-react";
 
 // Vista de gestión del catálogo.
-// Este componente centraliza el alta, edición, duplicado, eliminación y reabastecimiento de productos,
-// además de los modifiers, extras y opciones específicas para restaurante.
 function ProductsView({
   requestAdminAuth,
   editingProduct,
@@ -45,6 +43,8 @@ function ProductsView({
   setNewExtraName,
   newExtraPrice,
   setNewExtraPrice,
+  productChoices, // <-- NUEVO
+  setProductChoices, // <-- NUEVO
   currentStoreKronoEnabled,
   showInKrono,
   setShowInKrono,
@@ -54,14 +54,51 @@ function ProductsView({
   loading,
   setShowPrintCatalog,
   handleOpenLabel,
-  handleStartEditProduct,
-  handleDeleteProduct,
   onStartCameraScanner,
 }) {
   const [addedUnits, setAddedUnits] = useState("");
-  
-  // <-- ESTADO PARA EL BUSCADOR INTELIGENTE
   const [searchTerm, setSearchTerm] = useState("");
+
+  // ESTADOS INTERNOS PARA OPCIONES MÚLTIPLES (CHOICES)
+  const [newChoiceGroupName, setNewChoiceGroupName] = useState("");
+  const [newChoiceLimit, setNewChoiceLimit] = useState(1);
+  const [newChoiceOptions, setNewChoiceOptions] = useState("");
+
+  const handleAddChoiceGroup = () => {
+    if (!newChoiceGroupName.trim() || !newChoiceOptions.trim()) {
+      alert("Debes ponerle nombre al grupo y agregar al menos una opción.");
+      return;
+    }
+    const limit = parseInt(newChoiceLimit, 10);
+    if (isNaN(limit) || limit < 1) {
+      alert("El límite debe ser al menos 1.");
+      return;
+    }
+
+    const optionsArray = newChoiceOptions.split(",").map(s => s.trim()).filter(Boolean);
+    if (optionsArray.length === 0) {
+      alert("Debes agregar opciones válidas separadas por coma.");
+      return;
+    }
+
+    const newGroup = {
+      name: newChoiceGroupName.trim(),
+      limit: limit,
+      options: optionsArray
+    };
+
+    setProductChoices([...(productChoices || []), newGroup]);
+    
+    setNewChoiceGroupName("");
+    setNewChoiceLimit(1);
+    setNewChoiceOptions("");
+  };
+
+  const handleRemoveChoiceGroup = (idx) => {
+    const updated = [...(productChoices || [])];
+    updated.splice(idx, 1);
+    setProductChoices(updated);
+  };
 
   const handleAddUnitsChange = (val) => {
     setAddedUnits(val);
@@ -129,10 +166,12 @@ function ProductsView({
 
   const customResetForm = () => {
     setAddedUnits("");
+    setNewChoiceGroupName("");
+    setNewChoiceLimit(1);
+    setNewChoiceOptions("");
     resetProductForm();
   };
 
-  // <-- LÓGICA DE FILTRADO INTELIGENTE
   const filteredProducts = products.filter((prod) => {
     const term = searchTerm.toLowerCase();
     const matchName = prod.name?.toLowerCase().includes(term);
@@ -204,7 +243,6 @@ function ProductsView({
               )}
                <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
                 
-                {/* Botón para subir desde la Galería */}
                 <label
                   style={{
                     background: "#e9ecef",
@@ -226,11 +264,10 @@ function ProductsView({
                     type="file"
                     accept="image/*"
                     onChange={handleImageSelect}
-                    style={{ display: "none" }} /* Ocultamos el input feo nativo */
+                    style={{ display: "none" }}
                   />
                 </label>
 
-                {/* Botón para abrir la Cámara directamente */}
                 <label
                   style={{
                     background: "#212529",
@@ -251,7 +288,7 @@ function ProductsView({
                     name="image"
                     type="file"
                     accept="image/*"
-                    capture="environment" /* ESTA ES LA MAGIA QUE ABRE LA CÁMARA TRASERA */
+                    capture="environment"
                     onChange={handleImageSelect}
                     style={{ display: "none" }}
                   />
@@ -817,6 +854,85 @@ function ProductsView({
             </div>
           )}
 
+          {/* NUEVA SECCIÓN: GRUPOS DE OPCIONES OBLIGATORIAS (EJ. ELIGE 3 PROTEÍNAS) */}
+          {currentStoreType === "restaurant" && (
+            <div
+              className="form-group"
+              style={{
+                background: "#f0fdf4", 
+                padding: "14px",
+                borderRadius: "8px",
+                border: "1px solid #bbf7d0",
+                marginBottom: "16px",
+                width: "100%",
+                boxSizing: "border-box",
+              }}
+            >
+              <label
+                style={{
+                  fontWeight: "800",
+                  color: "#16a34a",
+                  marginBottom: "6px",
+                  display: "block",
+                  fontSize: "12px",
+                  textTransform: "uppercase",
+                }}
+              >
+                ☑️ 3. Opciones Múltiples (Ej. Elige 3 Proteínas)
+              </label>
+              
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
+                <input
+                  type="text"
+                  placeholder="Nombre del Grupo (Ej. Proteínas)"
+                  value={newChoiceGroupName}
+                  onChange={(e) => setNewChoiceGroupName(e.target.value)}
+                  style={{ flex: "2 1 150px", padding: "8px", fontSize: "12px", borderRadius: "4px", border: "1px solid #ced4da", outline: "none" }}
+                />
+                <input
+                  type="number"
+                  placeholder="Límite (Ej. 3)"
+                  title="Cantidad máxima que el cliente puede elegir"
+                  value={newChoiceLimit}
+                  onChange={(e) => setNewChoiceLimit(e.target.value)}
+                  style={{ flex: "1 1 80px", padding: "8px", fontSize: "12px", borderRadius: "4px", border: "1px solid #ced4da", outline: "none" }}
+                />
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
+                <input
+                  type="text"
+                  placeholder="Opciones (Separadas por coma: Carne, Pollo, Cerdo)"
+                  value={newChoiceOptions}
+                  onChange={(e) => setNewChoiceOptions(e.target.value)}
+                  style={{ flex: "1 1 200px", padding: "8px", fontSize: "12px", borderRadius: "4px", border: "1px solid #ced4da", outline: "none" }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddChoiceGroup}
+                  style={{ background: "#16a34a", color: "#fff", border: "none", padding: "8px 12px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}
+                >
+                  + Crear Grupo
+                </button>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {(productChoices || []).length === 0 ? (
+                  <span style={{ fontSize: "11px", color: "#166534", fontStyle: "italic" }}>No hay grupos de opciones configurados.</span>
+                ) : (
+                  productChoices.map((group, idx) => (
+                    <div key={idx} style={{ background: "#fff", padding: "8px", borderRadius: "6px", border: "1px solid #86efac", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <strong style={{ fontSize: "12px", color: "#15803d", display: "block" }}>{group.name} (Límite: {group.limit})</strong>
+                        <span style={{ fontSize: "11px", color: "#16a34a" }}>{group.options.join(", ")}</span>
+                      </div>
+                      <button type="button" onClick={() => handleRemoveChoiceGroup(idx)} style={{ background: "none", border: "none", color: "#e05d5d", fontSize: "16px", cursor: "pointer", fontWeight: "bold", padding: "0 6px" }}>×</button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
           {currentStoreKronoEnabled && (
             <div
               className="form-group"
@@ -970,7 +1086,6 @@ function ProductsView({
           </button>
         </div>
 
-        {/* <-- BARRA DE BÚSQUEDA INTELIGENTE CON BOTÓN DE ESCÁNER --> */}
         <div style={{ marginBottom: "16px", position: "relative", width: "100%", display: "flex", alignItems: "center" }}>
           <Search size={18} style={{ position: "absolute", left: "10px", color: "#6c757d", zIndex: 2 }} />
           <input
@@ -985,7 +1100,8 @@ function ProductsView({
               border: "1px solid #ced4da",
               boxSizing: "border-box",
               fontSize: "14px",
-              background: "#fff"
+              background: "#fff",
+              outline: "none"
             }}
           />
           <button

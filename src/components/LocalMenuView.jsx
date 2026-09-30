@@ -59,6 +59,8 @@ export default function LocalMenuView({ storeId }) {
   const [qty, setQty] = useState(1);
   const [modifiers, setModifiers] = useState([]);
   const [extras, setExtras] = useState([]);
+  // NUEVO: Estado para guardar la selección de las Opciones Múltiples (Proteínas)
+  const [selectedChoicesToggles, setSelectedChoicesToggles] = useState({});
 
   const [showCartModal, setShowCartModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -190,9 +192,35 @@ export default function LocalMenuView({ storeId }) {
       }
     }
     setExtras(extraList.map(e => ({ ...e, qty: 0 })));
+
+    // NUEVO: Inicializar Opciones Múltiples vacías
+    let availableChoices = [];
+    if (prod.choices) {
+      try { availableChoices = typeof prod.choices === "string" ? JSON.parse(prod.choices) : prod.choices; } catch(e) {}
+    }
+    const initialChoices = {};
+    availableChoices.forEach(group => {
+      initialChoices[group.name] = []; // Ninguna seleccionada al principio
+    });
+    setSelectedChoicesToggles(initialChoices);
   };
 
   const handleAddToCart = () => {
+    // NUEVO: Validación estricta para Opciones Múltiples
+    let availableChoices = [];
+    if (selectedProduct.choices) {
+      try { availableChoices = typeof selectedProduct.choices === "string" ? JSON.parse(selectedProduct.choices) : selectedProduct.choices; } catch(e){}
+    }
+    
+    // Validar que eligió al menos 1 por cada grupo
+    for (let group of availableChoices) {
+      const selected = selectedChoicesToggles[group.name] || [];
+      if (selected.length === 0) {
+        alert(`Por favor, selecciona al menos una opción en "${group.name}".`);
+        return; // Detiene el carrito si no eligió nada
+      }
+    }
+
     const excluded = modifiers.filter(m => !m.active).map(m => `Sin ${m.name}`);
     const activeExtras = extras.filter(e => e.qty > 0).map(e => {
       const label = e.qty > 1 ? `+ ${e.qty}x ${e.name}` : `+ ${e.name}`;
@@ -208,6 +236,18 @@ export default function LocalMenuView({ storeId }) {
     } else if (modifiers.length === 0 && activeExtras.length > 0) {
       customizationText = activeExtras.join(', ');
     }
+
+    // NUEVO: Agregamos las Opciones Múltiples (Proteínas) al texto de personalización
+    availableChoices.forEach((group) => {
+      const selected = selectedChoicesToggles[group.name] || [];
+      if (selected.length > 0) {
+        if (customizationText === "") {
+          customizationText = `${group.name}: ${selected.join(", ")}`;
+        } else {
+          customizationText += ` | ${group.name}: ${selected.join(", ")}`;
+        }
+      }
+    });
 
     const extrasTotal = extras.reduce((sum, e) => sum + (Number(e.price || 0) * (e.qty || 0)), 0);
     const unitPriceWithExtras = Number(selectedProduct.price || 0) + extrasTotal;
@@ -473,7 +513,7 @@ export default function LocalMenuView({ storeId }) {
               )}
 
               {extras.length > 0 && (
-                <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '8px' }}>
+                <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
                   <span style={{ fontSize: '11px', fontWeight: '800', color: '#0f172a', display: 'block', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>⭐ Adicionales (Opcional)</span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     {extras.map(ex => {
@@ -498,6 +538,67 @@ export default function LocalMenuView({ storeId }) {
                   </div>
                 </div>
               )}
+
+              {/* NUEVO: BLOQUE DE OPCIONES MÚLTIPLES (PROTEÍNAS) PARA CLIENTE WEB */}
+              {(() => {
+                let availableChoices = [];
+                if (selectedProduct.choices) {
+                  try {
+                    availableChoices = typeof selectedProduct.choices === "string" ? JSON.parse(selectedProduct.choices) : selectedProduct.choices;
+                  } catch (e) { availableChoices = []; }
+                }
+
+                if (availableChoices.length === 0) return null;
+
+                return availableChoices.map((group, gIdx) => {
+                  const selectedArr = selectedChoicesToggles[group.name] || [];
+                  const isFull = selectedArr.length >= group.limit;
+
+                  return (
+                    <div key={gIdx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                        <span style={{ fontSize: "11px", color: "#0f172a", fontWeight: "800", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                          ☑️ {group.name}
+                        </span>
+                        <span style={{ fontSize: "11px", fontWeight: "bold", color: isFull ? "#16a34a" : "#e05d5d" }}>
+                          Elige hasta {group.limit} ({selectedArr.length}/{group.limit})
+                        </span>
+                      </div>
+                      
+                      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                        {group.options.map((opt, oIdx) => {
+                          const isChecked = selectedArr.includes(opt);
+                          const isDisabled = isFull && !isChecked;
+
+                          return (
+                            <label key={oIdx} style={{ display: "flex", alignItems: "center", gap: "12px", cursor: isDisabled ? "not-allowed" : "pointer", opacity: isDisabled ? 0.5 : 1 }}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                disabled={isDisabled}
+                                onChange={(e) => {
+                                  let newArr = [...selectedArr];
+                                  if (e.target.checked) {
+                                    if (newArr.length < group.limit) newArr.push(opt);
+                                  } else {
+                                    newArr = newArr.filter(x => x !== opt);
+                                  }
+                                  setSelectedChoicesToggles({ ...selectedChoicesToggles, [group.name]: newArr });
+                                }}
+                                style={{ width: "20px", height: "20px", accentColor: "#10b981", cursor: "inherit" }}
+                              />
+                              <span style={{ fontSize: "15px", fontWeight: isChecked ? "700" : "500", color: isChecked ? "#0f172a" : "#475569" }}>
+                                {opt}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+              
             </div>
 
             <div style={{ padding: '20px 24px', borderTop: '1px solid #e2e8f0', background: '#fff', display: 'flex', alignItems: 'center', gap: '16px', boxShadow: '0 -4px 15px rgba(0,0,0,0.05)' }}>

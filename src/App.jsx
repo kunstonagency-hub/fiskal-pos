@@ -596,28 +596,50 @@ function App() {
   const [newExtraName, setNewExtraName] = useState("");
   const [newExtraPrice, setNewExtraPrice] = useState("");
   const [selectedExtrasToggles, setSelectedExtrasToggles] = useState({});
+  // NUEVO: Opciones de selección obligatoria (Choices)
+  const [productChoices, setProductChoices] = useState([]);
+  const [selectedChoicesToggles, setSelectedChoicesToggles] = useState({});
 
   const confirmAddToCartWithModifiers = () => {
     if (!productForModifiers) return;
 
+    // --- NUEVO: Validar límites de Opciones Múltiples (Choices) ---
+    let availableChoices = [];
+    if (productForModifiers.choices) {
+      availableChoices = typeof productForModifiers.choices === "string" ? JSON.parse(productForModifiers.choices) : productForModifiers.choices;
+    }
+    
+    for (let group of availableChoices) {
+      const selected = selectedChoicesToggles[group.name] || [];
+      if (selected.length === 0) {
+        alert(`Debes seleccionar al menos una opción en "${group.name}".`);
+        return; // Detenemos si no eligió nada
+      }
+      if (selected.length > group.limit) {
+        alert(`Has seleccionado demasiadas opciones en "${group.name}". Máximo permitido: ${group.limit}`);
+        return;
+      }
+    }
+    // -------------------------------------------------------------
+
     const cartItemId = `${productForModifiers.id}_mod_${Date.now()}`;
 
     // 1. Ingredientes base excluidos
-    const excluded = Object.keys(dynamicToggles).filter(
-      (k) => !dynamicToggles[k],
-    );
-    let customizationText =
-      excluded.length > 0
-        ? excluded.map((item) => `Sin ${item}`).join(", ")
-        : "Con todo";
+    const excluded = Object.keys(dynamicToggles).filter((k) => !dynamicToggles[k]);
+    let customizationText = excluded.length > 0 ? excluded.map((item) => `Sin ${item}`).join(", ") : "Con todo";
+
+    // --- NUEVO: Agregar textos de Choices al ticket ---
+    availableChoices.forEach((group) => {
+      const selected = selectedChoicesToggles[group.name] || [];
+      if (selected.length > 0) {
+        customizationText += ` | ${group.name}: ${selected.join(", ")}`;
+      }
+    });
 
     // 2. Sumar el costo de los extras seleccionados
     let availableExtras = [];
     if (productForModifiers.extras) {
-      availableExtras =
-        typeof productForModifiers.extras === "string"
-          ? JSON.parse(productForModifiers.extras)
-          : productForModifiers.extras;
+      availableExtras = typeof productForModifiers.extras === "string" ? JSON.parse(productForModifiers.extras) : productForModifiers.extras;
     }
 
     let extrasTotalCost = 0;
@@ -627,7 +649,6 @@ function App() {
       if (selectedExtrasToggles[ex.name]) {
         const p = parseFloat(ex.price) || 0;
         extrasTotalCost += p;
-        // CORRECCIÓN: Ahora solo dice "Extra: [Nombre]" sin el precio
         chosenExtrasText.push(`Extra: ${ex.name}`);
       }
     });
@@ -636,19 +657,15 @@ function App() {
       customizationText += ` | ${chosenExtrasText.join(", ")}`;
     }
 
-    // --- NUEVO: Agregar la Nota Especial ---
     if (isSpecialNote && specialNoteText.trim()) {
       customizationText += ` | NOTA: ${specialNoteText.trim()}`;
     }
 
-    // 3. Para llevar
     if (isParaLlevar) {
       customizationText += " | Para Llevar";
     }
 
-    const finalItemPrice = parseFloat(
-      (productForModifiers.price + extrasTotalCost).toFixed(2),
-    );
+    const finalItemPrice = parseFloat((productForModifiers.price + extrasTotalCost).toFixed(2));
 
     const itemToAdd = {
       ...productForModifiers,
@@ -663,18 +680,19 @@ function App() {
     setShowModifierModal(false);
     setProductForModifiers(null);
     setIsParaLlevar(false);
-    setIsSpecialNote(false); // Resetear
-    setSpecialNoteText("");  // Resetear
+    setIsSpecialNote(false);
+    setSpecialNoteText("");
     setSelectedExtrasToggles({});
+    setSelectedChoicesToggles({});
   };
 
   const handleOpenModifierModal = (prod) => {
     setProductForModifiers(prod);
     setIsParaLlevar(false);
-    setIsSpecialNote(false); // Asegurar que esté limpio
-    setSpecialNoteText("");  // Asegurar que esté limpio
+    setIsSpecialNote(false);
+    setSpecialNoteText("");
 
-    // Cargar ingredientes base (todos marcados por defecto)
+    // 1. Cargar ingredientes base
     let modsArray = [];
     if (prod.modifiers) {
       if (typeof prod.modifiers === 'string') {
@@ -689,7 +707,7 @@ function App() {
     });
     setDynamicToggles(initialToggles);
 
-    // Cargar extras con precio (todos DESMARCADOS por defecto)
+    // 2. Cargar extras con precio
     let availableExtras = [];
     if (prod.extras) {
       try {
@@ -706,6 +724,19 @@ function App() {
       initialExtrasToggles[ex.name] = false;
     });
     setSelectedExtrasToggles(initialExtrasToggles);
+
+    // 3. Cargar opciones múltiples (Choices)
+    let availableChoices = [];
+    if (prod.choices) {
+      try {
+        availableChoices = typeof prod.choices === "string" ? JSON.parse(prod.choices) : prod.choices;
+      } catch (e) { availableChoices = []; }
+    }
+    const initialChoicesToggles = {};
+    availableChoices.forEach((group) => {
+      initialChoicesToggles[group.name] = []; // Inicia vacío
+    });
+    setSelectedChoicesToggles(initialChoicesToggles);
 
     setShowModifierModal(true);
   };
@@ -3553,7 +3584,8 @@ function App() {
         barcode: barcode.trim() || null,
         image_url: imageUrl,
         modifiers: productModifiers.join(', '),
-        extras: productExtras, // <--- ¡AQUÍ ESTABA LA FALLA! Ahora sí se guardan los extras.
+        extras: productExtras, 
+        choices: productChoices,
         store_id: currentStoreId,
         show_in_krono: showInKrono,
         krono_preferential_price: kronoPrice ? parseFloat(kronoPrice) : null
@@ -3738,6 +3770,13 @@ function App() {
     } else {
       setProductExtras([]);
     }
+    if (prod.choices) {
+      try {
+        setProductChoices(typeof prod.choices === "string" ? JSON.parse(prod.choices) : prod.choices);
+      } catch (e) { setProductChoices([]); }
+    } else {
+      setProductChoices([]);
+    }
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -3787,6 +3826,17 @@ function App() {
     } else {
       setProductExtras([]);
     }
+
+    // --- OPCIONES MÚLTIPLES (CHOICES) ---
+    if (prod.choices) {
+      try {
+        setProductChoices(typeof prod.choices === "string" ? JSON.parse(prod.choices) : prod.choices);
+      } catch (e) { 
+        setProductChoices([]); 
+      }
+    } else {
+      setProductChoices([]);
+    }
   };
 
   const resetProductForm = () => {
@@ -3806,6 +3856,7 @@ function App() {
     setProductExtras([]);
     setNewExtraName("");
     setNewExtraPrice("");
+    setProductChoices([]);
   };
 
   const handleDeleteProduct = async (id) => {
@@ -6562,6 +6613,8 @@ const handleCreditCheckout = async () => {
               newExtraPrice={newExtraPrice}
               setNewExtraPrice={setNewExtraPrice}
               onStartCameraScanner={() => startCameraScanner("inventory")}
+              productChoices={productChoices} 
+              setProductChoices={setProductChoices}
             />
           )}
 
@@ -6802,7 +6855,7 @@ const handleCreditCheckout = async () => {
                 </div>
               )}
 
-              {/* SECCIÓN 2: EXTRAS / ADICIONALES CON PRECIO (DESMARCADOS POR DEFECTO) */}
+              {/* SECCIÓN 2: EXTRAS / ADICIONALES CON PRECIO (LA QUE SE HABÍA BORRADO) */}
               {(() => {
                 let availableExtras = [];
                 if (productForModifiers.extras) {
@@ -6902,10 +6955,67 @@ const handleCreditCheckout = async () => {
                 );
               })()}
 
+              {/* SECCIÓN NUEVA: OPCIONES MÚLTIPLES (CHOICES) */}
+              {(() => {
+                let availableChoices = [];
+                if (productForModifiers.choices) {
+                  try {
+                    availableChoices = typeof productForModifiers.choices === "string" ? JSON.parse(productForModifiers.choices) : productForModifiers.choices;
+                  } catch (e) { availableChoices = []; }
+                }
+
+                if (availableChoices.length === 0) return null;
+
+                return availableChoices.map((group, gIdx) => {
+                  const selectedArr = selectedChoicesToggles[group.name] || [];
+                  const isFull = selectedArr.length >= group.limit;
+
+                  return (
+                    <div key={gIdx} style={{ marginBottom: "16px" }}>
+                      <span style={{ fontSize: "11px", color: "#111827", fontWeight: "800", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <span>☑️ {group.name}</span>
+                        <span style={{ color: isFull ? "#16a34a" : "#e05d5d" }}>
+                          Elige hasta {group.limit} ({selectedArr.length}/{group.limit})
+                        </span>
+                      </span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", background: "#f0fdf4", padding: "12px", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
+                        {group.options.map((opt, oIdx) => {
+                          const isChecked = selectedArr.includes(opt);
+                          const isDisabled = isFull && !isChecked;
+
+                          return (
+                            <label key={oIdx} style={{ display: "flex", alignItems: "center", gap: "10px", cursor: isDisabled ? "not-allowed" : "pointer", opacity: isDisabled ? 0.5 : 1, padding: "4px 0" }}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                disabled={isDisabled}
+                                onChange={(e) => {
+                                  let newArr = [...selectedArr];
+                                  if (e.target.checked) {
+                                    if (newArr.length < group.limit) newArr.push(opt);
+                                  } else {
+                                    newArr = newArr.filter(x => x !== opt);
+                                  }
+                                  setSelectedChoicesToggles({ ...selectedChoicesToggles, [group.name]: newArr });
+                                }}
+                                style={{ width: "16px", height: "16px", cursor: "inherit", accentColor: "#16a34a" }}
+                              />
+                              <span style={{ fontSize: "13px", fontWeight: isChecked ? "700" : "500", color: isChecked ? "#15803d" : "#4b5563" }}>
+                                {opt}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+
               {/* SECCIÓN 3: NOTA ESPECIAL Y PARA LLEVAR */}
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 
-                {/* --- NUEVO: CAJA DE NOTA ESPECIAL --- */}
+                {/* CAJA DE NOTA ESPECIAL */}
                 <div style={{ background: "#fffbeb", padding: "10px 12px", borderRadius: "8px", border: "1px solid #fde68a" }}>
                   <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "13px", fontWeight: "700", color: "#92400e", margin: 0 }}>
                     <input

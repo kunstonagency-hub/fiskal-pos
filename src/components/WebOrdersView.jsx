@@ -54,13 +54,13 @@ const WebOrdersView = ({
 
       <p style={{ color: "#6b7280", fontSize: "14px", marginBottom: "20px" }}>
         Aquí puedes gestionar los deliveries y pickups que envían tus clientes.
-        Haz clic en "Procesar Pago" para confirmarlos.
+        Haz clic en "Procesar Pago" para llevarlos a la caja y confirmarlos.
       </p>
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
           gap: "16px",
         }}
       >
@@ -115,6 +115,8 @@ const WebOrdersView = ({
                   borderRadius: "12px",
                   padding: "16px",
                   boxShadow: "0 4px 6px rgba(0,0,0,0.05)",
+                  display: "flex",
+                  flexDirection: "column"
                 }}
               >
                 <div
@@ -168,7 +170,7 @@ const WebOrdersView = ({
                   </div>
                 </div>
 
-                <div style={{ marginBottom: "16px", fontSize: "13px" }}>
+                <div style={{ marginBottom: "16px", fontSize: "13px", flexGrow: 1 }}>
                   <div style={{ fontWeight: "bold", color: "#374151" }}>
                     👤 {order.client_name || "Cliente Web"}
                   </div>
@@ -211,6 +213,29 @@ const WebOrdersView = ({
                       📞 {order.payment_details.client_phone}
                     </div>
                   )}
+
+                  {/* ⬇️ NUEVO: VISUALIZACIÓN DE LOS PRODUCTOS Y SUS EXTRAS ⬇️ */}
+                  <div style={{ marginTop: "12px", background: "#f8f9fa", padding: "10px", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
+                    <strong style={{ fontSize: "11px", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb", display: "block", paddingBottom: "4px", marginBottom: "6px" }}>
+                      🛒 Resumen del Pedido:
+                    </strong>
+                    
+                    {order.items && order.items.map((item, idx) => (
+                      <div key={idx} style={{ marginBottom: "6px", borderBottom: idx !== order.items.length - 1 ? "1px dashed #e5e7eb" : "none", paddingBottom: "4px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", color: "#111827", fontWeight: "700", fontSize: "13px" }}>
+                          <span>{item.quantity}x {item.name}</span>
+                          <span>${(item.price * item.quantity).toFixed(2)}</span>
+                        </div>
+                        {item.customization && item.customization !== "Con todo" && (
+                          <div style={{ fontSize: "11px", color: "#d97706", marginTop: "2px", lineHeight: "1.3", fontWeight: "600" }}>
+                            ↳ {item.customization}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {/* ⬆️ FIN DE LA NUEVA VISUALIZACIÓN ⬆️ */}
+
                 </div>
 
                 {isUnpaid ? (

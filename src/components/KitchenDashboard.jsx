@@ -18,7 +18,7 @@ import {
   Settings,
   Columns,
   LayoutGrid,
-  Headphones, // <-- ICONO DE RADIO
+  Headphones, 
 } from "lucide-react";
 
 // Dashboard de cocina y pantalla pública.
@@ -59,7 +59,7 @@ export default function KitchenDashboard({
   const [fontScale, setFontScale] = useState(1);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isRadioMode, setIsRadioMode] = useState(false); // <-- NUEVO ESTADO MODO RADIO
+  const [isRadioMode, setIsRadioMode] = useState(false); 
 
   const [savedLinks, setSavedLinks] = useState([]);
   const [showSavedLinks, setShowSavedLinks] = useState(false);
@@ -453,13 +453,8 @@ export default function KitchenDashboard({
       currentStatus === "listo" ||
       currentStatus === "espera_pago";
 
-    // --- CORRECCIÓN: Filtramos los items que faltan por despachar ---
     const displayItems = stationItems.filter((item) => !item.dispatched);
-    
-    // La estación está lista solo si TODOS los items de la mesa están despachados
     const stationIsReady = stationItems.length > 0 && displayItems.length === 0;
-    
-    // La estación está preparando SOLO si hay items NUEVOS/Pendientes que ya se empezaron a preparar
     const stationIsPreparing = displayItems.some((i) => i.preparing) && !stationIsReady;
 
     if (kdsConfig.hideReady && (stationIsReady || globalIsReady)) {
@@ -521,15 +516,21 @@ export default function KitchenDashboard({
             padding: "14px 16px",
             display: "flex",
             justifyContent: "space-between",
-            alignItems: "center",
+            alignItems: "flex-start", // Alineación arriba
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+          {/* ======================================================== */}
+          {/* AQUÍ ESTÁ EL CAMBIO SOLICITADO (NOMBRE GRANDE Y NEGRITA) */}
+          {/* ======================================================== */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             <strong style={{ fontSize: `${18 * fontScale}px`, lineHeight: 1 }}>
               #{order.invoice_number || orderId.slice(-4)}
             </strong>
-            <span style={{ fontSize: `${11 * fontScale}px`, opacity: 0.9 }}>
-              {timeStr} | {order.client_name || "Cliente"}
+            <strong style={{ fontSize: `${18 * fontScale}px`, lineHeight: 1 }}>
+              {order.client_name || "Cliente"}
+            </strong>
+            <span style={{ fontSize: `${12 * fontScale}px`, opacity: 0.9 }}>
+              Hora: {timeStr}
             </span>
           </div>
 
