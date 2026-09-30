@@ -3646,6 +3646,7 @@ function App() {
         image_url: imageUrl,
         modifiers: productModifiers.join(", "),
         extras: productExtras,
+        choices: productChoices,
         show_in_krono: showInKrono,
         krono_preferential_price: kronoPrice ? parseFloat(kronoPrice) : null,
       };
