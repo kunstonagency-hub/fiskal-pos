@@ -86,6 +86,11 @@ import RecipesCostView from "./components/RecipesCostView";
 import LocalMenuView from './components/LocalMenuView';
 import WebOrdersView from "./components/WebOrdersView";
 import GlobalPosAlarm from "./components/GlobalPosAlarm"; 
+// Importación dinámica infalible para evitar los problemas de empaquetado de Vite
+const Joyride = React.lazy(() => import('react-joyride').then(mod => {
+  const ComponenteReal = mod.default?.default || mod.default || mod.Joyride || mod;
+  return { default: ComponenteReal };
+}));
 
 const customIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -239,14 +244,21 @@ function App() {
     const urlStoreId = currentPath.split('/menu/')[1];
     return <LocalMenuView storeId={urlStoreId} />;
   }
+  
+  // SOLUCIÓN: Movimos activeTab arriba del Tour para que no dé error
+  const [activeTab, setActiveTab] = useState("pos");
+
+  // ⬇️ ESTADOS PARA EL RECORRIDO GUIADO (TOUR) ⬇️
+  const [runTour, setRunTour] = useState(false);
+
+  /* El recorrido fue movido abajo para evitar el error */
+  
   const [session, setSession] = useState(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
-
-  const [activeTab, setActiveTab] = useState("pos");
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
   const [clients, setClients] = useState([]);
@@ -1074,6 +1086,109 @@ function App() {
   const [modalProductId, setModalProductId] = useState("");
   const [modalClientName, setModalClientName] = useState("Cliente General");
 
+  // =========================================================
+  // ⬇️ RECORRIDO MAESTRO INTELIGENTE (TOUR) ⬇️
+  // =========================================================
+  const tourSteps = React.useMemo(() => {
+    const steps = [
+      {
+        target: 'body',
+        content: '👋 ¡Bienvenido a Fiskal! Vamos a dar un paseo por las herramientas principales de tu sistema.',
+        placement: 'center',
+        disableBeacon: true,
+      },
+      {
+        target: '#tour-pos',
+        content: currentStoreType === "restaurant" ? '🛒 Comandas (POS): Toma los pedidos por mesa, envíalos a la cocina y procesa los cobros.' : '🛒 Terminal (POS): Busca productos, escanea códigos y procesa tus ventas.',
+        placement: 'right',
+      },
+      {
+        target: '#tour-cash',
+        content: '🔒 Caja y Turnos: Abre tu caja (Reporte X) al iniciar tu turno, y ciérrala (Reporte Z) para ver tu cuadre de ingresos al final del día.',
+        placement: 'right',
+      },
+      {
+        target: '#tour-products',
+        content: '📦 Menú e Inventario: Crea tus productos, ajusta precios, sube fotos y maneja las existencias.',
+        placement: 'right',
+      },
+      {
+        target: '#tour-history',
+        content: '📜 Historial: Busca ventas pasadas, reimprime recibos o procesa abonos a cuentas por cobrar (créditos).',
+        placement: 'right',
+      },
+      {
+        target: '#tour-clients',
+        content: '👥 Clientes: Conoce tu base de datos y envíales mensajes de cobranza o promociones por WhatsApp.',
+        placement: 'right',
+      },
+      {
+        target: '#tour-web-orders',
+        content: '💻 Pedidos Web: Aquí recibirás notificaciones de los pedidos que hagan tus clientes desde tu catálogo online.',
+        placement: 'right',
+      }
+    ];
+
+    if (currentStoreKronoEnabled) {
+      steps.push({
+        target: '#tour-delivery',
+        content: '🛵 Delivery Krono: Administra tus repartidores, traza rutas y calcula las tarifas de envío.',
+        placement: 'right',
+      });
+    }
+
+    if (currentStoreType === "restaurant") {
+      steps.push({
+        target: '#tour-kds',
+        content: '🍳 KDS Cocina: Pantalla digital para los cocineros. Verán los pedidos entrar en tiempo real y marcarán cuando estén listos.',
+        placement: 'right',
+      });
+    }
+
+    if (currentStoreType === "restaurant" && currentUserRole === "owner") {
+      steps.push({
+        target: '#tour-recipes',
+        content: '👨‍🍳 Costos y Recetas: Arma las recetas de tus platos (ej. 1 pan, 100g de carne) para descontar inventario con precisión y ver tus ganancias netas.',
+        placement: 'right',
+      });
+    }
+
+    if (currentUserRole === "owner" || currentUserRole === "super_admin" || currentUserRole === "system_vendor") {
+      steps.push({
+        target: '#tour-settings',
+        content: '⚙️ Configuración: Ajusta tus datos fiscales, personaliza tu ticket, y crea usuarios y permisos para tus empleados.',
+        placement: 'right',
+      });
+    }
+
+    steps.push(
+      {
+        target: '.shift-status-pill',
+        content: '☁️ Nube y Offline: Aquí verás si estás conectado. Si te quedas sin internet, ¡Fiskal seguirá funcionando! Todo se guardará y sincronizará cuando vuelva la red.',
+        placement: 'bottom',
+      },
+      {
+        target: '.exchange-rate-badge',
+        content: '💵 Tasa de Cambio: Actualiza la tasa BCV automáticamente o coloca una manual. ¡Eso es todo, ya estás listo para usar el sistema!',
+        placement: 'bottom',
+      }
+    );
+
+    return steps;
+  }, [currentStoreType, currentUserRole, currentStoreKronoEnabled]);
+
+  const handleJoyrideCallback = (data) => {
+    const { status, action } = data;
+    const finishedStatuses = ['finished', 'skipped']; 
+    // SOLUCIÓN: También apagamos el estado si el usuario le da a la "X" (close)
+    if (finishedStatuses.includes(status) || action === 'close') {
+      setRunTour(false); 
+    }
+  };
+  // =========================================================
+  // ⬆️ FIN RECORRIDO MAESTRO ⬆️
+  // =========================================================
+
   // ⬇️ BLOQUE CORREGIDO: Escucha en tiempo real global (Sonido y Notificación) ⬇️
   useEffect(() => {
     if (!currentStoreId || !isOnline) return;
@@ -1175,6 +1290,7 @@ function App() {
         setClients([]);
         setRegisters([]);
         setCurrentShift(null);
+        setRunTour(false); // SOLUCIÓN: Apagamos la guía forzosamente al cerrar sesión
       }
     });
 
@@ -5762,7 +5878,33 @@ const handleCreditCheckout = async () => {
   }
 
   return (
+    
     <div className="fiskal-container">
+      {/* ⬇️ RECORRIDO GUIADO ⬇️ */}
+      <React.Suspense fallback={null}>
+        <Joyride
+          steps={tourSteps}
+          run={runTour}
+          continuous={true}
+          showSkipButton={true}
+          showProgress={true}
+          callback={handleJoyrideCallback}
+          styles={{
+            options: {
+              primaryColor: '#111827', // Color de tus botones Fiskal
+              zIndex: 10000,
+            }
+          }}
+          locale={{
+            back: 'Atrás',
+            close: 'Cerrar',
+            last: 'Finalizar',
+            next: 'Siguiente',
+            skip: 'Saltar recorrido'
+          }}
+        />
+      </React.Suspense>
+
       {/* ⬇️ ALARMA GLOBAL PUNTOS DE VENTA ⬇️ */}
       <GlobalPosAlarm supabase={supabase} currentStoreId={currentStoreId} currentShift={currentShift} />
 
@@ -5836,6 +5978,7 @@ const handleCreditCheckout = async () => {
         </div>
         <nav className="nav-menu">
           <button
+            id="tour-pos"
             className={activeTab === "pos" ? "nav-btn active" : "nav-btn"}
             onClick={(e) => {
               e.stopPropagation();
@@ -5853,6 +5996,7 @@ const handleCreditCheckout = async () => {
           </button>
 
           <button
+            id="tour-cash"
             className={activeTab === "cash" ? "nav-btn active" : "nav-btn"}
             onClick={(e) => {
               e.stopPropagation();
@@ -5876,6 +6020,7 @@ const handleCreditCheckout = async () => {
           </button>
 
           <button
+            id="tour-products"
             className={activeTab === "products" ? "nav-btn active" : "nav-btn"}
             onClick={(e) => {
               e.stopPropagation();
@@ -5892,6 +6037,7 @@ const handleCreditCheckout = async () => {
             </span>
           </button>
           <button
+            id="tour-history"
             className={activeTab === "history" ? "nav-btn active" : "nav-btn"}
             onClick={(e) => {
               e.stopPropagation();
@@ -5902,6 +6048,7 @@ const handleCreditCheckout = async () => {
             <History size={20} /> <span>Historial</span>
           </button>
           <button
+            id="tour-clients"
             className={activeTab === "clients" ? "nav-btn active" : "nav-btn"}
             onClick={(e) => {
               e.stopPropagation();
@@ -5912,8 +6059,8 @@ const handleCreditCheckout = async () => {
             <Users size={20} /> <span>Clientes</span>
           </button>
 
-          {/* --- BOTÓN PEDIDOS WEB / DELIVERY CON NOTIFICACIÓN --- */}
           <button
+            id="tour-web-orders"
             className={activeTab === "web_orders" ? "nav-btn active" : "nav-btn"}
             onClick={(e) => {
               e.stopPropagation();
@@ -5941,6 +6088,7 @@ const handleCreditCheckout = async () => {
 
           {currentStoreKronoEnabled && (
             <button
+              id="tour-delivery"
               className={
                 activeTab === "delivery" ? "nav-btn active" : "nav-btn"
               }
@@ -5956,6 +6104,7 @@ const handleCreditCheckout = async () => {
 
           {currentStoreType === "restaurant" && (
             <button
+              id="tour-kds"
               className={activeTab === "kds" ? "nav-btn active" : "nav-btn"}
               onClick={(e) => {
                 e.stopPropagation();
@@ -5995,6 +6144,7 @@ const handleCreditCheckout = async () => {
 
           {currentStoreType === "restaurant" && currentUserRole === "owner" && (
             <button
+              id="tour-recipes"
               className={activeTab === "recipes" ? "nav-btn active" : "nav-btn"}
               onClick={(e) => {
                 e.stopPropagation();
@@ -6011,6 +6161,7 @@ const handleCreditCheckout = async () => {
             currentUserRole === "super_admin" ||
             currentUserRole === "system_vendor") && (
             <button
+              id="tour-settings"
               className={
                 activeTab === "settings" ? "nav-btn active" : "nav-btn"
               }
@@ -6090,6 +6241,30 @@ const handleCreditCheckout = async () => {
                               : activeTab.toUpperCase()}
           </h1>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            
+            {/* BOTÓN DE TOUR INTEGRADO AL DISEÑO */}
+            <button
+              onClick={() => setRunTour(true)}
+              style={{
+                background: "#f8f9fa",
+                color: "#495057",
+                border: "1px solid #ced4da",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: "bold",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.2s"
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "#e9ecef"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "#f8f9fa"}
+            >
+              <Play size={14} /> Recorrido
+            </button>
+
             <div
               className={`shift-status-pill ${isOnline ? "open" : "closed"}`}
               style={{
@@ -6732,6 +6907,7 @@ const handleCreditCheckout = async () => {
                 handleDeleteKdsBanner={handleDeleteKdsBanner}
                 uploadingBanner={uploadingBanner}
                 currentStoreType={currentStoreType}
+                onStartTour={() => setRunTour(true)}
               />
             )}
 

@@ -42,6 +42,7 @@ function MapUpdater({ center }) {
 
 function SettingsView({
   supabase,
+  onStartTour, 
   currentStoreId,
   storeAdminPin,
   setStoreAdminPin, 
@@ -184,7 +185,32 @@ function SettingsView({
         gap: "24px",
         alignItems: "stretch",
       }}
+
     >
+
+      {/* BOTÓN DE RECORRIDO GUIADO */}
+      <div style={{ gridColumn: "1 / -1", marginBottom: "10px" }}>
+        <button
+          onClick={onStartTour}
+          style={{
+            background: "#1c7ed6",
+            color: "#fff",
+            border: "none",
+            padding: "12px 24px",
+            borderRadius: "8px",
+            fontSize: "14px",
+            fontWeight: "bold",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            boxShadow: "0 4px 6px rgba(28,126,214,0.3)"
+          }}
+        >
+          🎓 Iniciar Recorrido Guiado del Sistema
+        </button>
+      </div>  
+      
       {/* 1. Datos Fiscales y Configuración de Comercio */}
       <div
         className="product-form-card"
