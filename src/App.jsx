@@ -85,6 +85,7 @@ import PosTerminalView from "./components/PosTerminalView";
 import RecipesCostView from "./components/RecipesCostView";
 import LocalMenuView from './components/LocalMenuView';
 import WebOrdersView from "./components/WebOrdersView";
+import GlobalPosAlarm from "./components/GlobalPosAlarm"; 
 
 const customIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -974,6 +975,21 @@ function App() {
   // NUEVOS ESTADOS: Modal de Detalles de Reporte Z
   const [showShiftReportModal, setShowShiftReportModal] = useState(false);
   const [selectedShiftReport, setSelectedShiftReport] = useState(null);
+  const [reportPosClosures, setReportPosClosures] = useState([]);
+  const [reportPosTerminals, setReportPosTerminals] = useState([]);
+
+  // NUEVO: Buscar los cierres de lote cuando abrimos el Reporte Z
+  useEffect(() => {
+    if (selectedShiftReport && showShiftReportModal && currentStoreId) {
+      const fetchPosReportData = async () => {
+        const { data: closures } = await supabase.from('pos_closures').select('*').eq('shift_id', selectedShiftReport.id);
+        const { data: terminals } = await supabase.from('pos_terminals').select('*').eq('store_id', currentStoreId);
+        setReportPosClosures(closures || []);
+        setReportPosTerminals(terminals || []);
+      };
+      fetchPosReportData();
+    }
+  }, [selectedShiftReport, showShiftReportModal, currentStoreId, supabase]);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payCashUSD, setPayCashUSD] = useState("");
@@ -4947,6 +4963,14 @@ const handleCreditCheckout = async () => {
       )
       .join("");
 
+    // NUEVO: Generar las filas de impresión para los Cierres de Lote
+    const posHtml = reportPosClosures.length === 0 
+      ? '<tr><td colspan="2">Sin cierres de lote</td></tr>'
+      : reportPosClosures.map(c => {
+          const pos = reportPosTerminals.find(t => t.id === c.pos_terminal_id) || { name: "POS" };
+          return `<tr><td>${pos.name}:</td><td>Bs. ${Number(c.closed_amount).toLocaleString("es-VE", { minimumFractionDigits: 2 })}</td></tr>`;
+        }).join("");
+
     const html = `
     <html>
       <head>
@@ -4975,6 +4999,11 @@ const handleCreditCheckout = async () => {
           <tr><td>Punto Venta:</td><td>Bs. ${tDebit.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</td></tr>
           <tr><td>Pago Móvil:</td><td>Bs. ${tPm.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</td></tr>
           <tr><td>Efectivo Bs:</td><td>Bs. ${tBs.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</td></tr>
+        </table>
+
+        <div class="section-title">CIERRES DE LOTE (PUNTOS DE VENTA)</div>
+        <table>
+          ${posHtml}
         </table>
 
         <div class="section-title">VENTAS DEL TURNO (${shiftSales.length})</div>
@@ -5734,6 +5763,9 @@ const handleCreditCheckout = async () => {
 
   return (
     <div className="fiskal-container">
+      {/* ⬇️ ALARMA GLOBAL PUNTOS DE VENTA ⬇️ */}
+      <GlobalPosAlarm supabase={supabase} currentStoreId={currentStoreId} currentShift={currentShift} />
+
       {/* ⬇️ BLOQUE NUEVO: Alerta flotante global ⬇️ */}
       {readyNotification && (
         <div
@@ -6496,6 +6528,8 @@ const handleCreditCheckout = async () => {
 
           {activeTab === "cash" && (
             <CashShiftsView
+              supabase={supabase}              
+              currentStoreId={currentStoreId}
               shiftChangePagoMovilBs={shiftChangePagoMovilBs}
               shiftChangePagoMovilUSD={shiftChangePagoMovilUSD}
               currentShift={currentShift}
@@ -8694,6 +8728,33 @@ const handleCreditCheckout = async () => {
                     </div>
                   );
                 })()}
+              </div>
+
+              {/* SECCIÓN NUEVA: CIERRES DE LOTE EN EL MODAL VISUAL */}
+              <div style={{ marginBottom: "24px" }}>
+                <h4 style={{ margin: "0 0 12px 0", fontSize: "14px", color: "#212529" }}>
+                  Cierres de Lote (Puntos de Venta):
+                </h4>
+                {reportPosClosures.length === 0 ? (
+                  <p style={{ fontSize: "13px", color: "#6c757d" }}>No se registraron cierres de lote en este turno.</p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {reportPosClosures.map((closure, idx) => {
+                      const pos = reportPosTerminals.find(t => t.id === closure.pos_terminal_id) || { name: "POS Desconocido", bank: "" };
+                      return (
+                        <div key={idx} style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "10px", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div>
+                            <strong style={{ fontSize: "13px", color: "#166534", display: "block" }}>{pos.name} ({pos.bank})</strong>
+                            <span style={{ fontSize: "11px", color: "#15803d" }}>Cerrado a las: {new Date(closure.closed_at).toLocaleTimeString()}</span>
+                          </div>
+                          <strong style={{ fontSize: "14px", color: "#166534" }}>
+                            Bs. {Number(closure.closed_amount).toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                          </strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div>

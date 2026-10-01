@@ -1,10 +1,10 @@
-import React from "react";
-import { Lock, Eye } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Lock, Eye, CreditCard, Clock, Check, Save } from "lucide-react";
 
 // Vista de turnos y arqueo de caja.
-// Aquí se gestiona la apertura/cierre del turno, el resumen del fondo inicial y el historial
-// de cierres de caja con sus diferencias físicas y reportes Z.
 function CashShiftsView({
+  supabase,
+  currentStoreId,
   currentShift,
   getCurrentRegisterName,
   setShowCloseShiftModal,
@@ -24,6 +24,82 @@ function CashShiftsView({
   setSelectedShiftReport,
   setShowShiftReportModal,
 }) {
+  // ==========================================
+  // ESTADO LOCAL PARA PUNTOS DE VENTA Y ALARMAS
+  // ==========================================
+  const [posTerminals, setPosTerminals] = useState([]);
+  const [posClosures, setPosClosures] = useState([]);
+  const [closingPosId, setClosingPosId] = useState(null);
+  const [closingAmount, setClosingAmount] = useState("");
+
+  // 1. Cargar Puntos de Venta y Cierres de hoy
+  useEffect(() => {
+    if (!supabase || !currentStoreId) return;
+
+    const fetchPosData = async () => {
+      const { data: terms } = await supabase
+        .from("pos_terminals")
+        .select("*")
+        .eq("store_id", currentStoreId);
+      if (terms) setPosTerminals(terms);
+
+      if (currentShift) {
+        const { data: closures } = await supabase
+          .from("pos_closures")
+          .select("*")
+          .eq("shift_id", currentShift.id);
+        if (closures) setPosClosures(closures);
+      } else {
+        setPosClosures([]);
+      }
+    };
+
+    fetchPosData();
+  }, [supabase, currentStoreId, currentShift]);
+
+  // 1.5. Deshacer el cierre del lote (Reabrir)
+  const handleReopenPos = async (closureId) => {
+    if (!window.confirm("¿Seguro que deseas deshacer el cierre y reabrir este punto de venta?")) return;
+    try {
+      const { error } = await supabase.from("pos_closures").delete().eq("id", closureId);
+      if (error) throw error;
+      setPosClosures(posClosures.filter((c) => c.id !== closureId));
+    } catch (err) {
+      alert("Error al reabrir el punto de venta: " + err.message);
+    }
+  };
+
+  // 2. Registrar el cierre del lote con el MONTO INGRESADO
+  const handleRegisterPosClosure = async (posId) => {
+    if (!currentShift) return;
+    
+    if (closingAmount === "" || isNaN(closingAmount) || Number(closingAmount) < 0) {
+      return alert("Por favor ingresa un monto válido (puede ser 0 si no hubo transacciones).");
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("pos_closures")
+        .insert([
+          {
+            store_id: currentStoreId,
+            shift_id: currentShift.id,
+            pos_terminal_id: posId,
+            closed_amount: Number(closingAmount)
+          },
+        ])
+        .select();
+
+      if (error) throw error;
+      setPosClosures([...posClosures, data[0]]);
+      setClosingPosId(null);
+      setClosingAmount("");
+      alert("✅ Cierre de lote registrado exitosamente.");
+    } catch (error) {
+      alert("Error registrando cierre: " + error.message);
+    }
+  };
+
   return (
     <div
       style={{
@@ -450,6 +526,215 @@ function CashShiftsView({
           </div>
         )}
       </div>
+
+      {/* --- SECCIÓN DE CONTROL Y REGISTRO DE PUNTOS DE VENTA --- */}
+      {currentShift && posTerminals && posTerminals.length > 0 && (
+        <div
+          style={{
+            background: "#ffffff",
+            padding: "24px",
+            borderRadius: "10px",
+            border: "1px solid #e5e7eb",
+          }}
+        >
+          <h4
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              fontSize: "16px",
+              fontWeight: "800",
+              color: "#111827",
+              margin: "0 0 16px 0",
+            }}
+          >
+            <CreditCard size={20} color="#0284c7" /> Cierre de Lotes (Puntos de Venta)
+          </h4>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: "16px",
+            }}
+          >
+            {posTerminals.map((pos) => {
+              const closureInfo = posClosures?.find((c) => c.pos_terminal_id === pos.id);
+              const isClosed = !!closureInfo;
+              const isClosingThis = closingPosId === pos.id;
+
+              return (
+                <div
+                  key={pos.id}
+                  style={{
+                    background: isClosed ? "#f0fdf4" : "#f9fafb",
+                    border: `1px solid ${isClosed ? "#bbf7d0" : "#e5e7eb"}`,
+                    padding: "16px",
+                    borderRadius: "8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div>
+                    <strong
+                      style={{
+                        fontSize: "14px",
+                        display: "block",
+                        color: "#111827",
+                      }}
+                    >
+                      {pos.name}
+                    </strong>
+                    <span style={{ fontSize: "12px", color: "#6b7280" }}>
+                      {pos.bank} • Hora límite: {pos.closing_time.substring(0, 5)}
+                    </span>
+                  </div>
+
+                  <div style={{ marginTop: "16px" }}>
+                    {isClosed ? (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "4px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            fontSize: "13px",
+                            color: "#16a34a",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          <Check size={16} /> Cerrado a las{" "}
+                          {new Date(closureInfo.closed_at).toLocaleTimeString(
+                            [],
+                            { hour: "2-digit", minute: "2-digit" }
+                          )}
+                        </span>
+                        <span style={{ fontSize: "12px", color: "#374151" }}>
+                          Monto Lote:{" "}
+                          <strong>
+                            Bs.{" "}
+                            {Number(closureInfo.closed_amount).toLocaleString(
+                              "es-VE",
+                              { minimumFractionDigits: 2 }
+                            )}
+                          </strong>
+                        </span>
+                        <button
+                          onClick={() => handleReopenPos(closureInfo.id)}
+                          style={{
+                            marginTop: "8px",
+                            background: "#fee2e2",
+                            color: "#ef4444",
+                            border: "1px solid #fca5a5",
+                            padding: "6px",
+                            borderRadius: "4px",
+                            fontSize: "11px",
+                            fontWeight: "bold",
+                            cursor: "pointer",
+                            width: "100%"
+                          }}
+                        >
+                          Deshacer Cierre (Reabrir)
+                        </button>
+                      </div>
+                    ) : isClosingThis ? (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "8px",
+                        }}
+                      >
+                        <label
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: "bold",
+                            color: "#374151",
+                          }}
+                        >
+                          Monto total del lote (Bs.):
+                        </label>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={closingAmount}
+                            onChange={(e) => setClosingAmount(e.target.value)}
+                            style={{
+                              flex: 1,
+                              padding: "8px",
+                              border: "1px solid #d1d5db",
+                              borderRadius: "4px",
+                              fontSize: "13px",
+                              outline: "none",
+                            }}
+                          />
+                          <button
+                            onClick={() => handleRegisterPosClosure(pos.id)}
+                            style={{
+                              background: "#0284c7",
+                              color: "#fff",
+                              border: "none",
+                              padding: "0 12px",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Save size={16} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setClosingPosId(null);
+                              setClosingAmount("");
+                            }}
+                            style={{
+                              background: "#f3f4f6",
+                              border: "1px solid #d1d5db",
+                              padding: "0 12px",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            X
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setClosingPosId(pos.id)}
+                        style={{
+                          background: "#111827",
+                          color: "#fff",
+                          border: "none",
+                          width: "100%",
+                          padding: "10px",
+                          borderRadius: "6px",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                          cursor: "pointer",
+                          transition: "0.2s",
+                        }}
+                      >
+                        Registrar Cierre Lote
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Historial de Cierres de Caja (Reportes Z) */}
       <div

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Store,
   Check,
@@ -13,14 +13,14 @@ import {
   Monitor,
   QrCode,
   Download,
+  CreditCard,
+  Clock
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 // Vista de configuración operativa.
-// Agrupa la configuración fiscal, permisos de empleados, gestión de cajas físicas,
-// plantillas de WhatsApp, ubicación GPS y cartelera digital para pantallas clientes.
 const customIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
   iconRetinaUrl:
@@ -105,6 +105,68 @@ function SettingsView({
   uploadingBanner,
 }) {
   const fileInputRef = useRef(null);
+
+  // ==========================================
+  // ESTADO LOCAL: PUNTOS DE VENTA
+  // ==========================================
+  const [localPosTerminals, setLocalPosTerminals] = useState([]);
+  const [localPosName, setLocalPosName] = useState("");
+  const [localPosBank, setLocalPosBank] = useState("");
+  const [localPosTime, setLocalPosTime] = useState("");
+
+  // Cargar puntos de venta al entrar a Configuración
+  useEffect(() => {
+    if (!currentStoreId || !supabase) return;
+    const fetchPos = async () => {
+      const { data } = await supabase
+        .from("pos_terminals")
+        .select("*")
+        .eq("store_id", currentStoreId)
+        .order("created_at", { ascending: true });
+      if (data) setLocalPosTerminals(data);
+    };
+    fetchPos();
+  }, [currentStoreId, supabase]);
+
+  // Guardar un nuevo Punto de Venta
+  const handleLocalAddPos = async (e) => {
+    e.preventDefault();
+    if (!localPosName || !localPosBank || !localPosTime) {
+      return alert("Por favor completa todos los campos del punto de venta.");
+    }
+    try {
+      const { data, error } = await supabase
+        .from("pos_terminals")
+        .insert([{
+          store_id: currentStoreId,
+          name: localPosName,
+          bank: localPosBank,
+          closing_time: localPosTime,
+        }])
+        .select();
+
+      if (error) throw error;
+      setLocalPosTerminals([...localPosTerminals, data[0]]);
+      setLocalPosName("");
+      setLocalPosBank("");
+      setLocalPosTime("");
+      alert("✅ Punto de venta registrado exitosamente.");
+    } catch (err) {
+      alert("Error al guardar punto de venta: " + err.message);
+    }
+  };
+
+  // Eliminar un Punto de Venta
+  const handleLocalDeletePos = async (id) => {
+    if (!window.confirm("¿Estás seguro que deseas eliminar este punto de venta?")) return;
+    try {
+      const { error } = await supabase.from("pos_terminals").delete().eq("id", id);
+      if (error) throw error;
+      setLocalPosTerminals(localPosTerminals.filter((p) => p.id !== id));
+    } catch (err) {
+      alert("Error al eliminar: " + err.message);
+    }
+  };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -460,7 +522,7 @@ function SettingsView({
         </div>
       )}
       
-      {/* NUEVO: CÓDIGO QR DE AUTO-SERVICIO (SÓLO RESTAURANTES) */}
+      {/* CÓDIGO QR DE AUTO-SERVICIO */}
       {currentStoreType === 'restaurant' && (
         <div className="product-form-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#862e9c' }}>
@@ -516,13 +578,13 @@ function SettingsView({
         </div>
       )}
 
-      {/* --- NUEVO: ENLACE DE DELIVERY (VISIBLE PARA TODOS LOS COMERCIOS) --- */}
+      {/* ENLACE DE DELIVERY */}
       <div className="product-form-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#8b5cf6' }}>
           <Monitor size={20} /> Enlace de Delivery (WhatsApp)
         </h3>
         <p style={{ fontSize: '12px', color: '#6c757d', marginBottom: '16px' }}>
-          Copia este enlace y compártelo en WhatsApp o Instagram. Al entrar, el sistema le pedirá al cliente su ubicación (GPS) y datos de entrega. Los pedidos llegarán a la pestaña "Pedidos Web" por cobrar.
+          Copia este enlace y compártelo en WhatsApp o Instagram. Al entrar, el sistema le pedirá al cliente su ubicación (GPS) y datos de entrega.
         </p>
         
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#f5f3ff', padding: '24px', borderRadius: '12px', border: '1px solid #ddd6fe' }}>
@@ -560,8 +622,6 @@ function SettingsView({
           </div>
         </div>
       </div>
-
-
 
       {/* 3. Mapa GPS Krono */}
       <div
@@ -729,12 +789,13 @@ function SettingsView({
               flex: 1,
             }}
           >
-            {employees.map((emp) => (
+            {employees && employees.map((emp) => (
               <li
                 key={emp.id}
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
+                  alignItems: "center",
                   padding: "8px",
                   background: "#f8f9fa",
                   marginBottom: "4px",
@@ -742,13 +803,47 @@ function SettingsView({
                   fontSize: "12px",
                 }}
               >
-                <span>
-                  <strong>{emp.full_name}</strong>
-                </span>
-                <span style={{ color: "#6c757d" }}>Rol: {emp.role}</span>
+                <div>
+                  <strong style={{ display: "block" }}>{emp.full_name}</strong>
+                  <span style={{ color: "#6c757d", fontSize: "11px" }}>Rol: {emp.role}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (
+                      window.confirm(
+                        `⚠️ ADVERTENCIA: ¿Estás seguro de que deseas eliminar a ${emp.full_name}?\n\nPerderá el acceso al sistema inmediatamente.`
+                      )
+                    ) {
+                      try {
+                        const { error } = await supabase
+                          .from("profiles")
+                          .delete()
+                          .eq("id", emp.id);
+                        if (error) throw error;
+                        alert("✅ Empleado eliminado. Recarga la página para ver los cambios.");
+                      } catch (e) {
+                        alert("Error eliminando empleado: " + e.message);
+                      }
+                    }
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#fa5252",
+                    cursor: "pointer",
+                    padding: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  title="Eliminar empleado"
+                >
+                  <Trash2 size={16} />
+                </button>
               </li>
             ))}
-            {employees.length === 0 && (
+            {!employees || employees.length === 0 && (
               <li style={{ fontSize: "12px", color: "#adb5bd" }}>
                 No hay empleados registrados.
               </li>
@@ -757,8 +852,91 @@ function SettingsView({
         </div>
       </div>
 
-      {/* 5. Columna Derecha: Cajas Físicas y Plantillas WhatsApp */}
+      {/* 5. Columna Derecha: Puntos de Venta, Cajas y Plantillas WhatsApp */}
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        
+        {/* --- TARJETA NUEVA: CONFIGURACIÓN DE PUNTOS DE VENTA --- */}
+        <div className="product-form-card" style={{ margin: 0 }}>
+          <h3 style={{ display: "flex", alignItems: "center", gap: "8px", color: "#0284c7" }}>
+            <CreditCard size={20} /> Puntos de Venta (Cierres)
+          </h3>
+          <p style={{ fontSize: "12px", color: "#6c757d", marginBottom: "16px" }}>
+            Registra tus puntos de venta y su hora de cierre. El sistema emitirá una alarma en la caja.
+          </p>
+
+          <form onSubmit={handleLocalAddPos} className="fiskal-form">
+            <div style={{ display: "flex", gap: "10px", marginBottom: "12px" }}>
+              <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                <label>Nombre del Equipo</label>
+                <input
+                  type="text"
+                  value={localPosName}
+                  onChange={(e) => setLocalPosName(e.target.value)}
+                  required
+                  placeholder="Ej. Verifone 1"
+                />
+              </div>
+              <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                <label>Banco</label>
+                <select
+                  value={localPosBank}
+                  onChange={(e) => setLocalPosBank(e.target.value)}
+                  required
+                >
+                  <option value="">Seleccionar...</option>
+                  <option value="Banesco">Banesco</option>
+                  <option value="Mercantil">Mercantil</option>
+                  <option value="Banco de Venezuela">Banco de Venezuela</option>
+                  <option value="Bancamiga">Bancamiga</option>
+                  <option value="BNC">BNC</option>
+                  <option value="BBVA Provincial">BBVA Provincial</option>
+                  <option value="Bancaribe">Bancaribe</option>
+                  <option value="Plaza">Banco Plaza</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+            </div>
+            
+            <div className="form-group" style={{ marginBottom: "16px" }}>
+              <label>Hora Límite de Cierre de Lote</label>
+              <input
+                type="time"
+                value={localPosTime}
+                onChange={(e) => setLocalPosTime(e.target.value)}
+                required
+              />
+            </div>
+
+            <button type="submit" className="btn-primary" style={{ background: "#0284c7" }}>
+              <Plus size={18} /> Agregar Punto
+            </button>
+          </form>
+
+          <div style={{ marginTop: "20px" }}>
+            <h4 style={{ fontSize: "13px", color: "#495057", marginBottom: "8px", borderBottom: "1px solid #dee2e6", paddingBottom: "4px" }}>
+              Equipos Registrados
+            </h4>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {localPosTerminals && localPosTerminals.map((pos) => (
+                <li key={pos.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px", background: "#f0f9ff", marginBottom: "4px", borderRadius: "4px", fontSize: "12px", border: "1px solid #bae6fd" }}>
+                  <div>
+                    <strong>{pos.name}</strong> <span style={{ color: "#0284c7" }}>({pos.bank})</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', marginTop: '4px', fontWeight: 'bold' }}>
+                      <Clock size={12} /> Cierre: {pos.closing_time.substring(0, 5)}
+                    </div>
+                  </div>
+                  <button onClick={() => handleLocalDeletePos(pos.id)} type="button" style={{ background: "none", border: "none", color: "#fa5252", cursor: "pointer" }}>
+                    <Trash2 size={14} />
+                  </button>
+                </li>
+              ))}
+              {(!localPosTerminals || localPosTerminals.length === 0) && (
+                <li style={{ fontSize: "12px", color: "#adb5bd" }}>No hay puntos registrados.</li>
+              )}
+            </ul>
+          </div>
+        </div>
+
         {/* --- TARJETA A: GESTIÓN DE CAJAS FÍSICAS --- */}
         <div className="product-form-card" style={{ margin: 0 }}>
           <h3
