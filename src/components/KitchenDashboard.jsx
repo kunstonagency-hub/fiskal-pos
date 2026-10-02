@@ -227,7 +227,6 @@ export default function KitchenDashboard({
     const base =
       kdsBanners && kdsBanners.length > 0 ? kdsBanners : FALLBACK_BANNERS;
 
-    // Ocultar video de la pantalla rotativa si MODO RADIO está activo
     return videoId && !isRadioMode
       ? [...base, { type: "youtube", videoId, listId, title: "YouTube Video" }]
       : base;
@@ -260,13 +259,36 @@ export default function KitchenDashboard({
     return () => clearTimeout(timer);
   }, [isPublicMode, displayMode, currentSlide, activeBanners]);
 
+  const getItems = (s) => {
+    if (!s) return [];
+    if (Array.isArray(s.items)) return s.items;
+    if (typeof s.items === "string") {
+      try {
+        return JSON.parse(s.items);
+      } catch (e) {}
+    }
+    if (Array.isArray(s.cart)) return s.cart;
+    if (typeof s.cart === "string") {
+      try {
+        return JSON.parse(s.cart);
+      } catch (e) {}
+    }
+    return [];
+  };
+
+  const rawOrders = typeof sales !== "undefined" && Array.isArray(sales) ? sales : [];
+
+  // TIMBRE DE COCINA Y PANTALLA PÚBLICA
   useEffect(() => {
-    if (!sales || !Array.isArray(sales)) return;
-    const currentReadyOrders = sales.filter((s) => {
-      const st = String(s.status || s.estatus || "")
-        .trim()
-        .toLowerCase();
-      return st === "ready" || st === "listo" || st === "espera_pago";
+    if (!rawOrders.length) return;
+    const currentReadyOrders = rawOrders.filter((s) => {
+      const itemsList = getItems(s);
+      const kitchenItems = itemsList.filter((item) => {
+        const name = String(item.name || "").toLowerCase();
+        return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
+      });
+      const allDispatched = kitchenItems.length > 0 && kitchenItems.every((i) => i.dispatched);
+      return allDispatched;
     });
 
     if (isFirstLoadRef.current) {
@@ -297,27 +319,7 @@ export default function KitchenDashboard({
         setReadyPopup(null);
       }, 10000);
     }
-  }, [sales]);
-
-  const getItems = (s) => {
-    if (!s) return [];
-    if (Array.isArray(s.items)) return s.items;
-    if (typeof s.items === "string") {
-      try {
-        return JSON.parse(s.items);
-      } catch (e) {}
-    }
-    if (Array.isArray(s.cart)) return s.cart;
-    if (typeof s.cart === "string") {
-      try {
-        return JSON.parse(s.cart);
-      } catch (e) {}
-    }
-    return [];
-  };
-
-  const rawOrders =
-    typeof sales !== "undefined" && Array.isArray(sales) ? sales : [];
+  }, [rawOrders]);
 
   const availableCategories = useMemo(() => {
     const cats = new Set();
@@ -334,78 +336,127 @@ export default function KitchenDashboard({
     return Array.from(cats).filter(Boolean).sort();
   }, [rawOrders, dbCategories, extraCats, kdsConfig]);
 
-  const waitingOrders = rawOrders.filter((s) => {
+
+  // =======================================================
+  // LÓGICA DE ÓRDENES PARA EL PANEL DE COCINA (KDS VIEW)
+  // =======================================================
+  const kitchenOrders = rawOrders.filter((s) => {
     if (!s) return false;
-    const status = String(s.status || s.estatus || s.state || "")
-      .trim()
-      .toLowerCase();
-    if (["completed", "pagada", "paid", "credit", "crédito"].includes(status))
-      return false;
-    const validKitchenStates = [
-      "pending",
-      "en espera",
-      "pendiente",
-      "preparando",
-      "en preparación",
-      "ready",
-      "listo",
-      "espera_pago",
-      "web_unpaid" ,
-    ];
-    if (!validKitchenStates.includes(status)) return false;
+    const status = String(s.status || s.estatus || s.state || "").trim().toLowerCase();
+    
+    // Anuladas no se muestran
+    if (["anulada", "canceled", "cancelada"].includes(status)) return false;
+
+    // Filtro de seguridad (oculta automáticamente órdenes de hace +12h)
+    if (s.created_at) {
+       const hoursOld = (Date.now() - new Date(s.created_at).getTime()) / (1000 * 60 * 60);
+       if (hoursOld > 12) return false;
+    }
+
     const itemsList = getItems(s);
     if (itemsList.length === 0) return false;
+    
     const kitchenItems = itemsList.filter((item) => {
       const name = String(item.name || "").toLowerCase();
       return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
     });
-    return kitchenItems.length > 0;
+    
+    if (kitchenItems.length === 0) return false; // Solo items que requieren cocina
+
+    const isPaid = ["completed", "pagada", "pagado", "paid", "credit", "crédito", "facturado", "facturada"].includes(status);
+    const allDispatchedGlobally = kitchenItems.every((i) => i.dispatched);
+    
+    // Si la orden ya está cobrada Y ya se despachó, CULMINÓ su ciclo. Desaparece de cocina obligatoriamente.
+    if (isPaid && allDispatchedGlobally) return false;
+    
+    // Si NO se ha cobrado, pero ya se despachó: 
+    // Depende del botón/ajuste "Ocultar comandas despachadas"
+    if (!isPaid && allDispatchedGlobally && kdsConfig.hideReady) {
+      return false;
+    }
+
+    return true; 
   });
 
-  waitingOrders.sort((a, b) => {
-    const timeA = new Date(
-      a.payment_details?.kitchen_sent_at || a.created_at
-    ).getTime();
-    const timeB = new Date(
-      b.payment_details?.kitchen_sent_at || b.created_at
-    ).getTime();
+  kitchenOrders.sort((a, b) => {
+    const timeA = new Date(a.payment_details?.kitchen_sent_at || a.created_at).getTime();
+    const timeB = new Date(b.payment_details?.kitchen_sent_at || b.created_at).getTime();
     return timeB - timeA;
   });
 
-  const preparingOrders = waitingOrders.filter((o) => {
-    const st = String(o.status || "")
-      .trim()
-      .toLowerCase();
-    return (
-      st === "pending" ||
-      st === "pendiente" ||
-      st === "preparando" ||
-      st === "en preparación" ||
-      st === "en espera"
-    );
+
+  // =======================================================
+  // LÓGICA DE ÓRDENES PARA LA TV PÚBLICA (PUBLIC VIEW)
+  // =======================================================
+  const publicTvOrders = rawOrders.filter((s) => {
+    if (!s) return false;
+    const status = String(s.status || s.estatus || s.state || "").trim().toLowerCase();
+    
+    if (["anulada", "canceled", "cancelada"].includes(status)) return false;
+
+    if (s.created_at) {
+       const hoursOld = (Date.now() - new Date(s.created_at).getTime()) / (1000 * 60 * 60);
+       if (hoursOld > 12) return false;
+    }
+
+    const itemsList = getItems(s);
+    if (itemsList.length === 0) return false;
+    
+    const kitchenItems = itemsList.filter((item) => {
+      const name = String(item.name || "").toLowerCase();
+      return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
+    });
+    if (kitchenItems.length === 0) return false;
+
+    const isPaid = ["completed", "pagada", "pagado", "paid", "credit", "crédito", "facturado", "facturada"].includes(status);
+    const allDispatchedGlobally = kitchenItems.every((i) => i.dispatched);
+    
+    // En la TV Pública: Si pagó adelantado y ya salió, se queda 10 mins anunciándose para que lo retire.
+    if (isPaid && allDispatchedGlobally) {
+      const finishedAt = s.payment_details?.prep_finished_at;
+      if (finishedAt) {
+        const minsSinceFinish = (Date.now() - new Date(finishedAt).getTime()) / (1000 * 60);
+        if (minsSinceFinish > 10) return false; 
+      } else {
+        return false;
+      }
+    }
+    return true; 
   });
 
-  const readyOrders = waitingOrders.filter((o) => {
-    const st = String(o.status || "")
-      .trim()
-      .toLowerCase();
-    return st === "ready" || st === "listo" || st === "espera_pago";
+  publicTvOrders.sort((a, b) => {
+    const timeA = new Date(a.payment_details?.kitchen_sent_at || a.created_at).getTime();
+    const timeB = new Date(b.payment_details?.kitchen_sent_at || b.created_at).getTime();
+    return timeB - timeA;
   });
 
-  const getTimerInfo = (order) => {
+  const preparingOrders = publicTvOrders.filter((o) => {
+    const kitchenItems = getItems(o).filter((item) => {
+      const name = String(item.name || "").toLowerCase();
+      return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
+    });
+    return !kitchenItems.every((i) => i.dispatched); 
+  });
+
+  const readyOrders = publicTvOrders.filter((o) => {
+    const kitchenItems = getItems(o).filter((item) => {
+      const name = String(item.name || "").toLowerCase();
+      return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
+    });
+    return kitchenItems.length > 0 && kitchenItems.every((i) => i.dispatched); 
+  });
+
+
+  const getTimerInfo = (order, globalIsReady) => {
     const pd = order.payment_details || {};
     const startTime = pd.prep_started_at
       ? new Date(pd.prep_started_at).getTime()
       : null;
     if (!startTime) return null;
 
-    const isReady = ["ready", "listo", "espera_pago"].includes(
-      String(order.status || "").toLowerCase()
-    );
-    const endTime =
-      isReady && pd.prep_finished_at
-        ? new Date(pd.prep_finished_at).getTime()
-        : Date.now();
+    const endTime = (globalIsReady) && pd.prep_finished_at
+      ? new Date(pd.prep_finished_at).getTime()
+      : Date.now();
 
     const diffSec = Math.max(0, Math.floor((endTime - startTime) / 1000));
     const mins = Math.floor(diffSec / 60);
@@ -422,7 +473,7 @@ export default function KitchenDashboard({
       badgeColor = "#f59e0b";
     }
 
-    return { formatted, diffSec, badgeColor, isReady };
+    return { formatted, diffSec, badgeColor };
   };
 
   const zoomIn = () => setFontScale((prev) => Math.min(prev + 0.2, 1.8));
@@ -445,47 +496,42 @@ export default function KitchenDashboard({
 
     if (stationItems.length === 0) return null;
 
-    const currentStatus = String(order.status || order.estatus || "pending")
-      .trim()
-      .toLowerCase();
-    const globalIsReady =
-      currentStatus === "ready" ||
-      currentStatus === "listo" ||
-      currentStatus === "espera_pago";
+    const currentStatus = String(order.status || order.estatus || "pending").trim().toLowerCase();
+    
+    // Condición especial para web (bloqueo visual sin interacción hasta que paguen)
+    const isUnpaidWeb = ["web_unpaid", "espera_pago"].includes(currentStatus);
 
+    const allDispatchedGlobally = itemsList.length > 0 && itemsList.every(i => i.dispatched);
+    const globalIsReady = allDispatchedGlobally; 
+    
     const displayItems = stationItems.filter((item) => !item.dispatched);
     const stationIsReady = stationItems.length > 0 && displayItems.length === 0;
     const stationIsPreparing = displayItems.some((i) => i.preparing) && !stationIsReady;
-
-    if (kdsConfig.hideReady && (stationIsReady || globalIsReady)) {
-      return null;
-    }
 
     if (displayItems.length === 0 && !stationIsReady && !globalIsReady) {
       return null;
     }
 
-    const timerInfo = getTimerInfo(order);
+    const timerInfo = getTimerInfo(order, globalIsReady);
 
-    let headerBg = "#e05d5d"; // Rojo por defecto
+    let headerBg = "#e05d5d"; // Rojo (Pendiente normal)
     let headerColor = "#fff";
     let borderColor = "#e5e7eb";
     let statusText = "PENDIENTE";
-    const isWebUnpaid = currentStatus === "web_unpaid";
 
-    if (isWebUnpaid) {
-      headerBg = "#8b5cf6"; // Morado para Delivery Web
+    if (isUnpaidWeb) {
+      headerBg = "#8b5cf6"; // Morado (Web / Espera pago - Solo visual)
       headerColor = "#fff";
       borderColor = "#8b5cf6";
-      statusText = "🌐 DELIVERY WEB (POR COBRAR)";
-    } else if (stationIsPreparing) {
-      headerBg = "#f59e0b"; // Naranja
-      headerColor = "#111827";
-      statusText = "PREPARANDO";
+      statusText = currentStatus === "web_unpaid" ? "🌐 WEB (POR COBRAR)" : "ESPERA DE PAGO";
     } else if (stationIsReady) {
-      headerBg = "#16a34a"; // Verde
+      headerBg = "#16a34a"; // Verde (Despachado, pero se mantiene hasta cobrar)
       headerColor = "#fff";
       statusText = globalIsReady ? "LISTO PARA ENTREGAR" : "ESTACIÓN LISTA";
+    } else if (stationIsPreparing) {
+      headerBg = "#f59e0b"; // Naranja (Preparando)
+      headerColor = "#111827";
+      statusText = "PREPARANDO";
     }
 
     const timeStr = order.created_at
@@ -516,12 +562,9 @@ export default function KitchenDashboard({
             padding: "14px 16px",
             display: "flex",
             justifyContent: "space-between",
-            alignItems: "flex-start", // Alineación arriba
+            alignItems: "flex-start", 
           }}
         >
-          {/* ======================================================== */}
-          {/* AQUÍ ESTÁ EL CAMBIO SOLICITADO (NOMBRE GRANDE Y NEGRITA) */}
-          {/* ======================================================== */}
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             <strong style={{ fontSize: `${18 * fontScale}px`, lineHeight: 1 }}>
               #{order.invoice_number || orderId.slice(-4)}
@@ -547,6 +590,7 @@ export default function KitchenDashboard({
                 fontSize: `${12 * fontScale}px`,
                 fontWeight: "900",
                 letterSpacing: "0.5px",
+                marginBottom: "4px"
               }}
             >
               {statusText}
@@ -629,28 +673,25 @@ export default function KitchenDashboard({
                         marginTop: "4px",
                         display: "flex",
                         flexDirection: "column",
-                        gap: "6px", // Un poco de espacio entre las notas
+                        gap: "6px", 
                       }}
                     >
-                      {/* Dividimos el texto por el separador ' | ' para evaluar cada nota individualmente */}
                       {customizationText.split(" | ").map((part, idx) => {
-                        let partColor = "#4b5563"; // Gris oscuro por defecto
-                        let borderColor = "#cbd5e1"; // Gris claro para el borde
-
+                        let partColor = "#4b5563"; 
+                        let borderColor = "#cbd5e1"; 
                         const lowerPart = part.toLowerCase();
 
-                        // Lógica de colores según el contenido
                         if (lowerPart.includes("con todo")) {
-                          partColor = "#16a34a"; // Verde
+                          partColor = "#16a34a"; 
                           borderColor = "#16a34a";
                         } else if (lowerPart.includes("extra:")) {
-                          partColor = "#2563eb"; // Azul
+                          partColor = "#2563eb"; 
                           borderColor = "#2563eb";
                         } else if (lowerPart.includes("sin ") || lowerPart.includes("nota:")) {
-                          partColor = "#dc2626"; // Rojo
+                          partColor = "#dc2626"; 
                           borderColor = "#dc2626";
                         } else if (lowerPart.includes("para llevar")) {
-                          partColor = "#d97706"; // Naranja para empaques
+                          partColor = "#d97706"; 
                           borderColor = "#f59e0b";
                         }
 
@@ -692,7 +733,7 @@ export default function KitchenDashboard({
         </div>
 
         <div style={{ display: "flex", borderTop: "1px solid #e5e7eb" }}>
-          {!stationIsPreparing && !stationIsReady && !isWebUnpaid && (
+          {!stationIsPreparing && !stationIsReady && !isUnpaidWeb && (
             <button
               onClick={async (e) => {
                 e.currentTarget.blur();
@@ -707,27 +748,22 @@ export default function KitchenDashboard({
                     targetCats.length === 0 || targetCats.includes(c);
                   
                   if (belongsToStation && !item.dispatched) return { ...item, preparing: true };
-                  
                   return item;
                 });
 
-                const isAnyItemPreparing = updatedItems.some(
-                  (i) => i.preparing
-                );
-                const newStatus =
-                  isAnyItemPreparing && currentStatus === "pending"
-                    ? "preparando"
-                    : order.status;
+                const isAnyItemPreparing = updatedItems.some((i) => i.preparing);
+                
+                let newStatus = order.status;
+                if (isAnyItemPreparing && currentStatus === "pending") {
+                    newStatus = "preparando";
+                }
+
+                const updatedOrder = { ...order, status: newStatus, payment_details: updatedPd, items: updatedItems };
 
                 if (typeof setSales === "function") {
-                  setSales(
-                    sales.map((s) =>
-                      s.id === order.id
-                        ? { ...s, status: newStatus, payment_details: updatedPd, items: updatedItems }
-                        : s
-                    )
-                  );
+                  setSales(sales.map((s) => (s.id === order.id ? updatedOrder : s)));
                 }
+
                 try {
                   await supabase.from("sales").update({ status: newStatus, payment_details: updatedPd, items: updatedItems }).eq("id", order.id).eq("store_id", currentStoreId);
                 } catch (err) { console.error(err); }
@@ -738,7 +774,7 @@ export default function KitchenDashboard({
             </button>
           )}
 
-          {!stationIsReady && !isWebUnpaid && (
+          {!stationIsReady && !isUnpaidWeb && (
             <button
               onClick={async (e) => {
                 e.currentTarget.blur();
@@ -752,26 +788,28 @@ export default function KitchenDashboard({
                   return item;
                 });
 
-                const allKitchenItems = updatedItems.filter((item) => {
+                const allKItems = updatedItems.filter((item) => {
                   const name = String(item.name || "").toLowerCase();
                   return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
                 });
 
-                const allDispatched = allKitchenItems.length > 0 && allKitchenItems.every((i) => i.dispatched);
-                const newStatus = allDispatched ? "ready" : order.status;
+                const allDispatched = allKItems.length > 0 && allKItems.every((i) => i.dispatched);
+                
+                let newStatus = order.status;
+                if (allDispatched && (currentStatus === "pending" || currentStatus === "preparando")) {
+                    newStatus = "ready";
+                }
+                
                 if (allDispatched && !updatedPd.prep_finished_at) {
                   updatedPd.prep_finished_at = nowIso;
                 }
 
+                const updatedOrder = { ...order, status: newStatus, payment_details: updatedPd, items: updatedItems };
+
                 if (typeof setSales === "function") {
-                  setSales(
-                    sales.map((s) =>
-                      s.id === order.id
-                        ? { ...s, status: newStatus, payment_details: updatedPd, items: updatedItems }
-                        : s
-                    )
-                  );
+                  setSales(sales.map((s) => (s.id === order.id ? updatedOrder : s)));
                 }
+
                 try {
                   await supabase.from("sales").update({ status: newStatus, payment_details: updatedPd, items: updatedItems }).eq("id", order.id).eq("store_id", currentStoreId);
                 } catch (err) { console.error(err); }
@@ -782,15 +820,15 @@ export default function KitchenDashboard({
             </button>
           )}
 
-          {stationIsReady && !globalIsReady && !isWebUnpaid && (
+          {stationIsReady && !globalIsReady && !isUnpaidWeb && (
             <div style={{ width: "100%", textAlign: "center", padding: "14px", background: "#16a34a", color: "#fff", fontSize: "13px", fontWeight: "bold", textTransform: "uppercase" }}>
-              ✓ Estación Lista (Esperando Otras)
+              ✓ Estación Lista
             </div>
           )}
 
-          {stationIsReady && globalIsReady && !isWebUnpaid && (
+          {stationIsReady && globalIsReady && !isUnpaidWeb && (
             <div style={{ width: "100%", textAlign: "center", padding: "14px", background: "#16a34a", color: "#fff", fontSize: "13px", fontWeight: "bold", textTransform: "uppercase" }}>
-              ✓ Esperando Entrega al Cliente
+              ✓ Comanda Completada
             </div>
           )}
         </div>
@@ -838,7 +876,6 @@ export default function KitchenDashboard({
           <X size={20} />
         </button>
 
-        {/* REPRODUCTOR OCULTO DE MODO RADIO (Audio fluido, 0 consumo gráfico en Pantalla Pública) */}
         {isRadioMode && videoId && (
           <iframe
             style={{
@@ -1308,9 +1345,6 @@ export default function KitchenDashboard({
         flexDirection: "column",  
       }}
     >
-      {/* ========================================================================================= */}
-      {/* ESTILOS INYECTADOS EXCLUSIVOS PARA HACER LA CABECERA Y EL GRID RESPONSIVOS EN MÓVILES */}
-      {/* ========================================================================================= */}
       <style>{`
         .kds-header-wrapper {
           display: flex;
@@ -1363,7 +1397,6 @@ export default function KitchenDashboard({
           box-shadow: 0 20px 40px rgba(0,0,0,0.2);
         }
 
-        /* MEDIA QUERIES EXCLUSIVAMENTE PARA CELULARES */
         @media (max-width: 768px) {
           #kds-panel {
             padding: 12px !important; 
@@ -1384,7 +1417,7 @@ export default function KitchenDashboard({
           }
           .kds-youtube-input {
             width: 100%;
-            flex: 1; /* Estira el campo de texto a lo que sobre de espacio */
+            flex: 1;
           }
           .kds-action-btn {
             width: 100%;
@@ -1392,12 +1425,12 @@ export default function KitchenDashboard({
             box-sizing: border-box;
           }
           .kds-youtube-dropdown {
-            width: 100% !important; /* El desplegable de Mis Listas ocupará todo el ancho en móvil */
+            width: 100% !important; 
             right: 0;
             left: 0;
           }
           .kds-grid-layout {
-            grid-template-columns: 1fr !important; /* Fuerza una sola columna vertical hacia abajo */
+            grid-template-columns: 1fr !important; 
             gap: 16px !important;
           }
           .settings-modal-card {
@@ -1489,7 +1522,7 @@ export default function KitchenDashboard({
                     display: "block",
                   }}
                 >
-                  Desaparece la orden en cada estación apenas la completen.
+                  Si está activo, los pedidos desaparecen apenas la cocina los complete. Si está inactivo, se quedarán en pantalla (en verde) hasta que el cliente pague.
                 </span>
               </label>
             </div>
@@ -1628,7 +1661,6 @@ export default function KitchenDashboard({
                   const colKey = `col${colNum}Cats`;
                   const colorKey = `col${colNum}Color`;
                   
-                  // Paleta de colores pasteles predefinida
                   const pastelColors = [
                     { name: "Sin Color", hex: "transparent" },
                     { name: "Azul Pastel", hex: "#e0f2fe" },
@@ -1654,7 +1686,6 @@ export default function KitchenDashboard({
                           : `Configuración Estación ${colNum}`}
                       </strong>
                       
-                      {/* --- NUEVO: Selector de Color --- */}
                       {kdsConfig.layout !== "grid" && (
                         <div style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
                           <span style={{ fontSize: "11px", color: "#64748b", fontWeight: "bold" }}>Fondo:</span>
@@ -1838,7 +1869,6 @@ export default function KitchenDashboard({
                 <ListVideo size={18} />
               </button>
 
-              {/* BOTÓN MODO RADIO */}
               <div
                 style={{
                   height: "20px",
@@ -2052,7 +2082,6 @@ export default function KitchenDashboard({
         </div>
       )}
 
-      {/* Botones de Zoom: Solo visibles en Pantalla Completa (Cocina) */}
       {isFullscreen && (
         <div
           style={{
@@ -2105,16 +2134,8 @@ export default function KitchenDashboard({
       )}
 
       {(() => {
-        const ordersToRender = kdsConfig.hideReady
-          ? waitingOrders.filter(
-              (o) =>
-                !["ready", "listo", "espera_pago"].includes(
-                  String(o.status || "").toLowerCase()
-                )
-            )
-          : waitingOrders;
-
-        if (ordersToRender.length === 0 && (!kdsConfig.layout || kdsConfig.layout === "grid")) {
+        // En la pantalla de cocina, si ocultar está OFF se muestran, pero si oculta ON desaparecen.
+        if (kitchenOrders.length === 0 && (!kdsConfig.layout || kdsConfig.layout === "grid")) {
           return (
             <div
               style={{
@@ -2123,7 +2144,7 @@ export default function KitchenDashboard({
                 background: "#fff",
                 borderRadius: "8px",
                 border: "1px solid #e5e7eb",
-                flex: 1, // <-- Ocupa todo el espacio
+                flex: 1, 
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center"
@@ -2144,10 +2165,9 @@ export default function KitchenDashboard({
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",
                 gap: "24px",
-                flex: 1, // <-- CLAVE: Rellena el 100% de la pantalla hacia abajo
+                flex: 1, 
               }}
             >
-              {/* ESTACIÓN 1 */}
               <div
                 style={{
                   display: "flex",
@@ -2175,17 +2195,16 @@ export default function KitchenDashboard({
                     ? `(${kdsConfig.col1Cats.length} cat.)`
                     : "(Todas)"}
                 </h3>
-                {ordersToRender.map((o, idx) =>
+                {kitchenOrders.map((o, idx) =>
                   renderOrderCard(o, idx, kdsConfig.col1Cats)
                 )}
-                {ordersToRender.length === 0 && (
+                {kitchenOrders.length === 0 && (
                   <div style={{textAlign: "center", color: "#64748b", marginTop: "40px", fontSize: "13px", fontWeight: "bold"}}>
                     Estación despejada ✓
                   </div>
                 )}
               </div>
               
-              {/* ESTACIÓN 2 */}
               <div
                 style={{
                   display: "flex",
@@ -2213,10 +2232,10 @@ export default function KitchenDashboard({
                     ? `(${kdsConfig.col2Cats.length} cat.)`
                     : "(Todas)"}
                 </h3>
-                {ordersToRender.map((o, idx) =>
+                {kitchenOrders.map((o, idx) =>
                   renderOrderCard(o, idx, kdsConfig.col2Cats)
                 )}
-                {ordersToRender.length === 0 && (
+                {kitchenOrders.length === 0 && (
                   <div style={{textAlign: "center", color: "#64748b", marginTop: "40px", fontSize: "13px", fontWeight: "bold"}}>
                     Estación despejada ✓
                   </div>
@@ -2234,10 +2253,9 @@ export default function KitchenDashboard({
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr 1fr",
                 gap: "16px",
-                flex: 1, // <-- CLAVE: Rellena el 100% de la pantalla hacia abajo
+                flex: 1, 
               }}
             >
-              {/* ESTACIÓN 1 */}
               <div
                 style={{
                   display: "flex",
@@ -2265,17 +2283,16 @@ export default function KitchenDashboard({
                     ? `(${kdsConfig.col1Cats.length} cat.)`
                     : "(Todas)"}
                 </h3>
-                {ordersToRender.map((o, idx) =>
+                {kitchenOrders.map((o, idx) =>
                   renderOrderCard(o, idx, kdsConfig.col1Cats)
                 )}
-                {ordersToRender.length === 0 && (
+                {kitchenOrders.length === 0 && (
                   <div style={{textAlign: "center", color: "#64748b", marginTop: "30px", fontSize: "12px", fontWeight: "bold"}}>
                     Estación despejada ✓
                   </div>
                 )}
               </div>
               
-              {/* ESTACIÓN 2 */}
               <div
                 style={{
                   display: "flex",
@@ -2303,17 +2320,16 @@ export default function KitchenDashboard({
                     ? `(${kdsConfig.col2Cats.length} cat.)`
                     : "(Todas)"}
                 </h3>
-                {ordersToRender.map((o, idx) =>
+                {kitchenOrders.map((o, idx) =>
                   renderOrderCard(o, idx, kdsConfig.col2Cats)
                 )}
-                {ordersToRender.length === 0 && (
+                {kitchenOrders.length === 0 && (
                   <div style={{textAlign: "center", color: "#64748b", marginTop: "30px", fontSize: "12px", fontWeight: "bold"}}>
                     Estación despejada ✓
                   </div>
                 )}
               </div>
 
-              {/* ESTACIÓN 3 */}
               <div
                 style={{
                   display: "flex",
@@ -2341,10 +2357,10 @@ export default function KitchenDashboard({
                     ? `(${kdsConfig.col3Cats.length} cat.)`
                     : "(Todas)"}
                 </h3>
-                {ordersToRender.map((o, idx) =>
+                {kitchenOrders.map((o, idx) =>
                   renderOrderCard(o, idx, kdsConfig.col3Cats)
                 )}
-                {ordersToRender.length === 0 && (
+                {kitchenOrders.length === 0 && (
                   <div style={{textAlign: "center", color: "#64748b", marginTop: "30px", fontSize: "12px", fontWeight: "bold"}}>
                     Estación despejada ✓
                   </div>
@@ -2354,7 +2370,6 @@ export default function KitchenDashboard({
           );
         }
 
-        // Diseño en Cuadrícula (Por defecto)
         return (
           <div
             className="kds-grid-layout"
@@ -2367,7 +2382,7 @@ export default function KitchenDashboard({
               alignContent: "flex-start",
             }}
           >
-            {ordersToRender.map((o, idx) =>
+            {kitchenOrders.map((o, idx) =>
               renderOrderCard(o, idx, kdsConfig.col1Cats)
             )}
           </div>
