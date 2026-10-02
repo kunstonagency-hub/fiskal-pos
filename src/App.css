@@ -1,25 +1,116 @@
+/* ============================================================================
+   FISKAL — Sistema de Diseño
+   ============================================================================
+   Regla de oro: si un valor se repite 2+ veces, va como variable.
+   Paleta minimalista, escala de espaciado 4px, todo centralizado en :root.
+   ============================================================================ */
+
 :root {
-  font-family: 'Avenir', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #f8f9fa;
-  color: #212529;
+  /* ---- 🎨 COLORES (paleta minimalista de tu app) ---- */
+  --fiskal-primary: #212529;      /* Texto principal, botones negros, navbar activo */
+  --fiskal-primary-hover: #000000;
+  --fiskal-text: #212529;
+  --fiskal-text-soft: #495057;
+  --fiskal-text-muted: #6c757d;
+  --fiskal-text-faint: #868e96;
+  --fiskal-text-inverse: #ffffff;
+
+  --fiskal-bg-app: #f8f9fa;       /* Fondo general de la app */
+  --fiskal-bg-card: #ffffff;      /* Tarjetas blancas */
+  --fiskal-bg-hover: #f1f3f5;     /* Hover suave */
+  --fiskal-bg-subtle: #f8f9fa;    /* Fondos internos de cajas */
+
+  --fiskal-border: #e9ecef;       /* Bordes suaves */
+  --fiskal-border-strong: #ced4da; /* Bordes de inputs */
+  --fiskal-border-focus: #212529;
+
+  --fiskal-success-bg: #ebfbee;
+  --fiskal-success-border: #b2f2bb;
+  --fiskal-success-text: #2b8a3e;
+
+  --fiskal-danger-bg: #fff5f5;
+  --fiskal-danger-border: #ffc9c9;
+  --fiskal-danger-text: #fa5252;
+
+  --fiskal-warning-bg: #fff3bf;
+  --fiskal-warning-border: #ffe066;
+  --fiskal-warning-text: #f08c00;
+
+  --fiskal-info-bg: #e7f5ff;
+  --fiskal-info-border: #a5d8ff;
+  --fiskal-info-text: #1c7ed6;
+
+  /* ---- 📏 ESPACIADO (escala 4px) ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* ---- 🔘 RADIOS ---- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+
+  /* ---- 🌑 SOMBRAS (mínimas, estilo Apple) ---- */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 6px 14px rgba(0, 0, 0, 0.1);
+  --shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+
+  /* ---- 🔤 TIPOGRAFÍA ---- */
+  --font-family: 'Avenir', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-xs: 11px;
+  --font-sm: 12px;
+  --font-base: 14px;
+  --font-md: 16px;
+  --font-lg: 18px;
+  --font-xl: 20px;
+  --font-2xl: 24px;
+
+  /* ---- ⚡ TRANSICIONES ---- */
+  --transition-fast: 0.15s ease;
+  --transition: 0.2s ease;
+  --transition-slow: 0.3s ease;
 }
 
+/* ============================================================================
+   RESET GLOBAL
+   ============================================================================ */
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+body {
+  font-family: var(--font-family);
+  background-color: var(--fiskal-bg-app);
+  color: var(--fiskal-text);
+}
+
+/* ============================================================================
+   LOGIN
+   ============================================================================ */
 .fiskal-login-container {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100vh;
   width: 100vw;
-  background-color: #f8f9fa;
-  padding: 16px;
+  background-color: var(--fiskal-bg-app);
+  padding: var(--space-4);
 }
 
+/* ============================================================================
+   LAYOUT PRINCIPAL
+   ============================================================================ */
 .fiskal-container {
   display: flex;
   height: 100vh;
@@ -28,109 +119,124 @@
   position: relative;
 }
 
+/* ---- SIDEBAR ---- */
 .fiskal-sidebar {
   width: 260px;
-  background-color: #ffffff;
-  border-right: 1px solid #e9ecef;
+  background-color: var(--fiskal-bg-card);
+  border-right: 1px solid var(--fiskal-border);
   display: flex;
   flex-direction: column;
-  padding: 24px;
+  padding: var(--space-6);
 }
 
 .brand-logo h2 {
-  font-size: 24px;
+  font-size: var(--font-2xl);
   font-weight: 700;
   letter-spacing: -0.5px;
+  color: var(--fiskal-text);
 }
 
 .brand-logo span {
-  font-size: 12px;
-  color: #6c757d;
+  font-size: var(--font-sm);
+  color: var(--fiskal-text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
 
 .nav-menu {
-  margin-top: 40px;
+  margin-top: var(--space-10);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .nav-btn {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   background: transparent;
   border: none;
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  color: #495057;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-base);
+  font-family: inherit;
+  color: var(--fiskal-text-soft);
   cursor: pointer;
   text-align: left;
-  transition: all 0.2s ease;
+  transition: all var(--transition);
+  width: 100%;
 }
 
 .nav-btn:hover {
-  background-color: #f1f3f5;
-  color: #212529;
+  background-color: var(--fiskal-bg-hover);
+  color: var(--fiskal-text);
 }
 
 .nav-btn.active {
-  background-color: #212529;
-  color: #ffffff;
+  background-color: var(--fiskal-primary);
+  color: var(--fiskal-text-inverse);
 }
 
+/* ---- ÁREA PRINCIPAL ---- */
 .fiskal-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: #f8f9fa;
+  background-color: var(--fiskal-bg-app);
   overflow: hidden;
 }
 
 .main-header {
   height: 70px;
-  background-color: #ffffff;
-  border-bottom: 1px solid #e9ecef;
+  background-color: var(--fiskal-bg-card);
+  border-bottom: 1px solid var(--fiskal-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 32px;
+  padding: 0 var(--space-8);
   flex-shrink: 0;
 }
 
 .main-header h1 {
-  font-size: 20px;
+  font-size: var(--font-xl);
   font-weight: 600;
+  color: var(--fiskal-text);
 }
 
+.content-area {
+  flex: 1;
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+
+/* ============================================================================
+   COMPONENTES DEL HEADER
+   ============================================================================ */
 .exchange-rate-badge {
-  background-color: #e9ecef;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #495057;
+  background-color: var(--fiskal-bg-hover);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-base);
+  color: var(--fiskal-text-soft);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .btn-sync {
   background: transparent;
   border: none;
-  color: #495057;
+  color: var(--fiskal-text-soft);
   cursor: pointer;
   display: flex;
   align-items: center;
   padding: 2px;
-  border-radius: 4px;
-  transition: background 0.2s;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
 }
 
 .btn-sync:hover {
-  background: #ced4da;
+  background: var(--fiskal-border-strong);
 }
 
 .btn-sync.spinning svg {
@@ -139,42 +245,59 @@
 
 @keyframes spin {
   from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  to   { transform: rotate(360deg); }
 }
 
 .sync-time {
   font-size: 10px;
-  color: #868e96;
-  border-left: 1px solid #ced4da;
-  padding-left: 6px;
+  color: var(--fiskal-text-faint);
+  border-left: 1px solid var(--fiskal-border-strong);
+  padding-left: var(--space-2);
 }
 
-.content-area {
-  flex: 1;
-  padding: 24px;
-  overflow-y: auto;
+.shift-status-pill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-base);
+  font-weight: 600;
 }
 
+.shift-status-pill.open {
+  background-color: var(--fiskal-success-bg);
+  color: var(--fiskal-success-text);
+}
+
+.shift-status-pill.closed {
+  background-color: var(--fiskal-danger-bg);
+  color: var(--fiskal-danger-text);
+}
+
+/* ============================================================================
+   LAYOUT DEL POS
+   ============================================================================ */
 .pos-grid {
   display: grid;
   grid-template-columns: 2fr 1fr;
-  gap: 24px;
+  gap: var(--space-6);
   height: 100%;
 }
 
 .products-catalog {
-  background-color: #ffffff;
-  border: 1px solid #e9ecef;
-  border-radius: 12px;
-  padding: 24px;
+  background-color: var(--fiskal-bg-card);
+  border: 1px solid var(--fiskal-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
   overflow-y: auto;
 }
 
 .cart-summary {
-  background-color: #ffffff;
-  border: 1px solid #e9ecef;
-  border-radius: 12px;
-  padding: 24px;
+  background-color: var(--fiskal-bg-card);
+  border: 1px solid var(--fiskal-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -183,44 +306,46 @@
 .catalog-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 16px;
-  margin-top: 16px;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
 }
 
-/* --- TARJETA DE PRODUCTO OPTIMIZADA (EDGE-TO-EDGE) --- */
+/* ============================================================================
+   TARJETA DE PRODUCTO
+   ============================================================================ */
 .product-card {
-  background: #ffffff;
-  border: 1px solid #e9ecef;
-  border-radius: 12px;
+  background: var(--fiskal-bg-card);
+  border: 1px solid var(--fiskal-border);
+  border-radius: var(--radius-xl);
   padding: 0;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  box-shadow: var(--shadow-xs);
   overflow: hidden;
 }
 
 .product-card:hover {
-  border-color: #adb5bd;
-  box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+  border-color: var(--fiskal-border-strong);
+  box-shadow: var(--shadow-lg);
   transform: translateY(-3px);
 }
 
 .product-card.out-of-stock {
   opacity: 0.6;
-  background-color: #f8f9fa;
+  background-color: var(--fiskal-bg-app);
   border-style: dashed;
 }
 
 .product-card .img-container {
   width: 100%;
   height: 150px;
-  background-color: #f1f3f5;
+  background-color: var(--fiskal-bg-hover);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--fiskal-border);
 }
 
 .product-card .img-container img {
@@ -230,7 +355,7 @@
 }
 
 .product-card-content {
-  padding: 12px;
+  padding: var(--space-3);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -238,89 +363,100 @@
 }
 
 .product-card-content h4 {
-  font-size: 14px;
+  font-size: var(--font-base);
   font-weight: 700;
-  margin-bottom: 6px;
-  color: #212529;
+  margin-bottom: var(--space-2);
+  color: var(--fiskal-text);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: normal;
 }
 
 .product-price {
-  font-size: 18px;
+  font-size: var(--font-lg);
   font-weight: 800;
-  color: #1c7ed6;
+  color: var(--fiskal-info-text);
 }
-/* -------------------------------------- */
 
+/* ============================================================================
+   FORMULARIOS Y TARJETAS
+   ============================================================================ */
 .products-layout {
   display: grid;
   grid-template-columns: 1fr 1.6fr;
-  gap: 24px;
+  gap: var(--space-6);
   align-items: start;
 }
 
-.product-form-card, .product-list-card {
-  background: #ffffff;
-  border: 1px solid #e9ecef;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+.product-form-card,
+.product-list-card {
+  background: var(--fiskal-bg-card);
+  border: 1px solid var(--fiskal-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-xs);
 }
 
 .fiskal-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-top: 16px;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .form-group label {
-  font-size: 12px;
+  font-size: var(--font-sm);
   font-weight: 600;
-  color: #6c757d;
+  color: var(--fiskal-text-muted);
   text-transform: uppercase;
 }
 
-.form-group input, .form-group select {
-  padding: 10px 14px;
-  border: 1px solid #ced4da;
-  border-radius: 6px;
-  font-size: 14px;
+.form-group input,
+.form-group select,
+.form-group textarea {
+  padding: 10px var(--space-3);
+  border: 1px solid var(--fiskal-border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--font-base);
+  font-family: inherit;
   outline: none;
-  background-color: #ffffff;
-  color: #212529;
-  transition: border-color 0.2s;
+  background-color: var(--fiskal-bg-card);
+  color: var(--fiskal-text);
+  transition: border-color var(--transition);
 }
 
-.form-group input:focus, .form-group select:focus {
-  border-color: #212529;
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: var(--fiskal-border-focus);
 }
 
+/* ============================================================================
+   BOTONES
+   ============================================================================ */
 .btn-primary {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  background-color: #212529;
-  color: #ffffff;
+  gap: var(--space-2);
+  background-color: var(--fiskal-primary);
+  color: var(--fiskal-text-inverse);
   border: none;
-  padding: 12px;
-  border-radius: 6px;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
   font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: opacity var(--transition);
 }
 
 .btn-primary:hover {
@@ -328,10 +464,109 @@
 }
 
 .btn-primary:disabled {
-  background-color: #adb5bd;
+  background-color: var(--fiskal-border-strong);
   cursor: not-allowed;
 }
 
+.btn-secondary {
+  background-color: var(--fiskal-bg-card);
+  color: var(--fiskal-text-soft);
+  border: 1px solid var(--fiskal-border-strong);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.btn-secondary:hover {
+  background-color: var(--fiskal-bg-hover);
+}
+
+/* ---- Botones de acción (iconos) ---- */
+.btn-icon-danger {
+  background: transparent;
+  border: none;
+  color: var(--fiskal-danger-text);
+  cursor: pointer;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+
+.btn-icon-danger:hover {
+  background: var(--fiskal-danger-bg);
+}
+
+.btn-icon-edit {
+  background: transparent;
+  border: none;
+  color: var(--fiskal-info-text);
+  cursor: pointer;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+
+.btn-icon-edit:hover {
+  background: var(--fiskal-info-bg);
+}
+
+.btn-icon-whatsapp {
+  background: var(--fiskal-success-bg);
+  border: 1px solid var(--fiskal-success-border);
+  color: var(--fiskal-success-text);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: all var(--transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon-whatsapp:hover {
+  background: #d3f9d8;
+}
+
+.btn-icon-primary {
+  background: var(--fiskal-info-bg);
+  border: 1px solid var(--fiskal-info-border);
+  color: var(--fiskal-info-text);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: all var(--transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon-primary:hover {
+  background: #c5f6fa;
+}
+
+.btn-icon-success {
+  background: var(--fiskal-success-bg);
+  border: 1px solid var(--fiskal-success-border);
+  color: var(--fiskal-success-text);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: all var(--transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon-success:hover {
+  background: #d3f9d8;
+}
+
+/* ============================================================================
+   TABLAS
+   ============================================================================ */
 .table-responsive {
   width: 100%;
   overflow-x: auto;
@@ -342,43 +577,45 @@
 .fiskal-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 
-.fiskal-table th, .fiskal-table td {
-  padding: 12px 10px;
+.fiskal-table th,
+.fiskal-table td {
+  padding: var(--space-3) 10px;
   text-align: left;
-  border-bottom: 1px solid #e9ecef;
-  font-size: 14px;
+  border-bottom: 1px solid var(--fiskal-border);
+  font-size: var(--font-base);
   vertical-align: middle;
 }
 
 .fiskal-table th {
-  color: #6c757d;
+  color: var(--fiskal-text-muted);
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--font-sm);
   text-transform: uppercase;
 }
 
 .receipt-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--font-sm);
 }
 
-.receipt-table th, .receipt-table td {
-  padding: 8px 6px;
+.receipt-table th,
+.receipt-table td {
+  padding: var(--space-2) var(--space-2);
   text-align: left;
   border-bottom: 1px dashed #dee2e6;
   vertical-align: middle;
 }
 
 .receipt-table th {
-  color: #495057;
+  color: var(--fiskal-text-soft);
   font-weight: 600;
-  border-bottom: 2px solid #212529;
+  border-bottom: 2px solid var(--fiskal-primary);
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: var(--font-xs);
 }
 
 .action-cell {
@@ -392,77 +629,36 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-}
-
-.btn-icon-danger {
-  background: transparent;
-  border: none;
-  color: #fa5252;
-  cursor: pointer;
-  padding: 6px;
-  border-radius: 4px;
-}
-
-.btn-icon-danger:hover {
-  background: #fff5f5;
-}
-
-.btn-icon-edit {
-  background: transparent;
-  border: none;
-  color: #4c6ef5;
-  cursor: pointer;
-  padding: 6px;
-  border-radius: 4px;
-}
-
-.btn-icon-edit:hover {
-  background: #edf2ff;
-}
-
-.btn-icon-whatsapp {
-  background: #ebfbee;
-  border: 1px solid #b2f2bb;
-  color: #2b8a3e;
-  cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 6px;
-  transition: all 0.2s;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-icon-whatsapp:hover {
-  background: #d3f9d8;
-  color: #2b8a3e;
+  gap: var(--space-2);
 }
 
 .empty-text {
-  color: #6c757d;
-  font-size: 14px;
-  margin-top: 12px;
+  color: var(--fiskal-text-muted);
+  font-size: var(--font-base);
+  margin-top: var(--space-3);
 }
 
+/* ============================================================================
+   CARRITO
+   ============================================================================ */
 .cart-items-list {
   flex: 1;
   overflow-y: auto;
-  margin: 16px 0;
+  margin: var(--space-4) 0;
   max-height: 280px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .cart-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #f8f9fa;
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid #e9ecef;
+  background: var(--fiskal-bg-app);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--fiskal-border);
   font-size: 13px;
 }
 
@@ -472,20 +668,20 @@
 }
 
 .cart-item-info span {
-  color: #6c757d;
-  font-size: 11px;
+  color: var(--fiskal-text-muted);
+  font-size: var(--font-xs);
 }
 
 .cart-item-controls {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .cart-item-controls button {
-  background: #ffffff;
-  border: 1px solid #ced4da;
-  border-radius: 4px;
+  background: var(--fiskal-bg-card);
+  border: 1px solid var(--fiskal-border-strong);
+  border-radius: var(--radius-sm);
   width: 24px;
   height: 24px;
   display: flex;
@@ -495,18 +691,18 @@
 }
 
 .cart-item-controls button:hover {
-  background: #e9ecef;
+  background: var(--fiskal-border);
 }
 
 .cart-item-controls .btn-delete {
   border-color: transparent;
-  color: #fa5252;
+  color: var(--fiskal-danger-text);
   background: transparent;
 }
 
 .cart-totals-container {
-  border-top: 1px solid #e9ecef;
-  padding-top: 16px;
+  border-top: 1px solid var(--fiskal-border);
+  padding-top: var(--space-4);
 }
 
 .cart-total-row {
@@ -516,35 +712,35 @@
 }
 
 .cart-total-row h2 {
-  font-size: 24px;
-  color: #212529;
+  font-size: var(--font-2xl);
+  color: var(--fiskal-text);
 }
 
 .cart-total-row-bs {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 4px;
-  margin-bottom: 16px;
-  color: #6c757d;
-  font-size: 14px;
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-4);
+  color: var(--fiskal-text-muted);
+  font-size: var(--font-base);
 }
 
 .cart-total-row-bs h3 {
-  color: #495057;
-  font-size: 16px;
+  color: var(--fiskal-text-soft);
+  font-size: var(--font-md);
 }
 
 .checkout-btn {
   width: 100%;
 }
 
+/* ============================================================================
+   MODALES
+   ============================================================================ */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  inset: 0;
   background-color: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
@@ -554,12 +750,12 @@
 }
 
 .modal-content {
-  background-color: #ffffff;
+  background-color: var(--fiskal-bg-card);
   width: 600px;
   max-width: 90%;
   max-height: 90vh;
-  border-radius: 12px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-modal);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -568,319 +764,282 @@
 
 @keyframes modalFadeIn {
   from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .modal-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid #e9ecef;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--fiskal-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: #ffffff;
+  background-color: var(--fiskal-bg-card);
 }
 
 .modal-header h3 {
-  font-size: 18px;
+  font-size: var(--font-lg);
   font-weight: 600;
-  color: #212529;
+  color: var(--fiskal-text);
 }
 
 .btn-close-modal {
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #6c757d;
+  color: var(--fiskal-text-muted);
   display: flex;
   align-items: center;
-  padding: 4px;
-  border-radius: 4px;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
 }
 
 .btn-close-modal:hover {
-  background: #f1f3f5;
-  color: #212529;
+  background: var(--fiskal-bg-hover);
+  color: var(--fiskal-text);
 }
 
 .modal-body {
-  padding: 24px;
+  padding: var(--space-6);
   overflow-y: auto;
   flex: 1;
 }
 
+.modal-footer {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--fiskal-border);
+  background-color: var(--fiskal-bg-app);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* ============================================================================
+   PAGOS
+   ============================================================================ */
 .payment-summary-box {
-  background-color: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
-  padding: 16px;
+  background-color: var(--fiskal-bg-app);
+  border: 1px solid var(--fiskal-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .payment-summary-box span {
-  font-size: 12px;
-  color: #6c757d;
+  font-size: var(--font-sm);
+  color: var(--fiskal-text-muted);
   text-transform: uppercase;
   font-weight: 600;
 }
 
 .payment-summary-box h2 {
   font-size: 22px;
-  color: #212529;
+  color: var(--fiskal-text);
 }
 
 .payment-summary-box h3 {
-  font-size: 16px;
-  color: #495057;
+  font-size: var(--font-md);
+  color: var(--fiskal-text-soft);
 }
 
 .payment-inputs-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
 }
 
 .payment-status-box {
-  background-color: #f1f3f5;
-  border-radius: 8px;
-  padding: 16px;
+  background-color: var(--fiskal-bg-hover);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .status-row {
   display: flex;
   justify-content: space-between;
-  font-size: 14px;
-  color: #495057;
+  font-size: var(--font-base);
+  color: var(--fiskal-text-soft);
 }
 
 .status-row.highlight {
   border-top: 1px solid #dee2e6;
-  padding-top: 8px;
-  margin-top: 4px;
+  padding-top: var(--space-2);
+  margin-top: var(--space-1);
   font-weight: 600;
-  color: #212529;
+  color: var(--fiskal-text);
 }
 
-.modal-footer {
-  padding: 16px 24px;
-  border-top: 1px solid #e9ecef;
-  background-color: #f8f9fa;
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.btn-secondary {
-  background-color: #ffffff;
-  color: #495057;
-  border: 1px solid #ced4da;
-  padding: 12px 16px;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.btn-secondary:hover {
-  background-color: #f1f3f5;
-}
-
-.btn-icon-primary {
-  background: #e3fafc;
-  border: 1px solid #99e9f2;
-  color: #1098ad;
-  cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 6px;
-  transition: all 0.2s;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-icon-primary:hover {
-  background: #c5f6fa;
-  color: #0b7285;
-}
-
-.btn-icon-success {
-  background: #ebfbee;
-  border: 1px solid #b2f2bb;
-  color: #2b8a3e;
-  cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 6px;
-  transition: all 0.2s;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-icon-success:hover {
-  background: #d3f9d8;
-  color: #2b8a3e;
-}
-
+/* ============================================================================
+   BADGES
+   ============================================================================ */
 .badge-completed {
-  background-color: #ebfbee;
-  color: #2b8a3e;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
+  background-color: var(--fiskal-success-bg);
+  color: var(--fiskal-success-text);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .badge-pending {
-  background-color: #fff3bf;
-  color: #f08c00;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
+  background-color: var(--fiskal-warning-bg);
+  color: var(--fiskal-warning-text);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .badge-credit {
-  background-color: #fff5f5;
-  color: #fa5252;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
+  background-color: var(--fiskal-danger-bg);
+  color: var(--fiskal-danger-text);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .badge-low-stock {
-  background-color: #fff5f5;
-  color: #fa5252;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+  background-color: var(--fiskal-danger-bg);
+  color: var(--fiskal-danger-text);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
+/* ============================================================================
+   ETIQUETAS / LABELS (QR)
+   ============================================================================ */
 .label-modal-content {
   width: 380px;
-  background-color: #ffffff;
-  border: 2px solid #212529;
+  background-color: var(--fiskal-bg-card);
+  border: 2px solid var(--fiskal-primary);
 }
 
 .store-tag-header {
-  font-size: 12px;
+  font-size: var(--font-sm);
   font-weight: 800;
   letter-spacing: 2px;
-  color: #6c757d;
-  margin-bottom: 8px;
+  color: var(--fiskal-text-muted);
+  margin-bottom: var(--space-2);
 }
 
 .tag-product-name {
-  font-size: 18px;
+  font-size: var(--font-lg);
   font-weight: 700;
-  color: #212529;
-  margin-bottom: 12px;
+  color: var(--fiskal-text);
+  margin-bottom: var(--space-3);
 }
 
 .tag-price-box {
-  background: #212529;
-  color: #ffffff;
-  padding: 8px 16px;
-  border-radius: 6px;
+  background: var(--fiskal-primary);
+  color: var(--fiskal-text-inverse);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
-  margin: 12px 0 6px 0;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 var(--space-2) 0;
 }
 
 .tag-currency {
-  font-size: 12px;
+  font-size: var(--font-sm);
   font-weight: 600;
 }
 
 .tag-price-value {
-  font-size: 24px;
+  font-size: var(--font-2xl);
   font-weight: 800;
 }
 
+/* ============================================================================
+   INVOICE (Factura)
+   ============================================================================ */
 .invoice-modal {
   width: 500px;
-  background-color: #ffffff;
+  background-color: var(--fiskal-bg-card);
 }
 
 .invoice-body {
-  padding: 24px;
-  background-color: #ffffff;
+  padding: var(--space-6);
+  background-color: var(--fiskal-bg-card);
 }
 
 .invoice-info {
-  background-color: #f8f9fa;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid #e9ecef;
-  margin-bottom: 20px;
-  font-size: 14px;
-  color: #495057;
+  background-color: var(--fiskal-bg-app);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--fiskal-border);
+  margin-bottom: var(--space-5);
+  font-size: var(--font-base);
+  color: var(--fiskal-text-soft);
 }
 
 .invoice-info p {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .invoice-items-table {
   width: 100%;
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
   border-collapse: collapse;
 }
 
 .invoice-items-table th {
-  color: #6c757d;
+  color: var(--fiskal-text-muted);
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--font-sm);
   text-transform: uppercase;
-  padding: 8px 12px;
-  border-bottom: 2px solid #e9ecef;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 2px solid var(--fiskal-border);
   text-align: left;
 }
 
 .invoice-items-table td {
-  padding: 10px 12px;
-  border-bottom: 1px dashed #ced4da;
-  font-size: 14px;
-  color: #212529;
+  padding: 10px var(--space-3);
+  border-bottom: 1px dashed var(--fiskal-border-strong);
+  font-size: var(--font-base);
+  color: var(--fiskal-text);
 }
 
 .invoice-totals-box {
-  background-color: #f1f3f5;
-  padding: 16px;
-  border-radius: 8px;
-  margin-bottom: 20px;
+  background-color: var(--fiskal-bg-hover);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-5);
   border: 1px solid #dee2e6;
 }
 
 .invoice-payment-breakdown {
-  border-top: 2px dashed #ced4da;
-  padding-top: 16px;
+  border-top: 2px dashed var(--fiskal-border-strong);
+  padding-top: var(--space-4);
   font-size: 13px;
-  color: #495057;
+  color: var(--fiskal-text-soft);
 }
 
 .invoice-payment-breakdown h4 {
-  margin-bottom: 12px;
-  color: #212529;
+  margin-bottom: var(--space-3);
+  color: var(--fiskal-text);
   font-size: 15px;
   font-weight: 600;
 }
@@ -888,71 +1047,56 @@
 .invoice-payment-breakdown p {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
 }
 
 .invoice-change-box {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #e9ecef;
-  color: #2b8a3e;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--fiskal-border);
+  color: var(--fiskal-success-text);
   display: flex;
   justify-content: space-between;
-  font-size: 14px;
+  font-size: var(--font-base);
 }
 
-.shift-status-pill {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.shift-status-pill.open {
-  background-color: #ebfbee;
-  color: #2b8a3e;
-}
-
-.shift-status-pill.closed {
-  background-color: #fff5f5;
-  color: #fa5252;
-}
-
+/* ============================================================================
+   ALERTAS / BANNERS
+   ============================================================================ */
 .alert-banner-warning {
-  background-color: #fff3bf;
-  border: 1px solid #ffe066;
-  color: #f08c00;
-  padding: 12px 16px;
-  border-radius: 8px;
+  background-color: var(--fiskal-warning-bg);
+  border: 1px solid var(--fiskal-warning-border);
+  color: var(--fiskal-warning-text);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 16px;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
   font-size: 13px;
 }
 
 .shift-active-box {
-  background: #ffffff;
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
-  padding: 20px;
+  background: var(--fiskal-bg-card);
+  border: 1px solid var(--fiskal-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
 }
 
-/* Grilla para Impresión Masiva de Códigos QR en Páginas Carta / A4 */
+/* ============================================================================
+   IMPRESIÓN DE ETIQUETAS (Carta / A4)
+   ============================================================================ */
 .catalog-print-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 15px;
-  padding: 15px;
+  gap: var(--space-4);
+  padding: var(--space-4);
 }
 
 .print-label-item {
-  background: #ffffff;
-  border: 1px dashed #adb5bd;
-  padding: 15px;
+  background: var(--fiskal-bg-card);
+  border: 1px dashed var(--fiskal-border-strong);
+  padding: var(--space-4);
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -963,17 +1107,101 @@
   page-break-inside: avoid;
 }
 
-/* DISEÑO RESPONSIVO NATIVO MÓVIL (VERTICAL) */
+/* ============================================================================
+   ANIMACIONES GLOBALES
+   ============================================================================ */
+@keyframes pulseRed {
+  0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70%  { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.pulse-animation {
+  animation: pulseRed 2s infinite;
+}
+
+@keyframes vibrateIcon {
+  0%   { transform: translate(0); }
+  20%  { transform: translate(-2px, 2px); }
+  40%  { transform: translate(-2px, -2px); }
+  60%  { transform: translate(2px, 2px); }
+  80%  { transform: translate(2px, -2px); }
+  100% { transform: translate(0); }
+}
+
+.vibrate {
+  animation: vibrateIcon 0.3s linear infinite;
+}
+
+@keyframes slideOutLeft {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ============================================================================
+   BOTÓN FLOTANTE DEL CARRITO (Móvil)
+   ============================================================================ */
+.mobile-fab-container {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .mobile-fab-container {
+    display: flex;
+    position: fixed;
+    bottom: 85px;
+    right: 16px;
+    z-index: 9998;
+    align-items: center;
+    cursor: pointer;
+    filter: drop-shadow(0 8px 16px rgba(17, 24, 39, 0.4));
+  }
+
+  .fab-price-tag {
+    background: var(--fiskal-primary);
+    color: white;
+    font-size: var(--font-lg);
+    font-weight: 600;
+    padding: var(--space-2) var(--space-4) var(--space-2) var(--space-4);
+    border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+    margin-right: -15px;
+    animation: slideOutLeft 0.3s ease-out forwards;
+  }
+
+  .fab-circle {
+    background: var(--fiskal-primary);
+    width: 75px;
+    height: 75px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    z-index: 2;
+    color: white;
+    gap: var(--space-2);
+  }
+
+  .fab-count {
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 1;
+    margin-top: 2px;
+  }
+}
+
+/* ============================================================================
+   RESPONSIVE — MÓVIL VERTICAL
+   ============================================================================ */
 @media (max-width: 768px) {
   .fiskal-login-container {
-    padding: 16px;
+    padding: var(--space-4);
   }
 
   .fiskal-login-container .product-form-card {
     width: 100% !important;
     max-width: 100% !important;
-    margin: 0 12px !important;
-    box-sizing: border-box;
+    margin: 0 var(--space-3) !important;
   }
 
   .fiskal-container {
@@ -982,7 +1210,7 @@
     height: 100dvh;
     overflow: hidden;
   }
-  
+
   .fiskal-sidebar {
     position: fixed;
     bottom: 0;
@@ -993,8 +1221,8 @@
     flex-direction: row;
     justify-content: space-around;
     align-items: center;
-    padding: 0 4px;
-    background: #ffffff;
+    padding: 0 var(--space-1);
+    background: var(--fiskal-bg-card);
     border-right: none;
     border-top: 1px solid #dee2e6;
     z-index: 1000;
@@ -1017,10 +1245,10 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 6px 0;
-    font-size: 0px; 
+    padding: var(--space-2) 0;
+    font-size: 0;
     gap: 0;
-    color: #6c757d;
+    color: var(--fiskal-text-muted);
     background: transparent !important;
     text-align: center;
     border-radius: 0;
@@ -1040,7 +1268,7 @@
   }
 
   .nav-btn.active {
-    color: #212529;
+    color: var(--fiskal-primary);
     background: transparent !important;
   }
 
@@ -1057,28 +1285,28 @@
     padding: 10px 14px;
     flex-direction: column;
     align-items: flex-start;
-    gap: 6px;
+    gap: var(--space-2);
   }
 
   .main-header h1 {
-    font-size: 16px;
+    font-size: var(--font-md);
   }
 
   .main-header > div {
     width: 100%;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .content-area {
-    padding: 12px;
+    padding: var(--space-3);
   }
 
   .pos-grid {
     grid-template-columns: 1fr;
     height: auto;
-    gap: 16px;
+    gap: var(--space-4);
   }
 
   .products-catalog {
@@ -1091,11 +1319,12 @@
 
   .products-layout {
     grid-template-columns: 1fr !important;
-    gap: 16px;
+    gap: var(--space-4);
   }
 
-  .product-form-card, .product-list-card {
-    padding: 16px;
+  .product-form-card,
+  .product-list-card {
+    padding: var(--space-4);
   }
 
   .payment-inputs-grid {
@@ -1105,15 +1334,15 @@
   .modal-content {
     width: 95% !important;
     max-width: 95% !important;
-    margin: 8px;
+    margin: var(--space-2);
     max-height: 85vh;
   }
 
-  /* --- FORMATO TICKET / RECIBO COMPACTO PARA TABLAS EN MÓVIL --- */
+  /* Tablas convertidas en tarjetas (formato ticket) */
   .fiskal-table:not(.receipt-table) {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-3);
   }
 
   .fiskal-table:not(.receipt-table) thead {
@@ -1123,17 +1352,17 @@
   .fiskal-table:not(.receipt-table) tbody {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-3);
   }
 
   .fiskal-table:not(.receipt-table) tr {
     display: flex;
     flex-direction: column;
-    background: #ffffff;
-    border: 1px solid #e9ecef;
-    border-radius: 8px;
-    padding: 10px 12px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+    background: var(--fiskal-bg-card);
+    border: 1px solid var(--fiskal-border);
+    border-radius: var(--radius-lg);
+    padding: 10px var(--space-3);
+    box-shadow: var(--shadow-xs);
   }
 
   .fiskal-table:not(.receipt-table) td {
@@ -1147,81 +1376,70 @@
   }
 
   .fiskal-table:not(.receipt-table) td.action-cell {
-    border-top: 1px solid #f1f3f5;
-    margin-top: 6px;
-    padding-top: 6px;
+    border-top: 1px solid var(--fiskal-bg-hover);
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
     justify-content: center;
     display: flex;
   }
 
-  /* 1. Historial de Ventas (7 columnas) */
+  /* Ajuste especial: Historial de Ventas */
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(3) {
     order: 1;
-    font-size: 16px;
+    font-size: var(--font-md);
     font-weight: 800;
-    color: #212529;
+    color: var(--fiskal-text);
     border-bottom: 1px dashed #dee2e6;
-    padding-bottom: 4px;
+    padding-bottom: var(--space-1);
     margin-bottom: 2px;
     justify-content: flex-start;
   }
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(1) { order: 2; }
-  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(1)::before { content: "Factura:"; color: #6c757d; font-weight: 600; }
-
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(1)::before { content: "Factura:"; color: var(--fiskal-text-muted); font-weight: 600; }
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(2) { order: 3; }
-  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(2)::before { content: "Fecha:"; color: #6c757d; font-weight: 600; }
-
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(2)::before { content: "Fecha:"; color: var(--fiskal-text-muted); font-weight: 600; }
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(4) { order: 4; }
-  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(4)::before { content: "Total USD:"; color: #6c757d; font-weight: 600; }
-
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(4)::before { content: "Total USD:"; color: var(--fiskal-text-muted); font-weight: 600; }
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(5) { order: 5; }
-  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(5)::before { content: "Saldo Pendiente:"; color: #6c757d; font-weight: 600; }
-
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(5)::before { content: "Saldo Pendiente:"; color: var(--fiskal-text-muted); font-weight: 600; }
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(6) { order: 6; }
-  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(6)::before { content: "Estatus:"; color: #6c757d; font-weight: 600; }
-
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(6)::before { content: "Estatus:"; color: var(--fiskal-text-muted); font-weight: 600; }
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(7)) td:nth-child(7) { order: 7; }
 
-  /* 2. Clientes (5 columnas): Espaciado ultra compacto sin saltos de línea grandes */
+  /* Ajuste especial: Clientes */
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(1) {
     order: 1;
-    font-size: 16px;
+    font-size: var(--font-md);
     font-weight: 800;
-    color: #212529;
+    color: var(--fiskal-text);
     border-bottom: 1px dashed #dee2e6;
-    padding-bottom: 4px;
+    padding-bottom: var(--space-1);
     margin-bottom: 2px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0px;
+    gap: 0;
     line-height: 1.15;
   }
-
-  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(1) strong {
-    margin-bottom: 1px;
-  }
-
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(1) strong { margin-bottom: 1px; }
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(1) span {
-    font-size: 12px !important;
+    font-size: var(--font-sm) !important;
     font-weight: 600;
-    color: #6c757d !important;
+    color: var(--fiskal-text-muted) !important;
     margin-top: 0 !important;
   }
-
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(2) { order: 2; }
-  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(2)::before { content: "Total Facturado:"; color: #6c757d; font-weight: 600; }
-
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(2)::before { content: "Total Facturado:"; color: var(--fiskal-text-muted); font-weight: 600; }
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(3) { order: 3; }
-  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(3)::before { content: "Saldo Pendiente:"; color: #6c757d; font-weight: 600; }
-
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(3)::before { content: "Saldo Pendiente:"; color: var(--fiskal-text-muted); font-weight: 600; }
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(4) { order: 4; }
-  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(4)::before { content: "N° Compras:"; color: #6c757d; font-weight: 600; }
-
+  .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(4)::before { content: "N° Compras:"; color: var(--fiskal-text-muted); font-weight: 600; }
   .fiskal-table:not(.receipt-table) tr:has(td:nth-child(5)):not(:has(td:nth-child(6))) td:nth-child(5) { order: 5; }
 }
 
-/* DISEÑO RESPONSIVO MÓVIL EN HORIZONTAL */
+/* ============================================================================
+   RESPONSIVE — MÓVIL HORIZONTAL (Tablet en horizontal)
+   ============================================================================ */
 @media (max-width: 1024px) and (orientation: landscape) {
   .fiskal-container {
     position: relative;
@@ -1235,12 +1453,12 @@
     height: 100%;
     width: 64px;
     z-index: 1000;
-    background: #ffffff;
+    background: var(--fiskal-bg-card);
     border-right: 1px solid #dee2e6;
-    transition: width 0.3s ease;
+    transition: width var(--transition-slow) ease;
     overflow: hidden;
     box-shadow: 4px 0 15px rgba(0, 0, 0, 0.08);
-    padding: 16px 12px;
+    padding: var(--space-4) var(--space-3);
     display: flex;
     flex-direction: column;
     cursor: pointer;
@@ -1253,36 +1471,25 @@
     z-index: 1001;
   }
 
-  .fiskal-sidebar .brand-logo {
-    display: none;
-  }
-
-  .fiskal-sidebar.expanded .brand-logo {
-    display: block;
-    margin-bottom: 16px;
-  }
+  .fiskal-sidebar .brand-logo { display: none; }
+  .fiskal-sidebar.expanded .brand-logo { display: block; margin-bottom: var(--space-4); }
 
   .fiskal-sidebar .nav-menu {
     margin-top: 10px;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--space-2);
   }
 
   .nav-btn {
     white-space: nowrap;
     overflow: hidden;
-    padding: 10px 12px;
-    font-size: 14px;
+    padding: 10px var(--space-3);
+    font-size: var(--font-base);
     cursor: pointer;
   }
 
-  .nav-btn span {
-    display: none;
-  }
-
-  .fiskal-sidebar.expanded .nav-btn span {
-    display: inline;
-  }
+  .nav-btn span { display: none; }
+  .fiskal-sidebar.expanded .nav-btn span { display: inline; }
 
   .fiskal-main {
     flex: 1;
@@ -1295,14 +1502,12 @@
   }
 }
 
-/* Optimización para Impresión Carta (Paginación de Múltiples Páginas para QRs) y Térmicas */
+/* ============================================================================
+   IMPRESIÓN (Ticket térmico y Carta/A4)
+   ============================================================================ */
 @media print {
-  body * {
-    visibility: hidden !important;
-  }
-  .modal-overlay, .modal-overlay * {
-    visibility: visible !important;
-  }
+  body * { visibility: hidden !important; }
+  .modal-overlay, .modal-overlay * { visibility: visible !important; }
   .modal-overlay {
     position: absolute;
     left: 0;
@@ -1346,87 +1551,4 @@
   .invoice-body, .label-print-area {
     padding: 4mm !important;
   }
-}
-
-
-/* ==========================================================================
-   ESTILOS DEL BOTÓN FLOTANTE DEL CARRITO (MÓVIL)
-   ========================================================================== */
-
-/* 1. Por defecto (en computadoras), ocultamos el botón flotante */
-.mobile-fab-container {
-  display: none;
-}
-
-/* 2. En pantallas pequeñas (Tablets y Celulares), lo encendemos y le damos estilo */
-@media (max-width: 1024px) {
-  .mobile-fab-container {
-    display: flex;
-    position: fixed;
-    bottom: 85px; 
-    right: 16px; 
-    z-index: 9998;
-    align-items: center;
-    cursor: pointer;
-    filter: drop-shadow(0 8px 16px rgba(17, 24, 39, 0.4));
-  }
-  
-  .fab-price-tag {
-    background: #111827; 
-    color: white;
-    font-size: 18px; 
-    font-weight: 600; 
-    padding: 8px 16px 8px 16px;
-    border-radius: 12px 0 0 12px; 
-    margin-right: -15px;
-    animation: slideOutLeft 0.3s ease-out forwards;
-  }
-  
-  .fab-circle {
-    background: #111827;
-    width: 75px;
-    height: 75px;
-    border-radius: 50%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    position: relative;
-    z-index: 2; 
-    color: white;
-    gap: 6px;
-  }
-
-  .fab-count {
-    font-size: 26px; 
-    font-weight: 600; 
-    line-height: 1;
-    margin-top: 2px;
-  }
-
-  @keyframes slideOutLeft {
-    from { opacity: 0; transform: translateX(20px); }
-    to { opacity: 1; transform: translateX(0); }
-  }
-}
-@keyframes pulseRed {
-  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-  70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-}
-
-.pulse-animation {
-  animation: pulseRed 2s infinite;
-}
-
-@keyframes vibrateIcon {
-  0% { transform: translate(0); }
-  20% { transform: translate(-2px, 2px); }
-  40% { transform: translate(-2px, -2px); }
-  60% { transform: translate(2px, 2px); }
-  80% { transform: translate(2px, -2px); }
-  100% { transform: translate(0); }
-}
-
-.vibrate {
-  animation: vibrateIcon 0.3s linear infinite;
 }
