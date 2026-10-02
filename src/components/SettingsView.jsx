@@ -44,8 +44,8 @@ function SettingsView({
   supabase,
   onStartTour, 
   currentStoreId,
-  storeAdminPin,
-  setStoreAdminPin, 
+  storeHasPin,
+  setStoreHasPin, 
   currentStoreType,
   currentStoreRif,
   setCurrentStoreRif,
@@ -74,6 +74,7 @@ function SettingsView({
   handleCreateEmployee,
   creatingEmployee,
   employees,
+  fetchEmployees,
   newRegisterName,
   setNewRegisterName,
   isMainRegister,
@@ -106,6 +107,31 @@ function SettingsView({
   uploadingBanner,
 }) {
   const fileInputRef = useRef(null);
+
+    // PIN local (ya no se lee del servidor, solo se guarda hasheado)
+  const [localPin, setLocalPin] = useState("");
+  const [savingPin, setSavingPin] = useState(false);
+
+  const handleSavePin = async () => {
+    if (localPin.length < 4) {
+      return alert("El PIN debe tener al menos 4 dígitos.");
+    }
+    setSavingPin(true);
+    try {
+      const { error } = await supabase.rpc("set_admin_pin", {
+        p_store_id: currentStoreId,
+        p_pin: localPin,
+      });
+      if (error) throw error;
+      alert("✅ PIN de seguridad actualizado exitosamente.");
+      setLocalPin("");
+      setStoreHasPin(true);
+    } catch (e) {
+      alert("Error guardando PIN: " + e.message);
+    } finally {
+      setSavingPin(false);
+    }
+  };
 
   // ==========================================
   // ESTADO LOCAL: PUNTOS DE VENTA
@@ -249,24 +275,27 @@ function SettingsView({
               <div style={{ display: 'flex', gap: '6px' }}>
                 <input 
                   type="password" 
-                  maxLength={4} 
-                  value={storeAdminPin} 
-                  onChange={e => setStoreAdminPin(e.target.value.replace(/\D/g, ''))} 
-                  placeholder="1234" 
+                  inputMode="numeric"
+                  maxLength={6} 
+                  value={localPin} 
+                  onChange={e => setLocalPin(e.target.value.replace(/\D/g, ''))} 
+                  placeholder={storeHasPin ? "••••" : "1234"}
                   style={{ width: '100px', padding: '10px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '16px', letterSpacing: '2px', textAlign: 'center', fontWeight: 'bold', outline: 'none' }} 
                 />
-                <button type="button" onClick={async () => {
-                  if (storeAdminPin.length < 4) return alert("El PIN debe tener 4 dígitos.");
-                  try {
-                    const { error } = await supabase.from('stores').update({ admin_pin: storeAdminPin }).eq('id', currentStoreId);
-                    if (error) throw error; // Si hay error en Supabase, lo atrapamos
-                    alert("✅ PIN de seguridad actualizado exitosamente.");
-                  } catch(e) { 
-                    console.error("Detalle del error:", e);
-                    alert("Error guardando PIN: " + e.message); 
-                  }
-                }} style={{ background: '#111827', color: '#fff', border: 'none', padding: '0 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar PIN</button>
+                <button 
+                  type="button" 
+                  onClick={handleSavePin}
+                  disabled={savingPin}
+                  style={{ background: '#111827', color: '#fff', border: 'none', padding: '0 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: savingPin ? 'wait' : 'pointer', opacity: savingPin ? 0.6 : 1 }}
+                >
+                  {savingPin ? "Guardando..." : "Guardar PIN"}
+                </button>
               </div>
+              {storeHasPin && (
+                <span style={{ fontSize: "11px", color: "#16a34a", fontWeight: "bold", display: "block", marginTop: "4px" }}>
+                  ✓ PIN activo (hasheado en el servidor)
+                </span>
+              )}
             </div>
           </div>
 
@@ -833,21 +862,42 @@ function SettingsView({
                   <strong style={{ display: "block" }}>{emp.full_name}</strong>
                   <span style={{ color: "#6c757d", fontSize: "11px" }}>Rol: {emp.role}</span>
                 </div>
-                <button
+                                <button
                   type="button"
                   onClick={async () => {
                     if (
                       window.confirm(
-                        `⚠️ ADVERTENCIA: ¿Estás seguro de que deseas eliminar a ${emp.full_name}?\n\nPerderá el acceso al sistema inmediatamente.`
+                        `⚠️ ADVERTENCIA: ¿Estás seguro de que deseas eliminar a ${emp.full_name}?\n\nPerderá el acceso al sistema inmediatamente y su cuenta será eliminada por completo. Esta acción NO se puede deshacer.`
                       )
                     ) {
                       try {
-                        const { error } = await supabase
-                          .from("profiles")
-                          .delete()
-                          .eq("id", emp.id);
-                        if (error) throw error;
-                        alert("✅ Empleado eliminado. Recarga la página para ver los cambios.");
+                        const { data: result, error } = await supabase.functions.invoke(
+                          "delete-employee",
+                          { body: { employee_id: emp.id } }
+                        );
+
+                        if (error) {
+                          throw new Error(error.message || "Error llamando a la función");
+                        }
+
+                        if (result?.error) {
+                          throw new Error(result.error);
+                        }
+
+                        if (result?.partial) {
+                          alert(
+                            `⚠️ El perfil fue eliminado, pero hubo un problema con la cuenta de acceso.\n\nDetalle: ${result.error}\n\nRevisa Supabase → Authentication → Users.`
+                          );
+                        } else if (result?.success) {
+                          alert("✅ Empleado eliminado correctamente.");
+                        } else {
+                          alert("✅ Empleado eliminado.");
+                        }
+
+                        // Refrescar la lista sin recargar la página
+                        if (typeof fetchEmployees === "function") {
+                          await fetchEmployees(currentStoreId);
+                        }
                       } catch (e) {
                         alert("Error eliminando empleado: " + e.message);
                       }

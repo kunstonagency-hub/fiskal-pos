@@ -538,7 +538,7 @@ export default function DeliveryDashboard({ storeId, isOnline, bcvRate }) {
                       flexWrap: "wrap",
                     }}
                   >
-                    <CreditCard size={14} flexShrink={0} />
+                    <CreditCard size={14} style={{ flexShrink: 0 }} />
                     <span
                       style={{
                         textTransform: "capitalize",

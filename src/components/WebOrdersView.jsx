@@ -1,6 +1,19 @@
 import React from "react";
 import { Monitor, ShoppingCart, CheckCircle } from "lucide-react";
 
+// Convierte items a array sin importar si vienen como string JSON o ya son array.
+const parseWebOrderItems = (raw) => {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+};
+
 const WebOrdersView = ({
   sales,
   currentStoreType,
@@ -220,8 +233,8 @@ const WebOrdersView = ({
                       🛒 Resumen del Pedido:
                     </strong>
                     
-                    {order.items && order.items.map((item, idx) => (
-                      <div key={idx} style={{ marginBottom: "6px", borderBottom: idx !== order.items.length - 1 ? "1px dashed #e5e7eb" : "none", paddingBottom: "4px" }}>
+                    {parseWebOrderItems(order.items).map((item, idx, arr) => (
+                      <div key={idx} style={{ marginBottom: "6px", borderBottom: idx !== arr.length - 1 ? "1px dashed #e5e7eb" : "none", paddingBottom: "4px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", color: "#111827", fontWeight: "700", fontSize: "13px" }}>
                           <span>{item.quantity}x {item.name}</span>
                           <span>${(item.price * item.quantity).toFixed(2)}</span>

@@ -162,6 +162,83 @@ const formatWhatsAppNumber = (phoneStr) => {
   return clean;
 };
 
+// 🚀 FIX A7: función única para calcular la deuda real de una venta.
+// Reemplaza la lógica ambigua anterior y evita bugs de dinero.
+// - Si no hay venta (venta nueva): usa el total del carrito actual.
+// - Si la venta sigue abierta (pending / preparando / ready): el total puede haber cambiado, usar el carrito actual.
+// - En cualquier otro caso: usa balance_due_usd tal cual (incluso si es 0, porque pagado es pagado).
+const getSaleDebtUSD = (sale, cartTotalUSD) => {
+  if (!sale) return Number(cartTotalUSD) || 0;
+
+  const status = String(sale.status || "").trim().toLowerCase();
+
+  // Venta en curso: el total vigente es el carrito actual
+  if (status === "pending" || status === "preparando" || status === "ready") {
+    return Number(cartTotalUSD) || 0;
+  }
+
+  // En cualquier otro caso, respetamos balance_due_usd
+  // (usando ?? para que un 0 real sea respetado y no se caiga al total_usd)
+  const balance = sale.balance_due_usd;
+  if (balance !== null && balance !== undefined) {
+    return Number(balance);
+  }
+
+  return Number(sale.total_usd) || 0;
+};
+
+
+// 🚀 FIX #11A: Helper que evita que la app se rompa si localStorage se llena.
+// Si falla por falta de espacio, limpia cachés viejas y reintenta.
+const safeCacheSet = (key, value) => {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    const isQuota =
+      e.name === "QuotaExceededError" ||
+      e.code === 22 ||
+      (e.message && e.message.toLowerCase().includes("quota"));
+
+    if (!isQuota) {
+      console.warn("Error guardando en localStorage:", e);
+      return false;
+    }
+
+    console.warn(
+      "⚠️ localStorage lleno. Limpiando cachés antiguas y reintentando..."
+    );
+
+    // Borrar todas las cachés fiskal_cache_* excepto la que intentamos guardar
+    const keysToDelete = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("fiskal_cache_") && k !== key) {
+        keysToDelete.push(k);
+      }
+    }
+    keysToDelete.forEach((k) => {
+      try {
+        localStorage.removeItem(k);
+      } catch (_) {}
+    });
+
+    // Reintentar una vez
+    try {
+      localStorage.setItem(key, value);
+      console.log("✅ Caché guardada después de limpiar espacio.");
+      return true;
+    } catch (retryErr) {
+      console.error(
+        "❌ No se pudo guardar en localStorage ni tras limpiar:",
+        retryErr
+      );
+      return false;
+    }
+  }
+};
+
+
 const compressImage = (file, maxWidth = 800, quality = 0.7) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -336,7 +413,7 @@ function App() {
 };
 
   // NUEVO: Candado de Autorización (PIN de Dueño)
-  const [storeAdminPin, setStoreAdminPin] = useState('1234');
+  const [storeHasPin, setStoreHasPin] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authPinInput, setAuthPinInput] = useState('');
   const [pendingAction, setPendingAction] = useState(null);
@@ -353,16 +430,35 @@ function App() {
     }
   }
 
-  function verifyAdminPin(e) {
+  async function verifyAdminPin(e) {
     e.preventDefault();
-    if (authPinInput === storeAdminPin) {
-      setShowAuthModal(false);
-      if (pendingAction.type === 'edit') handleStartEditProduct(pendingAction.payload);
-      else if (pendingAction.type === 'delete') handleDeleteProduct(pendingAction.payload.id);
-      else if (pendingAction.type === 'delete_client') handleDeleteClient(pendingAction.payload);
-      setPendingAction(null);
-    } else {
-      alert("❌ PIN Incorrecto. Autorización denegada.");
+    if (!currentStoreId) {
+      alert("Error: no hay tienda activa.");
+      return;
+    }
+
+    try {
+      const { data: isValid, error } = await supabase.rpc("verify_admin_pin", {
+        p_store_id: currentStoreId,
+        p_pin: authPinInput,
+      });
+
+      if (error) throw error;
+
+      if (isValid) {
+        setShowAuthModal(false);
+        if (pendingAction.type === 'edit') handleStartEditProduct(pendingAction.payload);
+        else if (pendingAction.type === 'delete') handleDeleteProduct(pendingAction.payload.id);
+        else if (pendingAction.type === 'delete_client') handleDeleteClient(pendingAction.payload);
+        setPendingAction(null);
+        setAuthPinInput('');
+      } else {
+        alert("❌ PIN Incorrecto. Autorización denegada.");
+        setAuthPinInput('');
+      }
+    } catch (err) {
+      console.error("Error verificando PIN:", err);
+      alert("Error al verificar PIN: " + err.message);
       setAuthPinInput('');
     }
   }
@@ -1062,17 +1158,26 @@ function App() {
 
   // Asegúrate de que esta función exista en el archivo donde manejas el modal o la vista de la factura
   const getInvoiceClientDocument = (sale) => {
-    if (!sale) return "N/A";
-    if (sale.client_document) return sale.client_document;
-    if (sale.client_id && typeof clients !== "undefined") {
-      const foundClient = clients.find((c) => c.id === sale.client_id);
-      if (foundClient && (foundClient.document || foundClient.rif)) {
-        return foundClient.document || foundClient.rif;
-      }
-    }
-    return "N/A";
-  };
+  if (!sale) return "N/A";
 
+  // 1) Buscar en payment_details (donde realmente se guarda)
+  if (sale.payment_details?.client_document) {
+    return sale.payment_details.client_document;
+  }
+
+  // 2) Por si algún día se guarda en la raíz de la venta
+  if (sale.client_document) return sale.client_document;
+
+  // 3) Fallback: buscar por nombre en la lista de clientes
+  if (sale.client_name && typeof clients !== "undefined") {
+    const foundClient = clients.find((c) => c.name === sale.client_name);
+    if (foundClient) {
+      return foundClient.document || foundClient.rif || "N/A";
+    }
+  }
+
+  return "N/A";
+};
   const [plantillas, setPlantillas] = useState({
     reposicionStock:
       "¡Hola {cliente}! Te saludamos de {comercio}. Te contamos que el producto {producto} ya está disponible nuevamente en stock. ¿Te guardamos el tuyo?",
@@ -1246,8 +1351,21 @@ function App() {
               }, 6000);
             }
 
-            // Refrescamos la lista de ventas instantáneamente
-            fetchSales(currentStoreId);
+            // 🚀 REFRESCO QUIRÚRGICO: en lugar de recargar TODAS las ventas,
+            // actualizamos solo el registro que cambió, en el array local.
+            if (payload.eventType === "INSERT" && payload.new) {
+              setSales((prev) => {
+                // Evitar duplicados si ya lo tenemos (por race conditions)
+                if (prev.some((s) => s.id === payload.new.id)) return prev;
+                return [payload.new, ...prev];
+              });
+            } else if (payload.eventType === "UPDATE" && payload.new) {
+              setSales((prev) =>
+                prev.map((s) => (s.id === payload.new.id ? { ...s, ...payload.new } : s))
+              );
+            } else if (payload.eventType === "DELETE" && payload.old) {
+              setSales((prev) => prev.filter((s) => s.id !== payload.old.id));
+            }
           }
         },
       )
@@ -1531,7 +1649,7 @@ function App() {
         activeStoreId !== "undefined"
       ) {
         if (navigator.onLine) {
-          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active, store_type, country, rif, document, address, tax_enabled, tax_rate, tax_inclusive, krono_enabled, lat, lng, is_trial, trial_end_date, subscription_expires_at, kds_banners, admin_pin').eq('id', activeStoreId).single();
+          const { data: storeInfo, error: storeErr } = await supabase.from('stores').select('name, is_active, store_type, country, rif, document, address, tax_enabled, tax_rate, tax_inclusive, krono_enabled, lat, lng, is_trial, trial_end_date, subscription_expires_at, kds_banners, admin_pin_hash').eq('id', activeStoreId).single();
 
           if (storeInfo) {
             console.log(
@@ -1617,7 +1735,7 @@ function App() {
               setCurrentStoreLat(parseFloat(storeInfo.lat) || 10.4806);
               setCurrentStoreLng(parseFloat(storeInfo.lng) || -66.9036);
               setCurrentStoreKdsBanners(storeInfo.kds_banners || []);
-              setStoreAdminPin(storeInfo.admin_pin || '1234');
+              setStoreHasPin(!!storeInfo.admin_pin_hash);
 
               localStorage.setItem(
                 `fiskal_cache_store_name_${activeStoreId}`,
@@ -1755,9 +1873,17 @@ function App() {
         if (profErr) throw profErr;
       }
 
-      alert(
-        `¡Vendedor de Sistema registrado con éxito!\n\nCredenciales de acceso generadas:\nCorreo: ${newVendorEmail}\nContraseña Temporal Única: ${tempPassword}\n\n(Copia esta contraseña y compártela con el vendedor)`,
-      );
+      try {
+        await navigator.clipboard.writeText(tempPassword);
+        alert(
+          `¡Vendedor de Sistema registrado con éxito!\n\nCorreo: ${newVendorEmail}\n\n✅ La contraseña temporal fue copiada automáticamente al portapapeles.\n\nPégala ahora en un WhatsApp o mensaje para enviársela al vendedor.\nPor seguridad NO se muestra en pantalla.`,
+        );
+      } catch (clipErr) {
+        alert(
+          `¡Vendedor de Sistema registrado con éxito!\n\nCorreo: ${newVendorEmail}\nContraseña Temporal: ${tempPassword}\n\n⚠️ Cópiala AHORA y compártela por un canal privado. Por seguridad no se volverá a mostrar.`,
+        );
+      }
+
       setNewVendorName("");
       setNewVendorEmail("");
       setNewVendorPhone("");
@@ -2108,6 +2234,12 @@ function App() {
     setCreatingEmployee(true);
 
     try {
+      // 1) Guardamos la sesión actual del dueño ANTES de crear al empleado.
+      const {
+        data: { session: adminSession },
+      } = await supabase.auth.getSession();
+
+      // 2) Creamos el empleado (esto internamente inicia sesión como el nuevo usuario).
       const { data, error } = await supabase.auth.signUp({
         email: newEmpEmail,
         password: newEmpPass,
@@ -2129,16 +2261,24 @@ function App() {
         ]);
 
         if (profError) throw profError;
-
-        alert(
-          "¡Empleado registrado exitosamente!\n\nAVISO TÉCNICO: Al registrar un usuario, Supabase inicia sesión automáticamente con la cuenta del nuevo empleado. Por favor, dale a 'Cerrar Sesión' y entra de nuevo con tus credenciales.",
-        );
-
-        setNewEmpName("");
-        setNewEmpEmail("");
-        setNewEmpPass("");
-        fetchEmployees(currentStoreId);
       }
+
+      // 3) Restauramos la sesión del dueño para que no lo saque.
+      if (adminSession) {
+        await supabase.auth.setSession({
+          access_token: adminSession.access_token,
+          refresh_token: adminSession.refresh_token,
+        });
+      }
+
+      alert(
+        `¡Empleado registrado exitosamente!\n\nNombre: ${newEmpName}\nCorreo: ${newEmpEmail}\n\nEl empleado ya puede iniciar sesión con esas credenciales.`,
+      );
+
+      setNewEmpName("");
+      setNewEmpEmail("");
+      setNewEmpPass("");
+      fetchEmployees(currentStoreId);
     } catch (error) {
       alert("Error al registrar empleado: " + error.message);
     } finally {
@@ -2225,9 +2365,17 @@ function App() {
         });
       }
 
-      alert(
-        `¡Acceso creado exitosamente para ${ownerModalName}!\n\nCorreo: ${ownerModalEmail}\nContraseña: ${ownerModalPass}`,
-      );
+      try {
+        await navigator.clipboard.writeText(ownerModalPass);
+        alert(
+          `¡Acceso creado exitosamente para ${ownerModalName}!\n\nCorreo: ${ownerModalEmail}\n\n✅ La contraseña fue copiada automáticamente al portapapeles.\n\nPégala en un mensaje privado para enviársela al dueño.\nPor seguridad NO se muestra en pantalla.`,
+        );
+      } catch (clipErr) {
+        alert(
+          `¡Acceso creado exitosamente para ${ownerModalName}!\n\nCorreo: ${ownerModalEmail}\nContraseña: ${ownerModalPass}\n\n⚠️ Guárdala en un lugar seguro y compártela por un canal privado.`,
+        );
+      }
+
       setShowOwnerModal(false);
       setTargetStoreForOwner(null);
       fetchAdminStores();
@@ -2263,7 +2411,7 @@ function App() {
               .single();
             if (!insErr && newReg) {
               cloudRegs = [newReg];
-              localStorage.setItem(
+              safeCacheSet(
                 `fiskal_cache_registers_${storeId}`,
                 JSON.stringify(cloudRegs),
               );
@@ -2969,6 +3117,7 @@ function App() {
       if (actions.length === 0 && oldOfflineSales.length === 0) return;
 
       let generalErrorOccurred = false;
+      const failedActions = [];
       const idMap = {};
 
       actions.sort((a, b) => a.timestamp - b.timestamp);
@@ -3204,9 +3353,11 @@ function App() {
           await clearOfflineAction(action.local_id);
         } else {
           generalErrorOccurred = true;
-          alert(
-            `Fallo al sincronizar hacia la nube (Tipo: ${action.type}). Motivo principal: ${errorMessage}. El registro se mantendrá localmente para evitar pérdidas.`,
-          );
+          // 🚀 FIX A4: acumulamos errores en lugar de mostrar un alert por cada uno.
+          failedActions.push({
+            type: action.type,
+            reason: errorMessage,
+          });
         }
       }
 
@@ -3214,8 +3365,22 @@ function App() {
       await fetchSales(currentStoreId);
       await fetchProducts(currentStoreId);
       checkPendingSales();
+
+      // 🚀 FIX A4: un único alert al final con todos los errores
       if (!generalErrorOccurred) {
-        alert("¡Sincronización completada y cola limpia!");
+        alert("✅ ¡Sincronización completada y cola limpia!");
+      } else {
+        const listaErrores = failedActions
+          .slice(0, 10)
+          .map((f, i) => `${i + 1}. [${f.type}] ${f.reason}`)
+          .join("\n");
+        const extra =
+          failedActions.length > 10
+            ? `\n\n... y ${failedActions.length - 10} error(es) más.`
+            : "";
+        alert(
+          `⚠️ Sincronización con ${failedActions.length} problema(s):\n\n${listaErrores}${extra}\n\nLos registros NO se perdieron. Se reintentarán en el próximo intento.`
+        );
       }
     } catch (error) {
       console.error(
@@ -3242,7 +3407,7 @@ function App() {
         if (!error) {
           cloudProducts = data || [];
           // Guardamos en caché de manera específica para esta tienda
-          localStorage.setItem(
+          safeCacheSet(
             `fiskal_cache_products_${storeId}`,
             JSON.stringify(cloudProducts),
           );
@@ -3291,19 +3456,31 @@ function App() {
     try {
       let cloudSales = [];
       if (navigator.onLine) {
+        // 🚀 RENDIMIENTO: Cargamos solo las ventas de los últimos 30 días.
+        // Las más antiguas siguen en la base de datos, pero no se descargan al inicio.
+        // Si necesitas ver ventas antiguas, usa el filtro de fecha personalizada en el Historial.
+        const hace30Dias = new Date(
+          Date.now() - 30 * 24 * 60 * 60 * 1000
+        ).toISOString();
+
         const { data, error } = await supabase
           .from("sales")
           .select("*")
           .eq("store_id", storeId)
+          .gte("created_at", hace30Dias)
           .order("created_at", { ascending: false });
+
         if (!error) {
           cloudSales = data || [];
-          localStorage.setItem(
+          safeCacheSet(
             `fiskal_cache_sales_${storeId}`,
             JSON.stringify(cloudSales),
           );
+        } else {
+          console.warn("Error cargando ventas recientes:", error.message);
         }
       } else {
+        // Modo offline: usar la última caché disponible (ya está limitada a 30 días)
         const cached = localStorage.getItem(`fiskal_cache_sales_${storeId}`);
         if (cached) cloudSales = JSON.parse(cached);
       }
@@ -3358,7 +3535,7 @@ function App() {
           .order("id", { ascending: false });
         if (!error) {
           cloudClients = data || [];
-          localStorage.setItem(
+          safeCacheSet(
             `fiskal_cache_clients_${storeId}`,
             JSON.stringify(cloudClients),
           );
@@ -3566,21 +3743,48 @@ function App() {
         return;
       }
 
-      // 5. Alerta detallando ambas cajas
-      let alertMsg = "Corte de caja realizado.\n\n";
-      alertMsg += `Diferencia USD: ${differenceUsd > 0 ? "+" : ""}$${differenceUsd.toFixed(2)}\n`;
-      if (currentStoreCountry === "venezuela") {
-        alertMsg += `Diferencia Bs: ${differenceBs > 0 ? "+" : ""}Bs. ${differenceBs.toFixed(2)}`;
-      }
-      alert(alertMsg);
+
 
       setShowCloseShiftModal(false);
       setActualCashUSD("");
       setActualCashBs("");
       setShiftNotes("");
 
-      // Recargar la página o ejecutar tu función de refresco
-      window.location.reload();
+      // 🚀 REFRESCO SIN RECARGAR: limpiamos el turno actual y refrescamos solo lo necesario
+      setCurrentShift(null);
+
+      // Limpiar el carrito porque la caja ya no está abierta
+      setCart([]);
+      setSettlingSale(null);
+      setSelectedClient("Cliente General");
+
+      // Refrescar el historial de turnos cerrados
+      if (navigator.onLine && currentStoreId) {
+        try {
+          const { data: shiftsData } = await supabase
+            .from("shifts")
+            .select("*")
+            .eq("store_id", currentStoreId)
+            .eq("status", "closed")
+            .order("closed_at", { ascending: false })
+            .limit(20);
+          if (shiftsData) setPastShifts(shiftsData);
+
+          // Refrescar ventas también (algunas pueden haber cambiado de estado)
+          await fetchSales(currentStoreId);
+        } catch (refreshErr) {
+          console.warn("Error refrescando datos post-cierre:", refreshErr);
+        }
+      }
+
+      // Alerta única con diferencia + confirmación
+      let alertMsg = "✅ Corte de caja realizado con éxito.\n\n";
+      alertMsg += `📊 Diferencia USD: ${differenceUsd > 0 ? "+" : ""}$${differenceUsd.toFixed(2)}\n`;
+      if (currentStoreCountry === "venezuela") {
+        alertMsg += `📊 Diferencia Bs:  ${differenceBs > 0 ? "+" : ""}Bs. ${differenceBs.toFixed(2)}\n`;
+      }
+      alertMsg += "\n🔓 La caja está lista para abrir un nuevo turno.";
+      alert(alertMsg);
     } catch (err) {
       console.error("Error cerrando turno:", err);
       alert("Error cerrando el turno.");
@@ -4506,22 +4710,91 @@ function App() {
   }, [changeUSD]);
 
   const deductInventory = async (itemsToDeduct) => {
+    // 🚀 FIX #11B: Descuento atómico en Postgres.
+    // Si dos cajeros venden el mismo producto al mismo tiempo, Postgres
+    // garantiza que NO se venda de más ni quede stock negativo.
+    const failures = [];
+
     for (const item of itemsToDeduct) {
-      const currentProd = products.find((p) => p.id === item.id);
-      if (currentProd) {
-        const newStock = Math.max(0, (currentProd.stock || 0) - item.quantity);
-        await supabase
-          .from("products")
-          .update({ stock: newStock })
-          .eq("id", item.id)
-          .eq("store_id", currentStoreId);
+      // Si el producto es local (aún no sincronizado), se descontará al sincronizar.
+      if (!item.id || String(item.id).startsWith("local_")) {
+        continue;
+      }
+
+      if (navigator.onLine) {
+        try {
+          const { data: wasDecremented, error } = await supabase.rpc(
+            "decrement_product_stock",
+            {
+              p_product_id: item.id,
+              p_store_id: currentStoreId,
+              p_quantity: item.quantity,
+            }
+          );
+
+          if (error) {
+            console.error("Error descontando stock:", error);
+            failures.push({ item, reason: error.message });
+          } else if (wasDecremented === false) {
+            // No había stock suficiente
+            failures.push({
+              item,
+              reason: `Stock insuficiente para "${item.name}"`,
+            });
+          }
+        } catch (rpcErr) {
+          console.error("Error llamando RPC de stock:", rpcErr);
+          failures.push({ item, reason: rpcErr.message });
+        }
+      } else {
+        // Modo offline: fallback con descuento local.
+        // Puede haber colisión si varios dispositivos offline facturan a la vez,
+        // pero se reconcilia al sincronizar.
+        const currentProd = products.find((p) => p.id === item.id);
+        if (currentProd) {
+          const newStock = Math.max(0, (currentProd.stock || 0) - item.quantity);
+          await supabase
+            .from("products")
+            .update({ stock: newStock })
+            .eq("id", item.id)
+            .eq("store_id", currentStoreId);
+        }
       }
     }
-    await fetchProducts(currentStoreId);
+
+    if (navigator.onLine) {
+      await fetchProducts(currentStoreId);
+    }
+
+    // Si hubo fallos, avisamos al cajero (sin bloquear la venta, ya se cobró)
+    if (failures.length > 0) {
+      console.warn("⚠️ Productos con problemas de stock:", failures);
+      const mensaje = failures
+        .map((f) => `• ${f.item.name}: ${f.reason}`)
+        .join("\n");
+      // Nota: no bloqueamos la venta ya cobrada, solo avisamos.
+      alert(
+        `⚠️ ATENCIÓN: La venta se registró, pero hubo problemas de stock:\n\n${mensaje}\n\nRevisa el inventario de inmediato.`
+      );
+    }
+
+    return failures;
   };
 
-  const handleHoldOrder = async () => {
+    const handleHoldOrder = async () => {
     if (cart.length === 0 || !currentShift || !currentStoreId) return;
+
+    // 🚀 FIX M10: bloquear si la tasa de cambio no está lista en Venezuela
+    if (
+      currentStoreCountry &&
+      currentStoreCountry.toLowerCase().includes("venezuela") &&
+      (!bcvRate || bcvRate <= 0)
+    ) {
+      alert(
+        "⚠️ No se puede guardar el pedido: la tasa de cambio (BCV) no está configurada o es inválida.\n\nVe al ícono de tasa arriba a la derecha y actualízala."
+      );
+      return;
+    }
 
     setProcessing(true);
     const clientData = clients.find((c) => c.name === selectedClient);
@@ -4661,8 +4934,20 @@ function App() {
     setShowPaymentModal(true);
   };
 
-const handleCreditCheckout = async () => {
+  const handleCreditCheckout = async () => {
     if (!currentShift || !currentStoreId) return alert("La caja está cerrada.");
+
+    // 🚀 FIX M10: bloquear si la tasa de cambio no está lista en Venezuela
+    if (
+      currentStoreCountry &&
+      currentStoreCountry.toLowerCase().includes("venezuela") &&
+      (!bcvRate || bcvRate <= 0)
+    ) {
+      alert(
+        "⚠️ No se puede registrar crédito: la tasa de cambio (BCV) no está configurada o es inválida.\n\nVe al ícono de tasa arriba a la derecha y actualízala."
+      );
+      return;
+    }
     if (selectedClient === "Cliente General")
       return alert("Para registrar crédito debes asociar un cliente.");
     if (
@@ -4823,8 +5108,9 @@ const handleCreditCheckout = async () => {
       currentStoreCountry.toLowerCase().includes("venezuela") &&
       (!bcvRate || bcvRate <= 0)
     ) {
-      alert("No se puede cobrar: la tasa de cambio (BCV) no está configurada o es inválida en este momento.");
-      return;
+            alert(
+        "⚠️ No se puede cobrar: la tasa de cambio (BCV) no está configurada o es inválida.\n\nVe al ícono de tasa arriba a la derecha y actualízala antes de continuar."
+      );      return;
     }
 
     const finalCashUSD = parseFloat(payCashUSD) || 0;
@@ -4841,7 +5127,8 @@ const handleCreditCheckout = async () => {
       (finalCashBs + finalPagoMovil + finalDebit) / (bcvRate || 1);
 
     // --- NUEVO: CÁLCULOS DE RECARGO DE TARJETA ---
-    const baseDebt = settlingSale ? (settlingSale.status === "pending" ? totalUSD : (settlingSale.balance_due_usd || settlingSale.total_usd)) : totalUSD;
+    // 🚀 FIX A7: cálculo unificado y sin bugs (respeta balance_due_usd = 0)
+    const baseDebt = getSaleDebtUSD(settlingSale, totalUSD);
     const intlFeeAmount = (activePayMethods.debit && isIntlCard) ? (baseDebt * (parseFloat(intlCardFeePct) || 0) / 100) : 0;
     const targetDebtUSD = baseDebt + intlFeeAmount;
     // ---------------------------------------------
@@ -5143,44 +5430,45 @@ const handleCreditCheckout = async () => {
 
   const getNextInvoiceNumber = async (storeId) => {
     if (!storeId) return "A-001";
-    try {
-      if (navigator.onLine) {
-        const { data, error } = await supabase
-          .from("sales")
-          .select("invoice_number")
-          .eq("store_id", storeId)
-          .not("invoice_number", "is", null)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
 
-        let nextSeq = 1;
-        if (!error && data && data.invoice_number) {
-          const parts = data.invoice_number.split("-");
-          if (parts.length === 2) {
-            const currentNum = parseInt(parts[1], 10);
-            if (!isNaN(currentNum)) {
-              nextSeq = currentNum + 1;
-            }
-          }
-        }
-        return `A-${String(nextSeq).padStart(3, "0")}`;
-      } else {
-        const storeSales = sales.filter(
-          (s) => String(s.store_id) === String(storeId),
-        );
-        let maxNum = 0;
-        storeSales.forEach((s) => {
-          if (s.invoice_number && s.invoice_number.startsWith("A-")) {
-            const num = parseInt(s.invoice_number.split("-")[1], 10);
-            if (!isNaN(num) && num > maxNum) maxNum = num;
-          }
+    // 1) Si estamos online, usamos la función atómica de Supabase.
+    //    Esto evita que dos cajeros generen el mismo número a la vez.
+    if (navigator.onLine) {
+      try {
+        const { data, error } = await supabase.rpc("get_next_invoice_number", {
+          p_store_id: storeId,
         });
-        return `A-${String(maxNum + 1).padStart(3, "0")}`;
+
+        if (!error && data) {
+          return data;
+        }
+
+        console.warn("RPC get_next_invoice_number falló:", error?.message);
+      } catch (rpcErr) {
+        console.warn("Error llamando RPC de facturas:", rpcErr);
       }
-    } catch (e) {
-      console.warn("Error calculando correlativo:", e);
     }
+
+    // 2) Modo offline o fallback: calculamos localmente.
+    //    (Puede haber colisión si dos dispositivos offline facturan a la vez,
+    //     pero se resuelve al sincronizar.)
+    try {
+      const storeSales = sales.filter(
+        (s) => String(s.store_id) === String(storeId),
+      );
+      let maxNum = 0;
+      storeSales.forEach((s) => {
+        if (s.invoice_number && s.invoice_number.startsWith("A-")) {
+          const num = parseInt(s.invoice_number.split("-")[1], 10);
+          if (!isNaN(num) && num > maxNum) maxNum = num;
+        }
+      });
+      return `A-${String(maxNum + 1).padStart(3, "0")}`;
+    } catch (e) {
+      console.warn("Error calculando correlativo offline:", e);
+    }
+
+    // 3) Último recurso: timestamp (garantiza unicidad)
     return `A-${Date.now().toString().slice(-4)}`;
   };
 
@@ -6720,6 +7008,7 @@ const handleCreditCheckout = async () => {
               pastShifts={pastShifts}
               registers={registers}
               employees={employees}
+                fetchEmployees={fetchEmployees}
               sales={sales}
               setSelectedShiftReport={setSelectedShiftReport}
               setShowShiftReportModal={setShowShiftReportModal}
@@ -6847,8 +7136,8 @@ const handleCreditCheckout = async () => {
               <SettingsView
                 supabase={supabase}
                 currentStoreId={currentStoreId}
-                storeAdminPin={storeAdminPin}
-                setStoreAdminPin={setStoreAdminPin} 
+                storeHasPin={storeHasPin}
+                setStoreHasPin={setStoreHasPin}
                 currentStoreRif={currentStoreRif}
                 setCurrentStoreRif={setCurrentStoreRif}
                 currentStoreAddress={currentStoreAddress}

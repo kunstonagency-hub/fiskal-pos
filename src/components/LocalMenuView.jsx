@@ -118,31 +118,44 @@ export default function LocalMenuView({ storeId }) {
     loadData();
   }, [storeId]);
 
+
+    // 🚀 FIX A6: helper que hace la búsqueda y devuelve los datos.
+  // Se usa tanto desde el onBlur como desde el submit para evitar la race condition.
+  const searchClientByDoc = async (doc) => {
+    const cleanDoc = (doc || "").trim();
+    if (!cleanDoc || cleanDoc.length < 4) return null;
+    try {
+      const { data } = await supabase
+        .from("clients")
+        .select("name, phone")
+        .eq("store_id", storeId)
+        .eq("document", cleanDoc)
+        .maybeSingle();
+      return data || null;
+    } catch (err) {
+      console.error("Error buscando cliente:", err);
+      return null;
+    }
+  };
+
+
   // BÚSQUEDA AUTOMÁTICA DE CLIENTE AL PERDER EL FOCO EN LA CÉDULA
   const handleSearchClient = async () => {
     const doc = clientDoc.trim();
     if (!doc || doc.length < 4) return;
-    
+
     setIsSearchingClient(true);
     setClientFound(false);
-    try {
-      const { data } = await supabase
-        .from('clients')
-        .select('name, phone')
-        .eq('store_id', storeId)
-        .eq('document', doc)
-        .maybeSingle();
 
-      if (data) {
-        setClientName(data.name || '');
-        if (data.phone) setClientPhone(data.phone);
-        setClientFound(true);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSearchingClient(false);
+    const data = await searchClientByDoc(doc);
+
+    if (data) {
+      setClientName(data.name || "");
+      if (data.phone) setClientPhone(data.phone);
+      setClientFound(true);
     }
+
+    setIsSearchingClient(false);
   };
 
   // CAPTURA Y MAPA GPS
@@ -300,20 +313,40 @@ export default function LocalMenuView({ storeId }) {
 
   const handleSendOrder = async (e) => {
     e.preventDefault();
-    
+
+    let nombreFinal = clientName.trim();
+    const docTrimmed = clientDoc.trim();
+
+    // 🚀 FIX A6: Si el usuario escribió cédula y la búsqueda no terminó,
+    // la resolvemos AHORA antes de validar.
+    if (!nombreFinal && docTrimmed.length >= 4 && !clientFound) {
+      setIsProcessing(true);
+      setIsSearchingClient(true);
+      const found = await searchClientByDoc(docTrimmed);
+      if (found) {
+        nombreFinal = found.name || "";
+        setClientName(nombreFinal);
+        if (found.phone && !clientPhone.trim()) setClientPhone(found.phone);
+        setClientFound(true);
+      }
+      setIsSearchingClient(false);
+    }
+
     if (isDelivery) {
-      if (!clientName.trim() || !clientPhone.trim() || !deliveryAddress.trim() || !clientDoc.trim()) {
+      if (!nombreFinal || !clientPhone.trim() || !deliveryAddress.trim() || !docTrimmed) {
+        setIsProcessing(false);
         return alert("Por favor completa tu cédula, nombre, teléfono y dirección de entrega.");
       }
     } else {
-      if (!clientName.trim() || !clientDoc.trim()) {
+      if (!nombreFinal || !docTrimmed) {
+        setIsProcessing(false);
         return alert("Por favor ingresa tu cédula y nombre/mesa.");
       }
     }
-    
+
     setIsProcessing(true);
 
-    let finalClientName = clientName.trim();
+    let finalClientName = nombreFinal;
     try {
       const { data: existingClient } = await supabase
         .from('clients')
