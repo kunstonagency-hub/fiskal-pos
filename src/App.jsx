@@ -87,6 +87,7 @@ import LocalMenuView from './components/LocalMenuView';
 import WebOrdersView from "./components/WebOrdersView";
 import GlobalPosAlarm from "./components/GlobalPosAlarm";
 import ErrorBoundary from "./components/ErrorBoundary"; 
+import toast, { Toaster } from "react-hot-toast";
 // Importación dinámica infalible para evitar los problemas de empaquetado de Vite
 const Joyride = React.lazy(() => import('react-joyride').then(mod => {
   const ComponenteReal = mod.default?.default || mod.default || mod.Joyride || mod;
@@ -186,6 +187,59 @@ const getSaleDebtUSD = (sale, cartTotalUSD) => {
   }
 
   return Number(sale.total_usd) || 0;
+};
+
+// 🚀 FIX B6: helpers para formatear fechas con el timezone correcto de la tienda.
+// Evita que un dispositivo mal configurado (o el navegador de un turista) muestre
+// las fechas desfasadas en Reportes Z y en el historial.
+const getStoreTimezone = (country) => {
+  const c = (country || "venezuela").toLowerCase();
+  if (c.includes("panama") || c.includes("panamá")) return "America/Panama";
+  if (c.includes("salvador")) return "America/El_Salvador";
+  return "America/Caracas"; // Venezuela por defecto
+};
+
+const formatDateTime = (dateInput, country = "venezuela") => {
+  if (!dateInput) return "---";
+  try {
+    return new Date(dateInput).toLocaleString("es-VE", {
+      timeZone: getStoreTimezone(country),
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch (e) {
+    return new Date(dateInput).toLocaleString();
+  }
+};
+
+const formatDate = (dateInput, country = "venezuela") => {
+  if (!dateInput) return "---";
+  try {
+    return new Date(dateInput).toLocaleDateString("es-VE", {
+      timeZone: getStoreTimezone(country),
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch (e) {
+    return new Date(dateInput).toLocaleDateString();
+  }
+};
+
+const formatTime = (dateInput, country = "venezuela") => {
+  if (!dateInput) return "---";
+  try {
+    return new Date(dateInput).toLocaleTimeString("es-VE", {
+      timeZone: getStoreTimezone(country),
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch (e) {
+    return new Date(dateInput).toLocaleTimeString();
+  }
 };
 
 
@@ -1876,9 +1930,7 @@ function App() {
 
       try {
         await navigator.clipboard.writeText(tempPassword);
-        alert(
-          `¡Vendedor de Sistema registrado con éxito!\n\nCorreo: ${newVendorEmail}\n\n✅ La contraseña temporal fue copiada automáticamente al portapapeles.\n\nPégala ahora en un WhatsApp o mensaje para enviársela al vendedor.\nPor seguridad NO se muestra en pantalla.`,
-        );
+        toast.success("Vendedor creado. Contraseña copiada al portapapeles");
       } catch (clipErr) {
         alert(
           `¡Vendedor de Sistema registrado con éxito!\n\nCorreo: ${newVendorEmail}\nContraseña Temporal: ${tempPassword}\n\n⚠️ Cópiala AHORA y compártela por un canal privado. Por seguridad no se volverá a mostrar.`,
@@ -2272,9 +2324,7 @@ function App() {
         });
       }
 
-      alert(
-        `¡Empleado registrado exitosamente!\n\nNombre: ${newEmpName}\nCorreo: ${newEmpEmail}\n\nEl empleado ya puede iniciar sesión con esas credenciales.`,
-      );
+      toast.success(`Empleado ${newEmpName} registrado`);
 
       setNewEmpName("");
       setNewEmpEmail("");
@@ -3369,7 +3419,7 @@ function App() {
 
       // 🚀 FIX A4: un único alert al final con todos los errores
       if (!generalErrorOccurred) {
-        alert("✅ ¡Sincronización completada y cola limpia!");
+        toast.success("Sincronización completada");
       } else {
         const listaErrores = failedActions
           .slice(0, 10)
@@ -3784,8 +3834,7 @@ function App() {
       if (currentStoreCountry === "venezuela") {
         alertMsg += `📊 Diferencia Bs:  ${differenceBs > 0 ? "+" : ""}Bs. ${differenceBs.toFixed(2)}\n`;
       }
-      alertMsg += "\n🔓 La caja está lista para abrir un nuevo turno.";
-      alert(alertMsg);
+      toast.success("Turno cerrado. Caja lista para abrir.");
     } catch (err) {
       console.error("Error cerrando turno:", err);
       alert("Error cerrando el turno.");
@@ -3944,7 +3993,7 @@ function App() {
 
       resetProductForm();
       fetchProducts(currentStoreId);
-      alert("¡Producto guardado exitosamente!");
+      toast.success("Producto guardado exitosamente");
     } catch (error) {
       console.error('Error al guardar producto:', error.message);
       alert("Error al guardar producto: " + error.message);
@@ -4221,7 +4270,7 @@ function App() {
       const { error } = await supabase.from('products').delete().eq('id', id).eq('store_id', currentStoreId);
       if (error) throw error;
       fetchProducts(currentStoreId);
-      alert("Producto eliminado exitosamente.");
+      toast.success("Producto eliminado");
     } catch (error) {
       console.error('Error al eliminar producto:', error.message);
       alert("Error al eliminar producto: " + error.message);
@@ -4368,13 +4417,13 @@ function App() {
         stopCameraScanner();
         handleScannedCodeResult(barcodes[0].rawValue);
       } else {
-        alert(
+        toast.error(
           "No se detectó ningún código QR o de barras nítido en la foto. Intenta de nuevo acercando más.",
         );
       }
     } catch (err) {
       console.error("Error al procesar foto capturada:", err);
-      alert("Error al procesar la imagen de la cámara.");
+      toast.error("Error al procesar la imagen de la cámara.");
     }
   };
 
@@ -4424,7 +4473,7 @@ function App() {
       setClientEmail("");
       setLoadingClient(false);
       checkPendingSales();
-      alert("¡Estás Offline! Cliente guardado localmente.");
+      toast.success("Cliente guardado offline (se sincronizará)");
       return;
     }
 
@@ -5236,7 +5285,7 @@ function App() {
       if (error) alert("Error al procesar el abono: " + error.message);
       else {
         if (itemsToDeduct.length > 0 && isOnline) await deductInventory(itemsToDeduct);
-        alert(isFullyPaid ? "¡Cuenta pagada por completo!" : `¡Abono registrado! Saldo pendiente: $${newBalanceDue.toFixed(2)}`);
+        toast.success(isFullyPaid ? "Cuenta pagada por completo" : `Abono registrado. Saldo: $${newBalanceDue.toFixed(2)}`);
         
         // Reset global
         setSettlingSale(null);
@@ -5298,7 +5347,7 @@ function App() {
         setIsIntlCard(false); setIntlCardFeePct("3");
         setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0, cashea: 0 });
         fetchSales(currentStoreId);
-        alert(newBalanceDue > 0 ? `¡Venta ${invoiceNumber} registrada con crédito pendiente!` : `¡Venta ${invoiceNumber} procesada con éxito!`);
+        toast.success(newBalanceDue > 0 ? `Venta ${invoiceNumber} con crédito pendiente` : `Venta ${invoiceNumber} procesada`);
       }
     }
     setProcessing(false);
@@ -6169,6 +6218,28 @@ function App() {
   return (
     
     <div className="fiskal-container">
+            <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 3500,
+          style: {
+            background: "#111827",
+            color: "#fff",
+            fontWeight: "600",
+            fontSize: "14px",
+            borderRadius: "8px",
+            padding: "12px 16px",
+          },
+          success: {
+            iconTheme: { primary: "#16a34a", secondary: "#fff" },
+            style: { background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0" },
+          },
+          error: {
+            iconTheme: { primary: "#e05d5d", secondary: "#fff" },
+            style: { background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca" },
+          },
+        }}
+      />
       {/* ⬇️ RECORRIDO GUIADO ⬇️ */}
       <React.Suspense fallback={null}>
         <Joyride

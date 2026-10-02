@@ -1,6 +1,43 @@
 import React, { useState, useEffect } from "react";
 import { Lock, Eye, CreditCard, Clock, Check, Save } from "lucide-react";
 
+// 🚀 FIX B6: helpers de fecha con timezone de tienda
+const getStoreTimezone = (country) => {
+  const c = (country || "venezuela").toLowerCase();
+  if (c.includes("panama") || c.includes("panamá")) return "America/Panama";
+  if (c.includes("salvador")) return "America/El_Salvador";
+  return "America/Caracas";
+};
+
+const formatDateTime = (dateInput, country = "venezuela") => {
+  if (!dateInput) return "---";
+  try {
+    return new Date(dateInput).toLocaleString("es-VE", {
+      timeZone: getStoreTimezone(country),
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch (e) {
+    return new Date(dateInput).toLocaleString();
+  }
+};
+
+const formatTime = (dateInput, country = "venezuela") => {
+  if (!dateInput) return "---";
+  try {
+    return new Date(dateInput).toLocaleTimeString("es-VE", {
+      timeZone: getStoreTimezone(country),
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch (e) {
+    return new Date(dateInput).toLocaleTimeString();
+  }
+};
+
 // Vista de turnos y arqueo de caja.
 function CashShiftsView({
   supabase,
@@ -166,7 +203,7 @@ function CashShiftsView({
                   }}
                 >
                   Iniciado el:{" "}
-                  {new Date(currentShift.opened_at).toLocaleString()}
+                  {formatDateTime(currentShift.opened_at, currentStoreCountry)}
                 </p>
               </div>
               <button
@@ -611,10 +648,7 @@ function CashShiftsView({
                           }}
                         >
                           <Check size={16} /> Cerrado a las{" "}
-                          {new Date(closureInfo.closed_at).toLocaleTimeString(
-                            [],
-                            { hour: "2-digit", minute: "2-digit" }
-                          )}
+                          {formatTime(closureInfo.closed_at, currentStoreCountry)}
                         </span>
                         <span style={{ fontSize: "12px", color: "#374151" }}>
                           Monto Lote:{" "}
@@ -828,14 +862,10 @@ function CashShiftsView({
                       style={{ borderBottom: "1px solid #f3f4f6" }}
                     >
                       <td>
-                        {s.opened_at
-                          ? new Date(s.opened_at).toLocaleString()
-                          : ""}
+                        {s.opened_at ? formatDateTime(s.opened_at, currentStoreCountry) : ""}
                       </td>
                       <td>
-                        {s.closed_at
-                          ? new Date(s.closed_at).toLocaleString()
-                          : "---"}
+                        {s.closed_at ? formatDateTime(s.closed_at, currentStoreCountry) : "---"}
                       </td>
                       <td>
                         <strong>

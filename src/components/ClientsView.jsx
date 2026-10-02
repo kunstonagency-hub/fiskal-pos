@@ -228,6 +228,7 @@ function ClientsView({
                               sendClientGeneralWhatsApp(cli, cli.totalPending)
                             }
                             title="Cobro por WhatsApp"
+                            aria-label="Enviar cobro por WhatsApp"
                           >
                             <MessageCircle size={16} />
                           </button>
@@ -236,6 +237,7 @@ function ClientsView({
                           className="btn-icon-primary"
                           onClick={() => handleOpenClientDetail(cli)}
                           title="Ver Historial y Notas"
+                          aria-label="Ver historial y notas del cliente"
                         >
                           <Eye size={16} />
                         </button>
@@ -250,6 +252,7 @@ function ClientsView({
                             requestAdminAuth('delete_client', cli);
                           }}
                           title="Eliminar Cliente"
+                          aria-label="Eliminar cliente permanentemente"
                         >
                           <Trash2 size={16} />
                         </button>

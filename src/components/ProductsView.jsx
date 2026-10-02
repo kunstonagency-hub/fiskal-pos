@@ -1221,7 +1221,8 @@ function ProductsView({
                         <button
                           className="btn-icon-primary"
                           onClick={() => handleDuplicateProduct(prod)}
-                          title="Duplicar Platillo"
+                          title="Duplicar Producto"
+                          aria-label="Duplicar producto"
                           style={{
                             background: "#f8f9fa",
                             border: "1px solid #ced4da",
@@ -1234,11 +1235,12 @@ function ProductsView({
                           className="btn-icon-primary"
                           onClick={() => handleOpenLabel(prod)}
                           title="Ver Etiqueta QR"
+                          aria-label="Ver etiqueta QR del producto"
                         >
                           <QrCode size={16} />
                         </button>
-                        <button type="button" className="btn-icon-edit" onClick={() => requestAdminAuth('edit', prod)} title="Editar"><Edit2 size={16} /></button>
-                        <button type="button" className="btn-icon-danger" onClick={() => requestAdminAuth('delete', prod)} title="Eliminar"><Trash2 size={16} /></button>
+                        <button type="button" className="btn-icon-edit" onClick={() => requestAdminAuth('edit', prod)} title="Editar" aria-label="Editar producto"><Edit2 size={16} /></button>
+                        <button type="button" className="btn-icon-danger" onClick={() => requestAdminAuth('delete', prod)} title="Eliminar" aria-label="Eliminar producto"><Trash2 size={16} /></button>
                       </div>
                     </td>
                   </tr>

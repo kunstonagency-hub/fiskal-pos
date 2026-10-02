@@ -19,6 +19,7 @@ import {
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import toast from "react-hot-toast";
 
 // Vista de configuración operativa.
 const customIcon = new L.Icon({
@@ -114,7 +115,7 @@ function SettingsView({
 
   const handleSavePin = async () => {
     if (localPin.length < 4) {
-      return alert("El PIN debe tener al menos 4 dígitos.");
+      return toast.error("El PIN debe tener al menos 4 dígitos.");
     }
     setSavingPin(true);
     try {
@@ -123,11 +124,11 @@ function SettingsView({
         p_pin: localPin,
       });
       if (error) throw error;
-      alert("✅ PIN de seguridad actualizado exitosamente.");
+      toast.success("✅ PIN de seguridad actualizado exitosamente.");
       setLocalPin("");
       setStoreHasPin(true);
     } catch (e) {
-      alert("Error guardando PIN: " + e.message);
+      toast.error("Error guardando PIN: " + e.message);
     } finally {
       setSavingPin(false);
     }
@@ -159,7 +160,7 @@ function SettingsView({
   const handleLocalAddPos = async (e) => {
     e.preventDefault();
     if (!localPosName || !localPosBank || !localPosTime) {
-      return alert("Por favor completa todos los campos del punto de venta.");
+      return toast.error("Por favor completa todos los campos del punto de venta.");
     }
     try {
       const { data, error } = await supabase
@@ -177,9 +178,9 @@ function SettingsView({
       setLocalPosName("");
       setLocalPosBank("");
       setLocalPosTime("");
-      alert("✅ Punto de venta registrado exitosamente.");
+      toast.success("✅ Punto de venta registrado exitosamente.");
     } catch (err) {
-      alert("Error al guardar punto de venta: " + err.message);
+      toast.error("Error al guardar punto de venta: " + err.message);
     }
   };
 
@@ -191,7 +192,7 @@ function SettingsView({
       if (error) throw error;
       setLocalPosTerminals(localPosTerminals.filter((p) => p.id !== id));
     } catch (err) {
-      alert("Error al eliminar: " + err.message);
+      toast.error("Error al eliminar: " + err.message);
     }
   };
 
@@ -566,6 +567,7 @@ function SettingsView({
                         justifyContent: "center",
                       }}
                       title="Eliminar de la pantalla"
+                      aria-label="Eliminar de la pantalla"
                     >
                       <Trash2 size={12} />
                     </button>
@@ -668,7 +670,7 @@ function SettingsView({
               type="button"
               onClick={() => {
                 navigator.clipboard.writeText(`${window.location.origin}/menu/${currentStoreId}?mode=delivery`);
-                alert("¡Enlace de Delivery copiado al portapapeles!");
+                toast.success("¡Enlace de Delivery copiado al portapapeles!");
               }}
               style={{ flex: 1, background: '#8b5cf6', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
             >
@@ -885,13 +887,13 @@ function SettingsView({
                         }
 
                         if (result?.partial) {
-                          alert(
+                          toast.error(
                             `⚠️ El perfil fue eliminado, pero hubo un problema con la cuenta de acceso.\n\nDetalle: ${result.error}\n\nRevisa Supabase → Authentication → Users.`
                           );
                         } else if (result?.success) {
-                          alert("✅ Empleado eliminado correctamente.");
+                          toast.success("Empleado eliminado correctamente");
                         } else {
-                          alert("✅ Empleado eliminado.");
+                          toast.success("✅ Empleado eliminado.");
                         }
 
                         // Refrescar la lista sin recargar la página
@@ -899,7 +901,7 @@ function SettingsView({
                           await fetchEmployees(currentStoreId);
                         }
                       } catch (e) {
-                        alert("Error eliminando empleado: " + e.message);
+                        toast.error("Error eliminando empleado: " + e.message);
                       }
                     }
                   }}
@@ -914,6 +916,7 @@ function SettingsView({
                     justifyContent: "center",
                   }}
                   title="Eliminar empleado"
+                  aria-label="Eliminar empleado"
                 >
                   <Trash2 size={16} />
                 </button>
@@ -1001,7 +1004,7 @@ function SettingsView({
                       <Clock size={12} /> Cierre: {pos.closing_time.substring(0, 5)}
                     </div>
                   </div>
-                  <button onClick={() => handleLocalDeletePos(pos.id)} type="button" style={{ background: "none", border: "none", color: "#fa5252", cursor: "pointer" }}>
+                  <button onClick={() => handleLocalDeletePos(pos.id)} type="button" aria-label="Eliminar punto de venta" style={{ background: "none", border: "none", color: "#fa5252", cursor: "pointer" }}>
                     <Trash2 size={14} />
                   </button>
                 </li>
@@ -1111,6 +1114,7 @@ function SettingsView({
                   </span>
                   <button
                     onClick={() => handleDeleteRegister(reg.id)}
+                    aria-label="Eliminar caja física"
                     style={{
                       background: "none",
                       border: "none",

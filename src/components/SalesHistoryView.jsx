@@ -12,6 +12,44 @@ import {
 } from "lucide-react";
 import { supabase } from "../supabase";
 
+// 🚀 FIX B6: helpers de fecha con timezone de tienda
+const getStoreTimezone = (country) => {
+  const c = (country || "venezuela").toLowerCase();
+  if (c.includes("panama") || c.includes("panamá")) return "America/Panama";
+  if (c.includes("salvador")) return "America/El_Salvador";
+  return "America/Caracas";
+};
+
+const formatDateTime = (dateInput, country = "venezuela") => {
+  if (!dateInput) return "---";
+  try {
+    return new Date(dateInput).toLocaleString("es-VE", {
+      timeZone: getStoreTimezone(country),
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch (e) {
+    return new Date(dateInput).toLocaleString();
+  }
+};
+
+const formatTime = (dateInput, country = "venezuela") => {
+  if (!dateInput) return "---";
+  try {
+    return new Date(dateInput).toLocaleTimeString("es-VE", {
+      timeZone: getStoreTimezone(country),
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch (e) {
+    return new Date(dateInput).toLocaleTimeString();
+  }
+};
+
+
 // Vista de historial y control financiero.
 // Aquí se muestran las ventas registradas, las cuentas por cobrar, los pedidos en cocina y
 // las acciones rápidas para reanudar, abonar, recordarle al cliente, ver la factura o eliminar.
@@ -199,7 +237,7 @@ function SalesHistoryView({
                       </div>
                       <strong style={{ color: "#a16207" }}>${s.payment_details.cashea.toFixed(2)}</strong>
                     </div>
-                    <div style={{ color: "#6b7280", fontSize: "11px", marginLeft: "20px" }}>{new Date(s.created_at).toLocaleDateString()} - {s.client_name || "Cliente"}</div>
+                    <div style={{ color: "#6b7280", fontSize: "11px", marginLeft: "20px" }}>{formatDateTime(s.created_at, "venezuela")} - {s.client_name || "Cliente"}</div>
                   </div>
                 );
               })}
@@ -392,7 +430,7 @@ function SalesHistoryView({
                             : `A-${String(sale.id).padStart(3, "0")}`)}
                       </strong>
                     </td>
-                    <td>{new Date(sale.created_at).toLocaleString()}</td>
+                    <td>{formatDateTime(sale.created_at, "venezuela")}</td>
                     <td>{sale.client_name || "Cliente General"}</td>
                     <td>
                       <strong>${Number(sale.total_usd || 0).toFixed(2)}</strong>
@@ -526,6 +564,7 @@ function SalesHistoryView({
                             className="btn-icon-whatsapp"
                             onClick={() => sendWhatsAppReminder(sale)}
                             title="Recordatorio WhatsApp"
+                            aria-label="Enviar recordatorio por WhatsApp"
                           >
                             <MessageCircle size={16} />
                           </button>
@@ -534,6 +573,7 @@ function SalesHistoryView({
                           className="btn-icon-primary"
                           onClick={() => handleViewInvoice(sale)}
                           title="Ver Factura"
+                          aria-label="Ver factura del cliente"
                           style={{
                             background: "#f3f4f6",
                             border: "1px solid #d1d5db",
@@ -590,6 +630,7 @@ function SalesHistoryView({
                               }
                             }}
                             title="Eliminar Pedido (Solo Dueño)"
+                            aria-label="Eliminar pedido permanentemente"
                           >
                             <Trash2 size={16} />
                           </button>
