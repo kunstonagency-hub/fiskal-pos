@@ -85,7 +85,8 @@ import PosTerminalView from "./components/PosTerminalView";
 import RecipesCostView from "./components/RecipesCostView";
 import LocalMenuView from './components/LocalMenuView';
 import WebOrdersView from "./components/WebOrdersView";
-import GlobalPosAlarm from "./components/GlobalPosAlarm"; 
+import GlobalPosAlarm from "./components/GlobalPosAlarm";
+import ErrorBoundary from "./components/ErrorBoundary"; 
 // Importación dinámica infalible para evitar los problemas de empaquetado de Vite
 const Joyride = React.lazy(() => import('react-joyride').then(mod => {
   const ComponenteReal = mod.default?.default || mod.default || mod.Joyride || mod;
@@ -6849,6 +6850,7 @@ function App() {
         </header>
 
         <section className="content-area">
+          <ErrorBoundary areaName="esta sección">
           {activeTab === "pos" && (
             <PosTerminalView
               currentStoreType={currentStoreType}
@@ -7217,6 +7219,7 @@ function App() {
               kdsBanners={currentStoreKdsBanners}
             />
           )}
+                  </ErrorBoundary>
         </section>
       </main>
 

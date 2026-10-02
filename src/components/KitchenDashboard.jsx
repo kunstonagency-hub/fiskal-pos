@@ -734,7 +734,7 @@ export default function KitchenDashboard({
 
         <div style={{ display: "flex", borderTop: "1px solid #e5e7eb" }}>
           {!stationIsPreparing && !stationIsReady && !isUnpaidWeb && (
-            <button
+                        <button
               onClick={async (e) => {
                 e.currentTarget.blur();
                 const nowIso = new Date().toISOString();
@@ -746,27 +746,54 @@ export default function KitchenDashboard({
                   const c = item.category ? item.category.trim() : "General";
                   const belongsToStation =
                     targetCats.length === 0 || targetCats.includes(c);
-                  
-                  if (belongsToStation && !item.dispatched) return { ...item, preparing: true };
+
+                  if (belongsToStation && !item.dispatched)
+                    return { ...item, preparing: true };
                   return item;
                 });
 
-                const isAnyItemPreparing = updatedItems.some((i) => i.preparing);
-                
+                const isAnyItemPreparing = updatedItems.some(
+                  (i) => i.preparing
+                );
+
                 let newStatus = order.status;
                 if (isAnyItemPreparing && currentStatus === "pending") {
-                    newStatus = "preparando";
+                  newStatus = "preparando";
                 }
 
-                const updatedOrder = { ...order, status: newStatus, payment_details: updatedPd, items: updatedItems };
+                const updatedOrder = {
+                  ...order,
+                  status: newStatus,
+                  payment_details: updatedPd,
+                  items: updatedItems,
+                };
 
-                if (typeof setSales === "function") {
-                  setSales(sales.map((s) => (s.id === order.id ? updatedOrder : s)));
-                }
-
+                // 🚀 FIX M11: guardar en Supabase PRIMERO, y solo actualizar la
+                // pantalla si se guardó correctamente. Si falla, avisar al cocinero.
                 try {
-                  await supabase.from("sales").update({ status: newStatus, payment_details: updatedPd, items: updatedItems }).eq("id", order.id).eq("store_id", currentStoreId);
-                } catch (err) { console.error(err); }
+                  const { error } = await supabase
+                    .from("sales")
+                    .update({
+                      status: newStatus,
+                      payment_details: updatedPd,
+                      items: updatedItems,
+                    })
+                    .eq("id", order.id)
+                    .eq("store_id", currentStoreId);
+
+                  if (error) throw error;
+
+                  if (typeof setSales === "function") {
+                    setSales(
+                      sales.map((s) => (s.id === order.id ? updatedOrder : s))
+                    );
+                  }
+                } catch (err) {
+                  console.error("Error marcando pedido como Preparar:", err);
+                  alert(
+                    "⚠️ No se pudo guardar el cambio en el servidor.\n\nRevisa tu conexión e intenta de nuevo."
+                  );
+                }
               }}
               style={{ flex: 1, background: "#fff", color: "#111827", border: "none", padding: "14px", cursor: "pointer", fontWeight: "bold", fontSize: "13px", textTransform: "uppercase" }}
             >
@@ -775,7 +802,7 @@ export default function KitchenDashboard({
           )}
 
           {!stationIsReady && !isUnpaidWeb && (
-            <button
+                        <button
               onClick={async (e) => {
                 e.currentTarget.blur();
                 const nowIso = new Date().toISOString();
@@ -783,7 +810,8 @@ export default function KitchenDashboard({
 
                 const updatedItems = getItems(order).map((item) => {
                   const c = item.category ? item.category.trim() : "General";
-                  const belongsToStation = targetCats.length === 0 || targetCats.includes(c);
+                  const belongsToStation =
+                    targetCats.length === 0 || targetCats.includes(c);
                   if (belongsToStation) return { ...item, dispatched: true };
                   return item;
                 });
@@ -793,26 +821,53 @@ export default function KitchenDashboard({
                   return !GENERAL_KEYWORDS.some((gk) => name.includes(gk));
                 });
 
-                const allDispatched = allKItems.length > 0 && allKItems.every((i) => i.dispatched);
-                
+                const allDispatched =
+                  allKItems.length > 0 && allKItems.every((i) => i.dispatched);
+
                 let newStatus = order.status;
-                if (allDispatched && (currentStatus === "pending" || currentStatus === "preparando")) {
-                    newStatus = "ready";
+                if (
+                  allDispatched &&
+                  (currentStatus === "pending" || currentStatus === "preparando")
+                ) {
+                  newStatus = "ready";
                 }
-                
+
                 if (allDispatched && !updatedPd.prep_finished_at) {
                   updatedPd.prep_finished_at = nowIso;
                 }
 
-                const updatedOrder = { ...order, status: newStatus, payment_details: updatedPd, items: updatedItems };
+                const updatedOrder = {
+                  ...order,
+                  status: newStatus,
+                  payment_details: updatedPd,
+                  items: updatedItems,
+                };
 
-                if (typeof setSales === "function") {
-                  setSales(sales.map((s) => (s.id === order.id ? updatedOrder : s)));
-                }
-
+                // 🚀 FIX M11: Supabase PRIMERO, pantalla después.
                 try {
-                  await supabase.from("sales").update({ status: newStatus, payment_details: updatedPd, items: updatedItems }).eq("id", order.id).eq("store_id", currentStoreId);
-                } catch (err) { console.error(err); }
+                  const { error } = await supabase
+                    .from("sales")
+                    .update({
+                      status: newStatus,
+                      payment_details: updatedPd,
+                      items: updatedItems,
+                    })
+                    .eq("id", order.id)
+                    .eq("store_id", currentStoreId);
+
+                  if (error) throw error;
+
+                  if (typeof setSales === "function") {
+                    setSales(
+                      sales.map((s) => (s.id === order.id ? updatedOrder : s))
+                    );
+                  }
+                } catch (err) {
+                  console.error("Error marcando pedido como Despachar:", err);
+                  alert(
+                    "⚠️ No se pudo guardar el cambio en el servidor.\n\nRevisa tu conexión e intenta de nuevo."
+                  );
+                }
               }}
               style={{ flex: 1, background: stationIsPreparing ? "#16a34a" : "#f9fafb", color: stationIsPreparing ? "#fff" : "#4b5563", border: "none", borderLeft: stationIsPreparing ? "none" : "1px solid #e5e7eb", padding: "14px", cursor: "pointer", fontWeight: "bold", fontSize: "13px", textTransform: "uppercase" }}
             >
