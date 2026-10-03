@@ -84,6 +84,7 @@ export default function LocalMenuView({ storeId }) {
   
   // Estado para las categorías
   const [selectedCategory, setSelectedCategory] = useState('Todas');
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [cart, setCart] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -586,9 +587,21 @@ export default function LocalMenuView({ storeId }) {
   }
 
   const categories = ['Todas', ...new Set(products.map(p => p.category || 'General'))];
-  const filteredProducts = selectedCategory === 'Todas' 
-    ? products 
-    : products.filter(p => (p.category || 'General') === selectedCategory);
+  const filteredProducts = products.filter((p) => {
+    // Filtro por categoría
+    const matchesCategory =
+      selectedCategory === 'Todas' ||
+      (p.category || 'General') === selectedCategory;
+
+    // Filtro por búsqueda (nombre o descripción)
+    const q = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.description || '').toLowerCase().includes(q);
+
+    return matchesCategory && matchesSearch;
+  });
 
   // 👖 Agrupar productos con variantes (tallas) para el menú
   const groupedItems = (() => {
@@ -645,8 +658,63 @@ export default function LocalMenuView({ storeId }) {
         </div>
       </div>
 
+      {/* 🔍 BUSCADOR DE PRODUCTOS */}
+      <div style={{ padding: '16px 24px 4px 24px', maxWidth: '800px', margin: '0 auto', position: 'sticky', top: '96px', zIndex: 40, background: '#f8fafc' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: '#ffffff',
+            borderRadius: '14px',
+            border: '1px solid #e2e8f0',
+            padding: '12px 16px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+            position: 'relative',
+          }}
+        >
+          <Search size={20} color="#94a3b8" style={{ marginRight: '10px', flexShrink: 0 }} />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar producto..."
+            style={{
+              border: 'none',
+              background: 'transparent',
+              outline: 'none',
+              width: '100%',
+              fontSize: '15px',
+              fontWeight: '600',
+              color: '#0f172a',
+              padding: 0,
+            }}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              style={{
+                background: '#f1f5f9',
+                border: 'none',
+                borderRadius: '50%',
+                width: '26px',
+                height: '26px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
+                marginLeft: '8px',
+              }}
+            >
+              <X size={14} color="#475569" />
+            </button>
+          )}
+        </div>
+      </div>
+
       {categories.length > 2 && (
-        <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', padding: '20px 24px 10px 24px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', padding: '12px 24px 10px 24px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {categories.map(cat => {
             const isActive = selectedCategory === cat;
             return (
