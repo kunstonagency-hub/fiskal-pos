@@ -1,9 +1,9 @@
 import React from "react";
-import { Store } from "lucide-react";
+import { Store, Award } from "lucide-react";
 
 // Portal del vendedor del sistema.
-// Aquí se registra un nuevo comercio vinculado a un vendedor y se calcula el costo estimado
-// del plan, con promo activa si aplica. Esta vista también define el tipo de máscara del negocio.
+// Permite registrar un nuevo comercio vinculado al vendedor con el mismo
+// formulario que el Panel Maestro, para que quede toda la info capturada de una vez.
 function VendorPortalView({
   globalPromoDiscount,
   handleVendorRegisterStoreSubmit,
@@ -17,10 +17,20 @@ function VendorPortalView({
   setVendorStoreCountry,
   vendorOwnerName,
   setVendorOwnerName,
+  vendorOwnerDoc,
+  setVendorOwnerDoc,
   vendorOwnerPhone,
   setVendorOwnerPhone,
   vendorOwnerEmail,
   setVendorOwnerEmail,
+  vendorStoreAddress,
+  setVendorStoreAddress,
+  vendorStoreCity,
+  handleVendorCityChange,
+  vendorStoreState,
+  setVendorStoreState,
+  vendorStoreIsDemo,
+  setVendorStoreIsDemo,
   vendorPaidAdvance,
   setVendorPaidAdvance,
   getCalculatedMonthlyPrice,
@@ -34,8 +44,8 @@ function VendorPortalView({
       <h3>Registrar Nuevo Comercio</h3>
       <p style={{ fontSize: "13px", color: "#6c757d", marginBottom: "20px" }}>
         Como vendedor de sistema, al registrar un comercio aquí, el negocio
-        quedará vinculado a tu ID para el cálculo automático de tus comisiones
-        (50% registro y 20% mensualidad).
+        quedará vinculado a tu ID para el cálculo automático de tus comisiones.
+        
       </p>
 
       {globalPromoDiscount > 0 && (
@@ -58,17 +68,18 @@ function VendorPortalView({
 
       <form onSubmit={handleVendorRegisterStoreSubmit} className="fiskal-form">
         <div className="form-group">
-          <label>Nombre del Comercio / Negocio</label>
+          <label>Nombre del Negocio / Comercio</label>
           <input
             type="text"
             value={vendorStoreName}
             onChange={(e) => setVendorStoreName(e.target.value)}
-            placeholder="Ej. Minimarket El Triunfo"
+            placeholder="Ej. Inversiones La Esquina C.A."
             required
           />
         </div>
+
         <div className="form-group">
-          <label>RIF / Cédula del Comercio</label>
+          <label>RIF del Negocio</label>
           <input
             type="text"
             value={vendorStoreRif}
@@ -78,7 +89,7 @@ function VendorPortalView({
         </div>
 
         <div className="form-group" style={{ marginBottom: "16px" }}>
-          <label>Tipo de Interfaz (Máscara) del Cliente</label>
+          <label>Tipo de Interfaz (Máscara)</label>
           <select
             value={vendorNewStoreType}
             onChange={(e) => setVendorNewStoreType(e.target.value)}
@@ -126,39 +137,93 @@ function VendorPortalView({
           }}
         >
           <div className="form-group">
-            <label>Nombre del Dueño</label>
+            <label>Nombre del Propietario</label>
             <input
               type="text"
               value={vendorOwnerName}
               onChange={(e) => setVendorOwnerName(e.target.value)}
-              placeholder="Ej. Pedro Gómez"
+              placeholder="Ej. Carlos Pérez"
             />
           </div>
           <div className="form-group">
-            <label>Teléfono (WhatsApp)</label>
+            <label>Cédula del Propietario</label>
+            <input
+              type="text"
+              value={vendorOwnerDoc}
+              onChange={(e) => setVendorOwnerDoc(e.target.value)}
+              placeholder="Ej. V-12345678"
+            />
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "12px",
+          }}
+        >
+          <div className="form-group">
+            <label>Teléfono de Contacto</label>
             <input
               type="text"
               value={vendorOwnerPhone}
               onChange={(e) => setVendorOwnerPhone(e.target.value)}
-              placeholder="Ej. 04141234567"
+              placeholder="Ej. 0414-1234567"
+            />
+          </div>
+          <div className="form-group">
+            <label>Correo Electrónico</label>
+            <input
+              type="email"
+              value={vendorOwnerEmail}
+              onChange={(e) => setVendorOwnerEmail(e.target.value)}
+              placeholder="correo@negocio.com"
             />
           </div>
         </div>
 
         <div className="form-group">
-          <label>Correo Electrónico</label>
+          <label>Dirección Física</label>
           <input
-            type="email"
-            value={vendorOwnerEmail}
-            onChange={(e) => setVendorOwnerEmail(e.target.value)}
-            placeholder="dueño@comercio.com"
+            type="text"
+            value={vendorStoreAddress}
+            onChange={(e) => setVendorStoreAddress(e.target.value)}
+            placeholder="Ej. Av. Principal, Local 4"
           />
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "12px",
+          }}
+        >
+          <div className="form-group">
+            <label>Ciudad</label>
+            <input
+              type="text"
+              value={vendorStoreCity}
+              onChange={handleVendorCityChange}
+              placeholder="Ej. Los Teques"
+            />
+          </div>
+          <div className="form-group">
+            <label>Estado (Auto-detectado)</label>
+            <input
+              type="text"
+              value={vendorStoreState}
+              onChange={(e) => setVendorStoreState(e.target.value)}
+              placeholder="Ej. Miranda"
+            />
+          </div>
         </div>
 
         <div
           className="form-group"
           style={{
-            marginBottom: "16px",
+            marginBottom: "12px",
             display: "flex",
             alignItems: "center",
             gap: "8px",
@@ -182,7 +247,42 @@ function VendorPortalView({
             }}
           >
             ¿El comercio pagó el mes por adelantado? (Activa 40 días: 30 de mes
-            + 10 cortesía)
+            + 10 de cortesía)
+          </label>
+        </div>
+
+        <div
+          className="form-group"
+          style={{
+            marginBottom: "16px",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            background: "#fff5f5",
+            padding: "10px",
+            borderRadius: "6px",
+            border: "1px solid #ffc9c9",
+          }}
+        >
+          <input
+            type="checkbox"
+            id="vendorStoreIsDemo"
+            checked={vendorStoreIsDemo}
+            onChange={(e) => setVendorStoreIsDemo(e.target.checked)}
+            style={{ width: "18px", height: "18px", cursor: "pointer" }}
+          />
+          <label
+            htmlFor="vendorStoreIsDemo"
+            style={{
+              cursor: "pointer",
+              fontSize: "13px",
+              fontWeight: "bold",
+              margin: 0,
+              color: "#c92a2a",
+            }}
+          >
+            🧪 ¿Es Comercio de Prueba (Demo)? (No suma dinero a la
+            contabilidad)
           </label>
         </div>
 
@@ -195,6 +295,8 @@ function VendorPortalView({
           {getCalculatedMonthlyPrice(0, baseMonthlyPrice).toFixed(2)}/mes)
         </button>
       </form>
+
+      
     </div>
   );
 }

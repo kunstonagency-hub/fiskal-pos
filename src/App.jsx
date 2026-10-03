@@ -604,7 +604,10 @@ function App() {
       alert("Error al eliminar imagen: " + err.message);
     }
   };
-  const [adminDemoMask, setAdminDemoMask] = useState("standard"); // Para la demo del super_admin
+  const [adminDemoMask, setAdminDemoMask] = useState("standard"); 
+    // 🎯 Super Admin: Selector de tiendas demo
+  const [demoStores, setDemoStores] = useState([]);
+  const [showDemoStoreDropdown, setShowDemoStoreDropdown] = useState(false);// Para la demo del super_admin
   const [selectedRestaurantCategory, setSelectedRestaurantCategory] =
     useState(null);
 
@@ -637,7 +640,115 @@ function App() {
   const [currentStoreKronoEnabled, setCurrentStoreKronoEnabled] =
     useState(false);
 
-  // NUEVO: Función para encender/apagar Krono desde el Panel Maestro
+    // 🎯 Cambiar la tienda demo activa (solo Super Admin)
+  const handleSwitchDemoStore = async (newStoreId) => {
+    if (!newStoreId || newStoreId === currentStoreId) {
+      setShowDemoStoreDropdown(false);
+      return;
+    }
+
+    setShowDemoStoreDropdown(false);
+
+    try {
+      // 1) Guardar preferencia
+      localStorage.setItem("fiskal_selected_demo_store", newStoreId);
+
+            // 🎯 Guardar también en sessionStorage (redundancia)
+      sessionStorage.setItem("fiskal_selected_demo_store", newStoreId);
+
+      // 🎯 Persistir en Supabase para que sobreviva entre dispositivos
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase
+            .from("profiles")
+            .update({ preferred_demo_store_id: newStoreId })
+            .eq("id", user.id);
+          console.log("💾 preferred_demo_store_id guardado en Supabase");
+        }
+      } catch (e) {
+        console.warn("No se pudo guardar preferred_demo_store_id:", e);
+      }
+
+      // 2) Limpiar estados temporales del POS
+      setCart([]);
+      setSettlingSale(null);
+      setSelectedClient("Cliente General");
+      setShowPaymentModal(false);
+      setSelectedRestaurantCategory(null);
+
+      // 3) Cargar la tienda nueva
+      const { data: storeInfo, error } = await supabase
+        .from("stores")
+        .select(
+          "name, is_active, store_type, country, rif, document, address, tax_enabled, tax_rate, tax_inclusive, krono_enabled, lat, lng, kds_banners, admin_pin_hash"
+        )
+        .eq("id", newStoreId)
+        .single();
+
+      if (error || !storeInfo) {
+        throw new Error("No se pudo cargar la tienda seleccionada");
+      }
+
+      // 4) Actualizar estados de la tienda
+      const safeType =
+        String(storeInfo.store_type || "").trim().toLowerCase() ===
+        "restaurant"
+          ? "restaurant"
+          : "standard";
+
+      const rawCountry = String(storeInfo.country || "venezuela")
+        .trim()
+        .toLowerCase();
+      const safeCountry = rawCountry.includes("panama")
+        ? "panama"
+        : rawCountry.includes("salvador")
+          ? "el_salvador"
+          : "venezuela";
+
+      setCurrentStoreId(newStoreId);
+      setCurrentStoreName(storeInfo.name || "Fiskal Store");
+      setCurrentStoreType(safeType);
+      setCurrentStoreCountry(safeCountry);
+      setCurrentStoreRif(storeInfo.rif || storeInfo.document || "");
+      setCurrentStoreAddress(storeInfo.address || "");
+      setCurrentStoreTaxEnabled(storeInfo.tax_enabled || false);
+      setCurrentStoreTaxRate(
+        storeInfo.tax_rate !== null && storeInfo.tax_rate !== undefined
+          ? storeInfo.tax_rate
+          : safeCountry === "panama"
+            ? 7
+            : safeCountry === "el_salvador"
+              ? 13
+              : 16
+      );
+      setCurrentStoreTaxInclusive(storeInfo.tax_inclusive || false);
+      setCurrentStoreKronoEnabled(storeInfo.krono_enabled || false);
+      setCurrentStoreLat(parseFloat(storeInfo.lat) || 10.4806);
+      setCurrentStoreLng(parseFloat(storeInfo.lng) || -66.9036);
+      setCurrentStoreKdsBanners(storeInfo.kds_banners || []);
+      setStoreHasPin(!!storeInfo.admin_pin_hash);
+
+      // 5) Recargar datos operativos de la nueva tienda
+      await loadStoreData(newStoreId, "super_admin");
+
+            // 🎯 Mensaje diferenciado según el rol
+      if (currentUserRole === "system_vendor") {
+        toast.success(`Modo Demo: ${storeInfo.name}`, {
+          icon: "🏪",
+          duration: 4000,
+        });
+      } else {
+        toast.success(`Demo activa: ${storeInfo.name}`);
+      }
+    } catch (err) {
+      console.error("Error cambiando tienda demo:", err);
+      toast.error("No se pudo cambiar de tienda: " + err.message);
+    }
+  };
+
+  
+    // NUEVO: Función para encender/apagar Krono desde el Panel Maestro
   const handleToggleKrono = async (storeId, currentStatus) => {
     try {
       const { error } = await supabase
@@ -719,6 +830,11 @@ function App() {
   const [vendorOwnerPhone, setVendorOwnerPhone] = useState("");
   const [vendorOwnerEmail, setVendorOwnerEmail] = useState("");
   const [vendorPaidAdvance, setVendorPaidAdvance] = useState(false);
+  const [vendorOwnerDoc, setVendorOwnerDoc] = useState("");
+  const [vendorStoreAddress, setVendorStoreAddress] = useState("");
+  const [vendorStoreCity, setVendorStoreCity] = useState("");
+  const [vendorStoreState, setVendorStoreState] = useState("");
+  const [vendorStoreIsDemo, setVendorStoreIsDemo] = useState(false);
   const [vendorNewStoreType, setVendorNewStoreType] = useState("standard"); // Selector para Vendedores de Sistema
 
   const [showDailyTrialAlert, setShowDailyTrialAlert] = useState(false);
@@ -915,6 +1031,82 @@ function App() {
     setShowWeightModal(true);
   };
 
+    // 🍪 Abre el mini-modal de presentaciones
+  const openPackSelector = (prod) => {
+    setPackSelectorProduct(prod);
+    setPackSelectorQty(1);
+    setShowPackSelector(true);
+  };
+
+  // 🍪 Confirma la elección (unidad o paquete)
+  const confirmPackSelection = (mode) => {
+    if (!packSelectorProduct) return;
+    const prod = packSelectorProduct;
+    const qty = Math.max(1, parseInt(packSelectorQty) || 1);
+
+    if (mode === "unit") {
+      // Agregar como producto normal
+      for (let i = 0; i < qty; i++) {
+        addToCart(prod);
+      }
+    } else if (mode === "pack") {
+      // Agregar como paquete (1 pack = N unidades al precio del pack)
+      const unitsPerPack = parseInt(prod.units_per_pack) || 1;
+      const packPrice =
+        parseFloat(prod.pack_price) ||
+        parseFloat(prod.price) * unitsPerPack;
+
+      // Crear item con unitsMultiplier para descontar el stock correcto
+      const packCartItem = {
+        ...prod,
+        cartItemId: `${prod.id}_pack_${Date.now()}`,
+        price: packPrice,
+        quantity: qty,
+        unitsMultiplier: unitsPerPack,
+        customization: `📦 Paquete de ${unitsPerPack} unidades`,
+      };
+
+      // Validar stock disponible
+      const currentInCart = cart
+        .filter((item) => item.id === prod.id)
+        .reduce(
+          (sum, item) => sum + item.quantity * (item.unitsMultiplier || 1),
+          0
+        );
+      const requestedUnits = qty * unitsPerPack;
+
+      if (
+        prod.stock !== undefined &&
+        currentInCart + requestedUnits > prod.stock
+      ) {
+        alert(
+          `Stock insuficiente. Disponibles: ${prod.stock - currentInCart} unidades (necesitas ${requestedUnits}).`
+        );
+        return;
+      }
+
+      setCart((prevCart) => [...prevCart, packCartItem]);
+    }
+
+    setShowPackSelector(false);
+    setPackSelectorProduct(null);
+    setPackSelectorQty(1);
+  };
+
+  // 👖 Abrir el selector de tallas (variantes)
+  const openTallaSelector = (groupName, groupProducts) => {
+    setTallaSelectorGroup({ name: groupName, products: groupProducts });
+    setShowTallaSelector(true);
+  };
+
+  // 👖 Confirmar la talla seleccionada y agregar al carrito
+  const confirmTallaSelection = (product) => {
+    addToCart(product);
+    setShowTallaSelector(false);
+    setTallaSelectorGroup(null);
+  };
+
+
   const confirmAddToCartWithWeight = () => {
     if (!productForWeight) return;
     const val = parseFloat(weightValue) || 0;
@@ -955,6 +1147,13 @@ function App() {
   };
 
   const [showWeightModal, setShowWeightModal] = useState(false);
+    // 🍪 Selector de presentación (Unidad o Paquete)
+  const [showPackSelector, setShowPackSelector] = useState(false);
+  const [packSelectorProduct, setPackSelectorProduct] = useState(null);
+  const [packSelectorQty, setPackSelectorQty] = useState(1);
+    // 👖 Selector de tallas (variantes en POS)
+  const [showTallaSelector, setShowTallaSelector] = useState(false);
+  const [tallaSelectorGroup, setTallaSelectorGroup] = useState(null);
   const [productForWeight, setProductForWeight] = useState(null);
   const [weightValue, setWeightValue] = useState("1");
   const [weightUnit, setWeightUnit] = useState("kg");
@@ -1201,6 +1400,18 @@ function App() {
   const [stock, setStock] = useState("");
   const [category, setCategory] = useState("General");
   const [barcode, setBarcode] = useState("");
+    // 🍪 Presentaciones: paquete y bulto
+  const [sellByPack, setSellByPack] = useState(false);
+  const [unitsPerPack, setUnitsPerPack] = useState("");
+  const [packPrice, setPackPrice] = useState("");
+  const [sellByBulk, setSellByBulk] = useState(false);
+  const [unitsPerBulk, setUnitsPerBulk] = useState("");
+    // 👖 Variantes (tallas, colores)
+  const [variantGroup, setVariantGroup] = useState("");
+  const [variantLabel, setVariantLabel] = useState("");
+    // 📐 Categorías con tallas (Ropa, Zapatos, etc.)
+  const [tallasCategories, setTallasCategories] = useState([]);
+  const [tallasList, setTallasList] = useState([]); // [{ label: "S", quantity: 10 }]
 
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -1687,14 +1898,107 @@ function App() {
 
       let activeStoreId = profile.store_id;
 
-      if (profile.role === "super_admin") {
-        // Asignamos tu tienda exclusiva de pruebas para que puedas ver tu menú y POS
-        activeStoreId = "505a583d-8fd8-4265-af3e-aa836f177af0";
-
+            if (
+        profile.role === "super_admin" ||
+        profile.role === "system_vendor"
+) {
+        // 🎯 Cargamos las tiendas demo para super_admin Y system_vendor.
+        // Ambos pueden cambiar entre demos con la píldora del header.
         if (navigator.onLine) {
+          try {
+            const { data: demoStoresData } = await supabase
+              .from("stores")
+              .select("id, name, store_type, country")
+              .eq("is_demo", true)
+              .order("name", { ascending: true });
+
+            if (demoStoresData && demoStoresData.length > 0) {
+              setDemoStores(demoStoresData);
+
+              // 🎯 Prioridad: 1) preferred_demo_store_id (Supabase), 2) localStorage, 3) sessionStorage, 4) fallback
+              let savedId = profile.preferred_demo_store_id || null;
+
+              if (!savedId) {
+                savedId = localStorage.getItem("fiskal_selected_demo_store");
+              }
+
+              if (!savedId) {
+                savedId = sessionStorage.getItem("fiskal_selected_demo_store");
+              }
+
+              console.log("🔍 savedId a buscar:", savedId);
+              console.log(
+                "🔍 Tiendas demo disponibles:",
+                demoStoresData.map((s) => ({ id: s.id, name: s.name }))
+              );
+
+              let selected = null;
+
+              // 1) Intentar con el ID guardado (comparación estricta como strings)
+              if (savedId) {
+                selected = demoStoresData.find(
+                  (s) => String(s.id) === String(savedId)
+                );
+                if (!selected) {
+                  console.warn("⚠️ savedId no encontrado en demoStoresData");
+                }
+              }
+
+              // 2) Fallback: buscar por "demo" en el nombre
+              if (!selected) {
+                selected = demoStoresData.find((s) =>
+                  String(s.name || "").toLowerCase().includes("demo")
+                );
+              }
+
+              // 3) Fallback final: la primera
+              if (!selected) {
+                selected = demoStoresData[0];
+              }
+
+              // Solo cambiamos la tienda activa si ES super_admin.
+              // El vendedor mantiene su tienda normal (la que tenía asignada),
+              // y solo usa la píldora cuando quiere hacer una demo.
+              // 🎯 Aplicar preferencia si:
+              // - Es super_admin → siempre
+              // - Es system_vendor → solo si tiene preferencia guardada
+              const tienePreferredGuardado =
+                profile.preferred_demo_store_id ||
+                localStorage.getItem("fiskal_selected_demo_store") ||
+                sessionStorage.getItem("fiskal_selected_demo_store");
+
+              const debeUsarDemo =
+                profile.role === "super_admin" ||
+                (profile.role === "system_vendor" && tienePreferredGuardado);
+
+              if (debeUsarDemo) {
+                activeStoreId = selected.id;
+                localStorage.setItem("fiskal_selected_demo_store", selected.id);
+                sessionStorage.setItem("fiskal_selected_demo_store", selected.id);
+                console.log(
+                  `🎯 ${profile.role === "super_admin" ? "Super Admin" : "Vendedor"} usando tienda DEMO:`,
+                  selected.name,
+                  selected.id
+                );
+              } else {
+                console.log(
+                  "🏪 Vendedor con su tienda normal asignada"
+                );
+              }
+            } else {
+              console.warn(
+                "⚠️ No hay tiendas demo. Marca al menos una con is_demo = true en Supabase."
+              );
+            }
+          } catch (storeFindErr) {
+            console.warn("Error buscando tiendas demo:", storeFindErr);
+          }
+
           fetchAdminStores();
-          fetchSystemVendors();
-          fetchSaasTransactions();
+          if (profile.role === "super_admin") {
+            fetchSystemVendors();
+            fetchSaasTransactions();
+          }
         }
       }
 
@@ -1713,7 +2017,19 @@ function App() {
             );
 
             // SEGURIDAD SAAS: Si no es Super Admin, verificar estado y fechas de corte
-            if (profile.role !== "super_admin") {
+                        // 🎯 Saltamos la verificación de trial si:
+            // - Es super_admin, O
+            // - Es system_vendor Y está en modo demo (eligió una tienda demo)
+            const isSystemVendorInDemo =
+              profile.role === "system_vendor" &&
+              (profile.preferred_demo_store_id ||
+                localStorage.getItem("fiskal_selected_demo_store") ||
+                sessionStorage.getItem("fiskal_selected_demo_store"));
+
+            if (
+              profile.role !== "super_admin" &&
+              !isSystemVendorInDemo
+            ) {
               const now = new Date().getTime();
 
               // 1. Bloqueo si fue suspendido manualmente
@@ -1841,6 +2157,14 @@ function App() {
 
   const loadStoreData = async (storeId, role) => {
     if (!storeId) return;
+
+    // 📐 Cargar categorías con tallas desde localStorage
+    try {
+      const saved = localStorage.getItem(`fiskal_tallas_categories_${storeId}`);
+      setTallasCategories(saved ? JSON.parse(saved) : []);
+    } catch (e) {
+      setTallasCategories([]);
+    }
     await fetchRegisters(storeId);
     await fetchProducts(storeId);
     await fetchSales(storeId);
@@ -2014,14 +2338,18 @@ function App() {
 
       const { data: newStore, error: storeErr } = await supabase
         .from("stores")
-        .insert([
+         .insert([
           {
             name: vendorStoreName.trim(),
             rif: vendorStoreRif.trim(),
             document: vendorStoreRif.trim(),
             owner_name: vendorOwnerName.trim(),
+            owner_document: vendorOwnerDoc.trim(),
             phone: vendorOwnerPhone.trim(),
             email: vendorOwnerEmail.trim(),
+            address: vendorStoreAddress.trim(),
+            city: vendorStoreCity.trim(),
+            state: vendorStoreState.trim(),
             is_active: true,
             is_trial: isTrial,
             trial_start_date: new Date().toISOString(),
@@ -2033,6 +2361,7 @@ function App() {
             custom_discount: globalPromoDiscount,
             store_type: vendorNewStoreType,
             country: vendorStoreCountry,
+            is_demo: vendorStoreIsDemo,
           },
         ])
         .select()
@@ -2077,11 +2406,16 @@ function App() {
       setVendorStoreName("");
       setVendorStoreRif("");
       setVendorOwnerName("");
+      setVendorOwnerDoc("");
       setVendorOwnerPhone("");
       setVendorOwnerEmail("");
+      setVendorStoreAddress("");
+      setVendorStoreCity("");
+      setVendorStoreState("");
       setVendorPaidAdvance(false);
       setVendorNewStoreType("standard");
       setVendorStoreCountry("venezuela");
+      setVendorStoreIsDemo(false);
       setShowVendorStoreModal(false);
 
       if (currentUserRole === "super_admin") {
@@ -2549,6 +2883,30 @@ function App() {
       alert("Error al eliminar caja: " + error.message);
     }
   };
+
+    // 🎯 Autocompletado de estado para el vendedor (idéntico al del super_admin)
+  const handleVendorCityChange = (e) => {
+    const val = e.target.value;
+    setVendorStoreCity(val);
+    const cleanKey = val.trim().toLowerCase();
+    if (venezuelaCitiesMap[cleanKey]) {
+      setVendorStoreState(venezuelaCitiesMap[cleanKey]);
+    }
+  };
+
+  // 📐 Crear una nueva categoría con tallas
+  const addTallasCategory = (catName) => {
+    if (!catName || !currentStoreId) return;
+    const clean = catName.trim();
+    if (!clean) return;
+    const updated = [...new Set([...tallasCategories, clean])];
+    setTallasCategories(updated);
+    localStorage.setItem(
+      `fiskal_tallas_categories_${currentStoreId}`,
+      JSON.stringify(updated)
+    );
+  };
+
 
   const handleCityChange = (e) => {
     const val = e.target.value;
@@ -3947,6 +4305,78 @@ function App() {
     e.preventDefault();
     if (!name || !price || !currentStoreId) return;
 
+    // 📐 Si la categoría es "con tallas", creamos N productos (uno por talla)
+    if (tallasCategories.includes(category) && tallasList.length > 0) {
+      setLoading(true);
+      try {
+        let imageUrl = null;
+        if (imageFile) {
+          if (isOnline) {
+            imageUrl = await uploadImageToSupabase();
+          }
+        } else if (imagePreview && !imagePreview.startsWith("blob:")) {
+          imageUrl = imagePreview;
+        }
+
+        const baseSku = barcode.trim();
+        const productsToCreate = tallasList.map((t) => ({
+          name: `${name.trim()} - ${t.label}`,
+          price: parseFloat(price),
+          cost: parseFloat(cost) || 0,
+          stock: parseInt(t.quantity) || 0,
+          category: category || "General",
+          barcode: baseSku ? `${baseSku}-${t.label}` : null,
+          image_url: imageUrl,
+          modifiers: productModifiers.join(", "),
+          extras: productExtras,
+          choices: productChoices,
+          store_id: currentStoreId,
+          show_in_krono: showInKrono,
+          krono_preferential_price: kronoPrice ? parseFloat(kronoPrice) : null,
+          units_per_pack: sellByPack ? (parseInt(unitsPerPack) || null) : null,
+          pack_price: sellByPack ? (parseFloat(packPrice) || null) : null,
+          units_per_bulk: sellByBulk ? (parseInt(unitsPerBulk) || null) : null,
+          variant_group: name.trim(),
+          variant_label: t.label,
+        }));
+
+        if (!isOnline) {
+          for (const p of productsToCreate) {
+            const tempId = `local_prod_${Date.now()}_${Math.random()
+              .toString(36)
+              .slice(2)}`;
+            await queueOfflineAction({
+              type: "INSERT_PRODUCT",
+              productData: p,
+              tempId,
+            });
+          }
+          resetProductForm();
+          setLoading(false);
+          checkPendingSales();
+          alert(
+            `¡Estás Offline! ${productsToCreate.length} tallas guardadas localmente.`
+          );
+          return;
+        }
+
+        const { error } = await supabase
+          .from("products")
+          .insert(productsToCreate);
+        if (error) throw error;
+
+        resetProductForm();
+        fetchProducts(currentStoreId);
+        toast.success(`${productsToCreate.length} tallas guardadas`);
+      } catch (error) {
+        console.error("Error al guardar tallas:", error.message);
+        alert("Error al guardar tallas: " + error.message);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
     try {
       let imageUrl = null;
@@ -3974,7 +4404,13 @@ function App() {
         choices: productChoices,
         store_id: currentStoreId,
         show_in_krono: showInKrono,
-        krono_preferential_price: kronoPrice ? parseFloat(kronoPrice) : null
+        krono_preferential_price: kronoPrice ? parseFloat(kronoPrice) : null,
+        // 🍪 Presentaciones
+        units_per_pack: sellByPack ? (parseInt(unitsPerPack) || null) : null,
+        pack_price: sellByPack ? (parseFloat(packPrice) || null) : null,
+        units_per_bulk: sellByBulk ? (parseInt(unitsPerBulk) || null) : null,
+        variant_group: variantGroup.trim() || null,
+        variant_label: variantLabel.trim() || null,
       };
 
       if (!isOnline) {
@@ -4035,6 +4471,12 @@ function App() {
         choices: productChoices,
         show_in_krono: showInKrono,
         krono_preferential_price: kronoPrice ? parseFloat(kronoPrice) : null,
+        // 🍪 Presentaciones
+        units_per_pack: sellByPack ? (parseInt(unitsPerPack) || null) : null,
+        pack_price: sellByPack ? (parseFloat(packPrice) || null) : null,
+        units_per_bulk: sellByBulk ? (parseInt(unitsPerBulk) || null) : null,
+        variant_group: variantGroup.trim() || null,
+        variant_label: variantLabel.trim() || null,
       };
 
       if (!isOnline) {
@@ -4122,6 +4564,14 @@ function App() {
     setImagePreview(prod.image_url || null);
     setImageFile(null);
 
+    setSellByPack(!!prod.units_per_pack);
+    setUnitsPerPack(prod.units_per_pack ? prod.units_per_pack.toString() : "");
+    setPackPrice(prod.pack_price ? prod.pack_price.toString() : "");
+    setSellByBulk(!!prod.units_per_bulk);
+    setUnitsPerBulk(prod.units_per_bulk ? prod.units_per_bulk.toString() : "");
+    setVariantGroup(prod.variant_group || "");
+    setVariantLabel(prod.variant_label || "");
+
     setShowInKrono(prod.show_in_krono || false);
     setKronoPrice(
       prod.krono_preferential_price
@@ -4179,6 +4629,13 @@ function App() {
     setImagePreview(prod.image_url || null);
     setImageFile(null);
 
+    setSellByPack(!!prod.units_per_pack);
+    setUnitsPerPack(prod.units_per_pack ? prod.units_per_pack.toString() : "");
+    setPackPrice(prod.pack_price ? prod.pack_price.toString() : "");
+    setSellByBulk(!!prod.units_per_bulk);
+    setUnitsPerBulk(prod.units_per_bulk ? prod.units_per_bulk.toString() : "");
+    setVariantGroup(prod.variant_group || "");
+    setVariantLabel(prod.variant_label || "");
     setShowInKrono(prod.show_in_krono || false);
     setKronoPrice(
       prod.krono_preferential_price !== null &&
@@ -4244,6 +4701,14 @@ function App() {
     setNewExtraName("");
     setNewExtraPrice("");
     setProductChoices([]);
+    setSellByPack(false);
+    setUnitsPerPack("");
+    setPackPrice("");
+    setSellByBulk(false);
+    setUnitsPerBulk("");
+    setVariantGroup("");
+    setVariantLabel("");
+    setTallasList([]);
   };
 
   const handleDeleteProduct = async (id) => {
@@ -4558,10 +5023,17 @@ function App() {
     }
 
     // Sumamos la cantidad de este producto en todo el carrito para validar el stock correctamente
+        // 🍪 Contamos las unidades reales (los paquetes cuentan como N unidades)
     const currentInCart = cart
       .filter((item) => item.id === product.id)
-      .reduce((sum, item) => sum + item.quantity, 0);
-    if (product.stock !== undefined && currentInCart >= product.stock) {
+      .reduce(
+        (sum, item) => sum + item.quantity * (item.unitsMultiplier || 1),
+        0
+      );
+    if (
+      product.stock !== undefined &&
+      currentInCart + 1 > product.stock
+    ) {
       alert(
         `No hay suficiente stock disponible para ${product.name}. Stock actual: ${product.stock}`,
       );
@@ -4778,7 +5250,7 @@ function App() {
             {
               p_product_id: item.id,
               p_store_id: currentStoreId,
-              p_quantity: item.quantity,
+              p_quantity: item.quantity * (item.unitsMultiplier || 1),
             }
           );
 
@@ -4802,7 +5274,8 @@ function App() {
         // pero se reconcilia al sincronizar.
         const currentProd = products.find((p) => p.id === item.id);
         if (currentProd) {
-          const newStock = Math.max(0, (currentProd.stock || 0) - item.quantity);
+          const unitsToDeduct = item.quantity * (item.unitsMultiplier || 1);
+          const newStock = Math.max(0, (currentProd.stock || 0) - unitsToDeduct);
           await supabase
             .from("products")
             .update({ stock: newStock })
@@ -5587,6 +6060,41 @@ function App() {
       return !fastFoodCategories.includes(cat);
     }
   });
+
+    // 👖 Agrupar productos con variantes (tallas) para el POS
+  const posCatalogItems = (() => {
+    const grouped = {};
+    const normalProducts = [];
+
+    filteredProductsForCatalog.forEach((p) => {
+      if (p.variant_group) {
+        if (!grouped[p.variant_group]) {
+          grouped[p.variant_group] = {
+            id: `group_${p.variant_group}`,
+            isGroup: true,
+            groupName: p.variant_group,
+            representative: p,
+            variants: [p],
+          };
+        } else {
+          grouped[p.variant_group].variants.push(p);
+        }
+      } else {
+        normalProducts.push(p);
+      }
+    });
+
+    // Ordenar variantes por su label
+    Object.values(grouped).forEach((g) => {
+      g.variants.sort((a, b) =>
+        String(a.variant_label || "").localeCompare(
+          String(b.variant_label || "")
+        )
+      );
+    });
+
+    return [...normalProducts, ...Object.values(grouped)];
+  })();
 
   const currentShiftSales = currentShift
     ? sales.filter(
@@ -6600,58 +7108,182 @@ function App() {
                               ? "Configuración del Sistema y Empleados"
                               : activeTab.toUpperCase()}
           </h1>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div className="header-badges-group">
             
-            {/* BOTÓN DE TOUR INTEGRADO AL DISEÑO */}
+            {/* BOTÓN RECORRIDO */}
             <button
               onClick={() => setRunTour(true)}
-              style={{
-                background: "#f8f9fa",
-                color: "#495057",
-                border: "1px solid #ced4da",
-                padding: "6px 12px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: "bold",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                transition: "all 0.2s"
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = "#e9ecef"}
-              onMouseLeave={(e) => e.currentTarget.style.background = "#f8f9fa"}
+              className="header-badge action"
             >
-              <Play size={14} /> Recorrido
+              <Play size={14} className="badge-icon" />
+              <span>Recorrido</span>
             </button>
 
-            <div
-              className={`shift-status-pill ${isOnline ? "open" : "closed"}`}
-              style={{
-                background: isOnline ? "#eebefa" : "#ffe3e3",
-                color: isOnline ? "#862e9c" : "#c92a2a",
-              }}
-            >
-              {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
+            {/* ESTADO ONLINE/OFFLINE */}
+            <div className={`header-badge ${isOnline ? "" : "is-offline"}`}>
+              <span className="badge-icon">
+                {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
+              </span>
               <span>{isOnline ? "Online" : "Offline"}</span>
             </div>
 
+            {/* PÍLDORA DEMO (solo super_admin) */}
+            {(currentUserRole === "super_admin" || currentUserRole === "system_vendor") && demoStores.length > 0 && (
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowDemoStoreDropdown(!showDemoStoreDropdown)}
+                  className="header-badge clickable is-demo"
+                  title="Cambiar tienda demo (solo Super Admin)"
+                >
+                  🏪
+                  <span>
+                    {demoStores.find((s) => s.id === currentStoreId)?.name ||
+                      "Tienda Demo"}
+                  </span>
+                  <span style={{ fontSize: "9px" }}>▼</span>
+                </button>
+
+                {showDemoStoreDropdown && (
+                  <>
+                    <div
+                      onClick={() => setShowDemoStoreDropdown(false)}
+                      style={{
+                        position: "fixed",
+                        inset: 0,
+                        zIndex: 9998,
+                      }}
+                    />
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "calc(100% + 5px)",
+                        right: 0,
+                        background: "#ffffff",
+                        border: "1px solid #ced4da",
+                        borderRadius: "8px",
+                        padding: "8px",
+                        boxShadow: "0 8px 16px rgba(0,0,0,0.15)",
+                        zIndex: 9999,
+                        minWidth: "260px",
+                        maxHeight: "300px",
+                        overflowY: "auto",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: "800",
+                          color: "#6b7280",
+                          textTransform: "uppercase",
+                          padding: "6px 10px",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
+                        🎯 Cambiar Tienda Demo
+                      
+                      {/* Volver a tienda normal (solo para vendedores) */}
+                      {currentUserRole === "system_vendor" && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setShowDemoStoreDropdown(false);
+                            localStorage.removeItem("fiskal_selected_demo_store");
+                            sessionStorage.removeItem("fiskal_selected_demo_store");
+                            try {
+                              const { data: { user } } = await supabase.auth.getUser();
+                              if (user) {
+                                await supabase
+                                  .from("profiles")
+                                  .update({ preferred_demo_store_id: null })
+                                  .eq("id", user.id);
+                              }
+                            } catch (e) {
+                              console.warn(e);
+                            }
+                            toast.success("Volviendo a tu tienda...");
+                            setTimeout(() => window.location.reload(), 800);
+                          }}
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            fontSize: "12px",
+                            textAlign: "center",
+                            borderRadius: "6px",
+                            border: "1px solid #fca5a5",
+                            background: "#fef2f2",
+                            color: "#dc2626",
+                            fontWeight: "700",
+                            cursor: "pointer",
+                            marginTop: "6px",
+                          }}
+                        >
+                          ← Volver a mi tienda normal
+                        </button>
+                      )}                      
+
+                      </div>
+                      {demoStores.map((store) => {
+                        const isActive = store.id === currentStoreId;
+                        return (
+                          <button
+                            key={store.id}
+                            type="button"
+                            onClick={() => handleSwitchDemoStore(store.id)}
+                            style={{
+                              width: "100%",
+                              padding: "10px 12px",
+                              fontSize: "12px",
+                              textAlign: "left",
+                              borderRadius: "6px",
+                              border: "none",
+                              background: isActive ? "#f1f3f5" : "transparent",
+                              color: isActive ? "#111827" : "#374151",
+                              fontWeight: isActive ? "800" : "600",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: "8px",
+                            }}
+                          >
+                            <div style={{ display: "flex", flexDirection: "column" }}>
+                              <span>
+                                {isActive ? "✓ " : ""}
+                                {store.name}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  color: "#9ca3af",
+                                  fontWeight: "500",
+                                }}
+                              >
+                                {store.store_type === "restaurant"
+                                  ? "Restaurante"
+                                  : "Estándar"}{" "}
+                                · {store.country || "venezuela"}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* PENDIENTES DE SINCRONIZACIÓN (solo si hay) */}
             {pendingSalesCount > 0 && (
               <button
-                className="btn-sync"
                 onClick={syncOfflineData}
                 disabled={!isOnline || isSyncing}
+                className="header-badge clickable"
                 style={{
-                  background: "#fff3bf",
-                  color: "#e67700",
-                  padding: "6px 12px",
-                  borderRadius: "20px",
-                  fontSize: "12px",
-                  fontWeight: "bold",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  border: "none",
+                  background: "#fffbf0",
+                  borderColor: "#ffe8a3",
+                  color: "#d97706",
                   cursor: isOnline ? "pointer" : "not-allowed",
                 }}
               >
@@ -6659,14 +7291,15 @@ function App() {
                   size={14}
                   className={isSyncing ? "spinning" : ""}
                 />
-                {pendingSalesCount} pendientes
+                <span>{pendingSalesCount} pendientes</span>
               </button>
             )}
 
-            <div
-              className={`shift-status-pill ${currentShift ? "open" : "closed"}`}
-            >
-              {currentShift ? <Unlock size={14} /> : <Lock size={14} />}
+            {/* ESTADO DE CAJA */}
+            <div className={`header-badge ${currentShift ? "" : "is-closed"}`}>
+              <span className="badge-icon">
+                {currentShift ? <Unlock size={14} /> : <Lock size={14} />}
+              </span>
               <span>
                 {currentShift
                   ? `Abierta (${getCurrentRegisterName()})`
@@ -6674,10 +7307,8 @@ function App() {
               </span>
             </div>
 
-            <div
-              className="exchange-rate-badge"
-              style={{ position: "relative" }}
-            >
+            {/* TASA BCV (idéntico al original) */}
+            <div className="exchange-rate-badge" style={{ position: "relative" }}>
               <div
                 onClick={() => {
                   setTempRateType(rateType);
@@ -6762,9 +7393,7 @@ function App() {
                   >
                     <option value="BCV">Dólar Oficial BCV (Automático)</option>
                     <option value="EUR">Euro Oficial BCV (Automático)</option>
-                    <option value="CUSTOM">
-                      Tasa Personalizada / Redondeo
-                    </option>
+                    <option value="CUSTOM">Tasa Personalizada / Redondeo</option>
                   </select>
 
                   {tempRateType === "CUSTOM" && (
@@ -6799,9 +7428,7 @@ function App() {
                     </div>
                   )}
 
-                  <div
-                    style={{ display: "flex", gap: "8px", marginTop: "4px" }}
-                  >
+                  <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
                     <button
                       type="button"
                       onClick={() => setShowRateDropdown(false)}
@@ -6825,13 +7452,8 @@ function App() {
                         setRateType(tempRateType);
                         setCustomRateInput(tempCustomRate);
                         localStorage.setItem("fiskal_rate_type", tempRateType);
-                        localStorage.setItem(
-                          "fiskal_custom_rate",
-                          tempCustomRate,
-                        );
-
+                        localStorage.setItem("fiskal_custom_rate", tempCustomRate);
                         setShowRateDropdown(false);
-
                         if (tempRateType === "CUSTOM") {
                           syncRate("CUSTOM", currentStoreId, tempCustomRate);
                         } else {
@@ -6857,66 +7479,6 @@ function App() {
               )}
             </div>
 
-            {currentUserRole === "system_vendor" && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  background: "#e9ecef",
-                  padding: "3px",
-                  borderRadius: "6px",
-                  gap: "2px",
-                  marginLeft: "auto",
-                }}
-              >
-                <button
-                  onClick={() => setCurrentStoreType("general")}
-                  style={{
-                    background:
-                      currentStoreType === "general" ? "#fff" : "transparent",
-                    border: "none",
-                    padding: "4px 10px",
-                    borderRadius: "4px",
-                    fontSize: "11px",
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                    color:
-                      currentStoreType === "general" ? "#212529" : "#6c757d",
-                    boxShadow:
-                      currentStoreType === "general"
-                        ? "0 1px 3px rgba(0,0,0,0.1)"
-                        : "none",
-                    transition: "all 0.2s",
-                  }}
-                >
-                  Tienda Estándar
-                </button>
-                <button
-                  onClick={() => setCurrentStoreType("restaurant")}
-                  style={{
-                    background:
-                      currentStoreType === "restaurant"
-                        ? "#d9480f"
-                        : "transparent",
-                    border: "none",
-                    padding: "4px 10px",
-                    borderRadius: "4px",
-                    fontSize: "11px",
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                    color:
-                      currentStoreType === "restaurant" ? "#fff" : "#6c757d",
-                    boxShadow:
-                      currentStoreType === "restaurant"
-                        ? "0 1px 3px rgba(0,0,0,0.1)"
-                        : "none",
-                    transition: "all 0.2s",
-                  }}
-                >
-                  Comida Rápida
-                </button>
-              </div>
-            )}
           </div>
         </header>
 
@@ -6934,11 +7496,13 @@ function App() {
               setProductSearchQuery={setProductSearchQuery}
               currentShift={currentShift}
               products={products}
-              filteredProductsForCatalog={filteredProductsForCatalog}
+              posCatalogItems={posCatalogItems}
               selectedRestaurantCategory={selectedRestaurantCategory}
               setSelectedRestaurantCategory={setSelectedRestaurantCategory}
               handleOpenModifierModal={handleOpenModifierModal}
               handleOpenWeightModal={handleOpenWeightModal}
+              openPackSelector={openPackSelector}
+              openTallaSelector={openTallaSelector}
               addToCart={addToCart}
               selectedClient={selectedClient}
               setSelectedClient={setSelectedClient}
@@ -6990,6 +7554,16 @@ function App() {
                 setVendorOwnerEmail={setVendorOwnerEmail}
                 vendorPaidAdvance={vendorPaidAdvance}
                 setVendorPaidAdvance={setVendorPaidAdvance}
+                vendorOwnerDoc={vendorOwnerDoc}
+                setVendorOwnerDoc={setVendorOwnerDoc}
+                vendorStoreAddress={vendorStoreAddress}
+                setVendorStoreAddress={setVendorStoreAddress}
+                vendorStoreCity={vendorStoreCity}
+                handleVendorCityChange={handleVendorCityChange}
+                vendorStoreState={vendorStoreState}
+                setVendorStoreState={setVendorStoreState}
+                vendorStoreIsDemo={vendorStoreIsDemo}
+                setVendorStoreIsDemo={setVendorStoreIsDemo}
                 getCalculatedMonthlyPrice={getCalculatedMonthlyPrice}
                 baseMonthlyPrice={baseMonthlyPrice}
               />
@@ -7187,6 +7761,24 @@ function App() {
               onStartCameraScanner={() => startCameraScanner("inventory")}
               productChoices={productChoices} 
               setProductChoices={setProductChoices}
+              sellByPack={sellByPack}
+              setSellByPack={setSellByPack}
+              unitsPerPack={unitsPerPack}
+              setUnitsPerPack={setUnitsPerPack}
+              packPrice={packPrice}
+              setPackPrice={setPackPrice}
+              sellByBulk={sellByBulk}
+              setSellByBulk={setSellByBulk}
+              unitsPerBulk={unitsPerBulk}
+              setUnitsPerBulk={setUnitsPerBulk}
+              variantGroup={variantGroup}
+              setVariantGroup={setVariantGroup}
+              variantLabel={variantLabel}
+              setVariantLabel={setVariantLabel}
+              tallasCategories={tallasCategories}
+              tallasList={tallasList}
+              setTallasList={setTallasList}
+              addTallasCategory={addTallasCategory}
             />
           )}
 
@@ -7740,6 +8332,302 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* 1.14 MODAL: SELECTOR DE TALLAS (VARIANTES) */}
+      {showTallaSelector && tallaSelectorGroup && (
+        <div className="modal-overlay" style={{ zIndex: 10006 }}>
+          <div
+            className="modal-content"
+            style={{ width: "420px", textAlign: "center" }}
+          >
+            <div className="modal-header">
+              <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                👖 {tallaSelectorGroup.name}
+              </h3>
+              <button
+                className="btn-close-modal"
+                onClick={() => {
+                  setShowTallaSelector(false);
+                  setTallaSelectorGroup(null);
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: "16px 20px" }}>
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "#6c757d",
+                  marginBottom: "14px",
+                }}
+              >
+                ¿Qué talla quiere el cliente?
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))",
+                  gap: "10px",
+                }}
+              >
+                {tallaSelectorGroup.products.map((p) => {
+                  const noStock = (p.stock || 0) <= 0;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      disabled={noStock}
+                      onClick={() => confirmTallaSelection(p)}
+                      style={{
+                        padding: "14px 10px",
+                        borderRadius: "10px",
+                        border: noStock
+                          ? "2px solid #e5e7eb"
+                          : "2px solid #93c5fd",
+                        background: noStock ? "#f9fafb" : "#eff6ff",
+                        cursor: noStock ? "not-allowed" : "pointer",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: "6px",
+                        opacity: noStock ? 0.5 : 1,
+                        transition: "all 0.15s",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!noStock)
+                          e.currentTarget.style.borderColor = "#2563eb";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!noStock)
+                          e.currentTarget.style.borderColor = "#93c5fd";
+                      }}
+                    >
+                      <strong
+                        style={{
+                          fontSize: "18px",
+                          color: noStock ? "#9ca3af" : "#1d4ed8",
+                          fontWeight: "900",
+                        }}
+                      >
+                        {p.variant_label || "?"}
+                      </strong>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          color: noStock ? "#9ca3af" : "#16a34a",
+                          fontWeight: "700",
+                        }}
+                      >
+                        {noStock ? "Sin stock" : `${p.stock} uds`}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          color: "#111827",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        ${Number(p.price).toFixed(2)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div
+              className="modal-footer"
+              style={{ display: "flex", justifyContent: "flex-end" }}
+            >
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setShowTallaSelector(false);
+                  setTallaSelectorGroup(null);
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* 1.15 MODAL: SELECTOR DE PRESENTACIÓN (UNIDAD o PAQUETE) */}
+      {showPackSelector && packSelectorProduct && (
+        <div className="modal-overlay" style={{ zIndex: 10006 }}>
+          <div
+            className="modal-content"
+            style={{ width: "380px", textAlign: "center" }}
+          >
+            <div className="modal-header">
+              <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                📦 {packSelectorProduct.name}
+              </h3>
+              <button
+                className="btn-close-modal"
+                onClick={() => {
+                  setShowPackSelector(false);
+                  setPackSelectorProduct(null);
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: "16px 20px" }}>
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "#6c757d",
+                  marginBottom: "14px",
+                }}
+              >
+                ¿Cómo deseas venderlo?
+              </p>
+
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: "10px" }}
+              >
+                {/* Opción Unidad */}
+                <button
+                  type="button"
+                  onClick={() => confirmPackSelection("unit")}
+                  style={{
+                    padding: "14px 16px",
+                    borderRadius: "10px",
+                    border: "2px solid #e5e7eb",
+                    background: "#fff",
+                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#111827")}
+                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#e5e7eb")}
+                >
+                  <div>
+                    <strong
+                      style={{ fontSize: "14px", color: "#111827", display: "block" }}
+                    >
+                      🍪 1 Unidad
+                    </strong>
+                    <span style={{ fontSize: "11px", color: "#6b7280" }}>
+                      Suelto
+                    </span>
+                  </div>
+                  <strong
+                    style={{ fontSize: "18px", color: "#16a34a", fontWeight: "900" }}
+                  >
+                    ${Number(packSelectorProduct.price).toFixed(2)}
+                  </strong>
+                </button>
+
+                {/* Opción Paquete */}
+                <button
+                  type="button"
+                  onClick={() => confirmPackSelection("pack")}
+                  style={{
+                    padding: "14px 16px",
+                    borderRadius: "10px",
+                    border: "2px solid #bbf7d0",
+                    background: "#f0fdf4",
+                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#16a34a")}
+                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#bbf7d0")}
+                >
+                  <div>
+                    <strong
+                      style={{
+                        fontSize: "14px",
+                        color: "#166534",
+                        display: "block",
+                      }}
+                    >
+                      📦 Paquete ({packSelectorProduct.units_per_pack} uds)
+                    </strong>
+                    <span style={{ fontSize: "11px", color: "#16a34a" }}>
+                      {(() => {
+                        const totalUnit =
+                          Number(packSelectorProduct.price) *
+                          Number(packSelectorProduct.units_per_pack);
+                        const packPrice = Number(
+                          packSelectorProduct.pack_price || totalUnit
+                        );
+                        const saving = totalUnit - packPrice;
+                        return saving > 0
+                          ? `⭐ Ahorra $${saving.toFixed(2)}`
+                          : "Presentación completa";
+                      })()}
+                    </span>
+                  </div>
+                  <strong
+                    style={{ fontSize: "18px", color: "#16a34a", fontWeight: "900" }}
+                  >
+                    $
+                    {Number(
+                      packSelectorProduct.pack_price ||
+                        Number(packSelectorProduct.price) *
+                          Number(packSelectorProduct.units_per_pack)
+                    ).toFixed(2)}
+                  </strong>
+                </button>
+              </div>
+
+              <div
+                style={{
+                  marginTop: "16px",
+                  padding: "12px",
+                  background: "#f8fafc",
+                  borderRadius: "8px",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "12px",
+                    color: "#475569",
+                    fontWeight: "600",
+                  }}
+                >
+                  Stock disponible:
+                </span>{" "}
+                <strong style={{ color: "#111827" }}>
+                  {packSelectorProduct.stock || 0} unidades
+                </strong>
+              </div>
+            </div>
+
+            <div
+              className="modal-footer"
+              style={{ display: "flex", justifyContent: "flex-end" }}
+            >
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setShowPackSelector(false);
+                  setPackSelectorProduct(null);
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* 1.2 MODAL: VENTA POR PESO (BALANZA DIGITAL) */}
       {showWeightModal && productForWeight && (

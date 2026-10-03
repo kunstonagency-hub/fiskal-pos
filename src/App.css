@@ -1552,3 +1552,101 @@ body {
     padding: 4mm !important;
   }
 }
+/* ============================================================================
+   HEADER BADGES — Estilo unificado minimalista
+   ============================================================================ */
+.header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  background: #ffffff;
+  color: #212529;
+  border: 1px solid #e9ecef;
+  white-space: nowrap;
+  cursor: default;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+.header-badge.clickable {
+  cursor: pointer;
+}
+
+.header-badge.clickable:hover {
+  background: #f8f9fa;
+  border-color: #ced4da;
+}
+
+.header-badge .badge-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: #6c757d;
+}
+
+.header-badge .badge-text {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ---- Variantes de estado (solo cuando es realmente crítico) ---- */
+.header-badge.is-offline {
+  background: #fff5f5;
+  color: #c92a2a;
+  border-color: #ffc9c9;
+}
+
+.header-badge.is-offline .badge-icon {
+  color: #c92a2a;
+}
+
+.header-badge.is-closed {
+  background: #fff5f5;
+  color: #c92a2a;
+  border-color: #ffc9c9;
+}
+
+.header-badge.is-closed .badge-icon {
+  color: #c92a2a;
+}
+
+/* ---- Píldora especial del super_admin (demostración) ---- */
+.header-badge.is-demo {
+  background: #f8f9fa;
+  color: #495057;
+  border-color: #dee2e6;
+}
+
+/* ---- BOTÓN RECORRIDO (mismo estilo que los badges) ---- */
+.header-badge.action {
+  background: #ffffff;
+  color: #495057;
+  border: 1px solid #e9ecef;
+  cursor: pointer;
+}
+
+.header-badge.action:hover {
+  background: #f8f9fa;
+  border-color: #ced4da;
+}
+
+/* ---- Contenedor del grupo ---- */
+.header-badges-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---- Dropdown de la píldora demo ---- */
+.header-badge.is-demo {
+  position: relative;
+}

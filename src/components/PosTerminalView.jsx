@@ -31,11 +31,13 @@ export default function PosTerminalView({
   setProductSearchQuery,
   currentShift,
   products,
-  filteredProductsForCatalog,
+  posCatalogItems,
   selectedRestaurantCategory,
   setSelectedRestaurantCategory,
   handleOpenModifierModal,
   handleOpenWeightModal,
+  openPackSelector,
+  openTallaSelector,
   addToCart,
   selectedClient,
   setSelectedClient,
@@ -583,7 +585,7 @@ export default function PosTerminalView({
               }}
             >
               {(() => {
-                let displayProducts = filteredProductsForCatalog;
+                let displayProducts = posCatalogItems || [];
 
                 const fastFoodCats = [
                   "hamburguesas",
@@ -634,115 +636,250 @@ export default function PosTerminalView({
                     No se encontraron productos en esta vista.
                   </p>
                 ) : (
-                  displayProducts.map((prod) => (
-                    <div
-                      key={prod.id}
-                      onClick={() => {
-                        if (currentStoreType === "restaurant") {
-                          handleOpenModifierModal(prod);
-                        } else if (prod.category === "Por Peso") {
-                          handleOpenWeightModal(prod);
-                        } else {
-                          addToCart(prod);
-                        }
-                      }}
-                      style={{
-                        background: "#fff",
-                        border: "1px solid #e9ecef",
-                        borderRadius: "12px",
-                        cursor: "pointer",
-                        display: "flex",
-                        flexDirection: "column",
-                        overflow: "hidden",
-                        opacity: prod.stock <= 0 ? 0.6 : 1,
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          height: "120px",
-                          width: "100%",
-                          background: "#f1f3f5",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        {prod.image_url ? (
-                          <img
-                            src={prod.image_url}
-                            alt={prod.name}
+                                    displayProducts.map((item) => {
+                    // 👖 Si es un grupo de variantes (tallas)
+                    if (item.isGroup) {
+                      const rep = item.representative;
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() =>
+                            openTallaSelector(item.groupName, item.variants)
+                          }
+                          style={{
+                            background: "#fff",
+                            border: "2px solid #93c5fd",
+                            borderRadius: "12px",
+                            cursor: "pointer",
+                            display: "flex",
+                            flexDirection: "column",
+                            overflow: "hidden",
+                            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                            position: "relative",
+                          }}
+                        >
+                          <div
                             style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover",
+                              position: "absolute",
+                              top: "6px",
+                              right: "6px",
+                              background: "#1d4ed8",
+                              color: "#fff",
+                              padding: "2px 8px",
+                              borderRadius: "10px",
+                              fontSize: "10px",
+                              fontWeight: "900",
+                              zIndex: 2,
                             }}
-                          />
-                        ) : (
-                          <Package
-                            size={36}
-                            color="#adb5bd"
-                            strokeWidth={1.5}
-                          />
-                        )}
-                      </div>
+                          >
+                            {item.variants.length} tallas
+                          </div>
+
+                          <div
+                            style={{
+                              height: "120px",
+                              width: "100%",
+                              background: "#eff6ff",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            {rep.image_url ? (
+                              <img
+                                src={rep.image_url}
+                                alt={item.groupName}
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover",
+                                }}
+                              />
+                            ) : (
+                              <Package
+                                size={36}
+                                color="#93c5fd"
+                                strokeWidth={1.5}
+                              />
+                            )}
+                          </div>
+
+                          <div
+                            style={{
+                              padding: "12px",
+                              display: "flex",
+                              flexDirection: "column",
+                              flex: 1,
+                              justifyContent: "space-between",
+                            }}
+                          >
+                            <h4
+                              style={{
+                                fontSize: "13px",
+                                fontWeight: "bold",
+                                color: "#1d4ed8",
+                                margin: "0 0 8px 0",
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden",
+                              }}
+                            >
+                              {item.groupName}
+                            </h4>
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "flex-end",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: "16px",
+                                  fontWeight: "900",
+                                  color: "#16a34a",
+                                }}
+                              >
+                                ${Number(rep.price).toFixed(2)}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  background: "#eff6ff",
+                                  color: "#1d4ed8",
+                                  padding: "3px 6px",
+                                  borderRadius: "6px",
+                                  fontWeight: "bold",
+                                  border: "1px solid #bfdbfe",
+                                }}
+                              >
+                                Elegir talla
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Producto normal (sin variantes)
+                    const prod = item;
+                    return (
                       <div
+                        key={prod.id}
+                        onClick={() => {
+                          if (currentStoreType === "restaurant") {
+                            handleOpenModifierModal(prod);
+                          } else if (prod.category === "Por Peso") {
+                            handleOpenWeightModal(prod);
+                          } else if (
+                            prod.units_per_pack &&
+                            parseInt(prod.units_per_pack) > 1
+                          ) {
+                            openPackSelector(prod);
+                          } else {
+                            addToCart(prod);
+                          }
+                        }}
                         style={{
-                          padding: "12px",
+                          background: "#fff",
+                          border: "1px solid #e9ecef",
+                          borderRadius: "12px",
+                          cursor: "pointer",
                           display: "flex",
                           flexDirection: "column",
-                          flex: 1,
-                          justifyContent: "space-between",
+                          overflow: "hidden",
+                          opacity: prod.stock <= 0 ? 0.6 : 1,
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
                         }}
                       >
-                        <h4
-                          style={{
-                            fontSize: "13px",
-                            fontWeight: "bold",
-                            color: "#212529",
-                            margin: "0 0 8px 0",
-                            display: "-webkit-box",
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
-                        >
-                          {prod.name}
-                        </h4>
                         <div
                           style={{
+                            height: "120px",
+                            width: "100%",
+                            background: "#f1f3f5",
                             display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-end",
+                            alignItems: "center",
+                            justifyContent: "center",
                           }}
                         >
-                          <span
+                          {prod.image_url ? (
+                            <img
+                              src={prod.image_url}
+                              alt={prod.name}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                            />
+                          ) : (
+                            <Package
+                              size={36}
+                              color="#adb5bd"
+                              strokeWidth={1.5}
+                            />
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            padding: "12px",
+                            display: "flex",
+                            flexDirection: "column",
+                            flex: 1,
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <h4
                             style={{
-                              fontSize: "16px",
-                              fontWeight: "900",
-                              color: "#16a34a",
-                            }}
-                          >
-                            ${prod.price.toFixed(2)}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              background:
-                                prod.stock <= 5 ? "#ffe3e3" : "#f8f9fa",
-                              color: prod.stock <= 5 ? "#e05d5d" : "#495057",
-                              padding: "3px 6px",
-                              borderRadius: "6px",
+                              fontSize: "13px",
                               fontWeight: "bold",
-                              border: "1px solid #e9ecef",
+                              color: "#212529",
+                              margin: "0 0 8px 0",
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
                             }}
                           >
-                            {prod.stock !== undefined ? prod.stock : 0} ud.
-                          </span>
+                            {prod.name}
+                          </h4>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "flex-end",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: "16px",
+                                fontWeight: "900",
+                                color: "#16a34a",
+                              }}
+                            >
+                              ${prod.price.toFixed(2)}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                background:
+                                  prod.stock <= 5 ? "#ffe3e3" : "#f8f9fa",
+                                color:
+                                  prod.stock <= 5 ? "#e05d5d" : "#495057",
+                                padding: "3px 6px",
+                                borderRadius: "6px",
+                                fontWeight: "bold",
+                                border: "1px solid #e9ecef",
+                              }}
+                            >
+                              {prod.stock !== undefined ? prod.stock : 0} ud.
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 );
               })()}
             </div>

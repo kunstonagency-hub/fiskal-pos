@@ -55,9 +55,30 @@ function ProductsView({
   setShowPrintCatalog,
   handleOpenLabel,
   onStartCameraScanner,
+  sellByPack,
+  setSellByPack,
+  unitsPerPack,
+  setUnitsPerPack,
+  packPrice,
+  setPackPrice,
+  sellByBulk,
+  setSellByBulk,
+  unitsPerBulk,
+  setUnitsPerBulk,
+  variantGroup,
+  setVariantGroup,
+  variantLabel,
+  setVariantLabel,
+  tallasCategories = [],
+  tallasList = [],
+  setTallasList,
+  addTallasCategory,
 }) {
   const [addedUnits, setAddedUnits] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+
+  const [loadByBulkNow, setLoadByBulkNow] = useState(false);
+  const [bulkCount, setBulkCount] = useState("");
 
   // ESTADOS INTERNOS PARA OPCIONES MÚLTIPLES (CHOICES)
   const [newChoiceGroupName, setNewChoiceGroupName] = useState("");
@@ -170,6 +191,8 @@ function ProductsView({
     setNewChoiceLimit(1);
     setNewChoiceOptions("");
     resetProductForm();
+    setLoadByBulkNow(false);
+    setBulkCount("");
   };
 
   const filteredProducts = products.filter((prod) => {
@@ -299,6 +322,123 @@ function ProductsView({
           </div>
 
           <div className="form-group">
+
+<div className="form-group">
+            <label>Categoría</label>
+            <select
+              name="category_select"
+              value={
+                [
+                  "General",
+                  "Por Peso",
+                  ...products.map((p) => (p.category || "").trim()),
+                ].includes(category)
+                  ? category
+                  : "OTRA"
+              }
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === "OTRA") {
+                  setCategory("");
+                } else if (val === "NUEVA_CON_TALLAS") {
+                  const nombre = window.prompt(
+                    "¿Cómo se llama la categoría con tallas? (Ej: Ropa, Zapatos, Gorras)"
+                  );
+                  if (nombre && nombre.trim()) {
+                    addTallasCategory(nombre);
+                    setCategory(nombre.trim());
+                    // Inicializar 1 talla por defecto
+                    setTallasList([{ label: "S", quantity: 0 }]);
+                  }
+                } else {
+                  setCategory(val);
+                  if (val === "Por Peso") setProductModifiers(["kg"]);
+                  // Si elegimos una categoría que ya es de tallas, inicializar la lista si está vacía
+                  if (
+                    tallasCategories.includes(val) &&
+                    tallasList.length === 0
+                  ) {
+                    setTallasList([{ label: "S", quantity: 0 }]);
+                  }
+                }
+              }}
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "10px",
+                borderRadius: "6px",
+                border: "1px solid #ced4da",
+                fontSize: "13px",
+                marginBottom:
+                  category === "Por Peso" ||
+                  ![
+                    "General",
+                    "Por Peso",
+                    ...products.map((p) => (p.category || "").trim()),
+                  ].includes(category)
+                    ? "8px"
+                    : "0",
+              }}
+            >
+              <option value="General">General</option>
+              {currentStoreType !== "restaurant" && (
+                <option value="Por Peso">Por Peso (Balanza)</option>
+              )}
+
+              {[
+                ...new Set(
+                  products
+                    .map((p) => (p.category || "").trim())
+                    .filter((c) => c && c !== "General" && c !== "Por Peso"),
+                ),
+              ].map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+
+              <option
+                value="OTRA"
+                style={{ fontWeight: "bold", color: "#1c7ed6" }}
+              >
+                + Crear nueva categoría...
+              </option>
+              {currentStoreType !== "restaurant" && (
+                <option
+                  value="NUEVA_CON_TALLAS"
+                  style={{ fontWeight: "bold", color: "#16a34a" }}
+                >
+                  + Crear categoría con tallas (Ropa, Zapatos...)
+                </option>
+              )}
+            </select>
+
+            {![
+              "General",
+              "Por Peso",
+              ...products.map((p) => (p.category || "").trim()),
+            ].includes(category) && (
+              <input
+                name="category_input"
+                type="text"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="Escribe el nombre de la nueva categoría..."
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "10px",
+                  borderRadius: "6px",
+                  border: "1px solid #1c7ed6",
+                  fontSize: "13px",
+                  background: "#e7f5ff",
+                  marginTop: "8px",
+                }}
+                autoFocus
+              />
+            )}
+          </div>
+
             <label>
               Nombre{" "}
               {currentStoreType === "restaurant"
@@ -370,6 +510,8 @@ function ProductsView({
             />
           </div>
 
+        {/* 📦 Stock / Reabastecer — visible si NO es tallas o si estamos editando */}
+        {(!tallasCategories.includes(category) || editingProduct) && (
           <div className="form-group">
             <label>Stock (Unidades Totales)</label>
             <input
@@ -403,156 +545,423 @@ function ProductsView({
                     fontWeight: "800",
                     color: "#16a34a",
                     display: "block",
-                    marginBottom: "4px",
+                    marginBottom: "8px",
                     textTransform: "uppercase",
                   }}
                 >
                   📦 Reabastecer (Entrada de mercancía)
                 </span>
+
+                {/* 🍪 Checkbox único: ¿Cargar por bulto? */}
                 <div
                   style={{
                     display: "flex",
-                    flexWrap: "wrap",
                     alignItems: "center",
                     gap: "8px",
+                    marginBottom: sellByBulk ? "12px" : "10px",
+                    paddingBottom: sellByBulk ? "12px" : "10px",
+                    borderBottom: "1px dashed #86efac",
                   }}
                 >
                   <input
-                    name="addedUnits"
-                    type="number"
-                    value={addedUnits}
-                    onChange={(e) => handleAddUnitsChange(e.target.value)}
-                    placeholder="Ej. 24 (lo que llegó)"
-                    style={{
-                      flex: "1 1 120px",
-                      minWidth: "0",
-                      padding: "8px 10px",
-                      fontSize: "13px",
-                      borderRadius: "6px",
-                      border: "1px solid #16a34a",
-                      outline: "none",
-                      background: "#fff",
-                      boxSizing: "border-box",
+                    type="checkbox"
+                    id="sellByBulk"
+                    checked={sellByBulk}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setSellByBulk(checked);
+                      if (!checked) {
+                        setBulkCount("");
+                        setAddedUnits("");
+                        setStock(
+                          editingProduct ? Number(editingProduct.stock || 0) : 0
+                        );
+                      }
                     }}
+                    style={{ width: "16px", height: "16px", cursor: "pointer" }}
                   />
-                  <span
+                  <label
+                    htmlFor="sellByBulk"
                     style={{
-                      fontSize: "12px",
-                      color: "#16a34a",
-                      fontWeight: "bold",
-                      whiteSpace: "nowrap",
+                      margin: 0,
+                      cursor: "pointer",
+                      fontWeight: "700",
+                      fontSize: "13px",
+                      color: "#166534",
                     }}
                   >
-                    {addedUnits
-                      ? `Total: ${stock} ud.`
-                      : `Actual: ${editingProduct.stock || 0}`}
-                  </span>
+                    📥 Cargar inventario por BULTO
+                  </label>
                 </div>
-                <span
-                  style={{
-                    fontSize: "10px",
-                    color: "#64748b",
-                    display: "block",
-                    marginTop: "4px",
-                  }}
-                >
-                  Escribe cuántas unidades llegaron y se sumarán
-                  automáticamente.
-                </span>
+
+                {/* Modo BULTO: unidades por bulto + cantidad de bultos */}
+                {sellByBulk && (
+                  <>
+                    <div style={{ marginBottom: "12px" }}>
+                      <label
+                        style={{
+                          fontSize: "11px",
+                          color: "#166534",
+                          fontWeight: "700",
+                          display: "block",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Unidades por bulto (caja)
+                      </label>
+                      <input
+                        type="number"
+                        min="2"
+                        value={unitsPerBulk}
+                        onChange={(e) => setUnitsPerBulk(e.target.value)}
+                        placeholder="Ej. 72"
+                        style={{
+                          width: "100%",
+                          padding: "8px 10px",
+                          fontSize: "13px",
+                          borderRadius: "4px",
+                          border: "1px solid #86efac",
+                          outline: "none",
+                          boxSizing: "border-box",
+                          background: "#fff",
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          color: "#64748b",
+                          display: "block",
+                          marginTop: "4px",
+                        }}
+                      >
+                        💡 Ej: si 1 bulto trae 48 galletas, escribe 48. Se guarda para próximas reposiciones.
+                      </span>
+                    </div>
+
+                    <div>
+                      <label
+                        style={{
+                          fontSize: "11px",
+                          color: "#166534",
+                          fontWeight: "700",
+                          display: "block",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Cantidad de bultos que llegaron
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={bulkCount}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setBulkCount(val);
+                          const count = parseInt(val, 10) || 0;
+                          const perBulk = parseInt(unitsPerBulk) || 0;
+                          const total = count * perBulk;
+                          setAddedUnits(total > 0 ? String(total) : "");
+                          if (editingProduct) {
+                            const baseStock = parseInt(
+                              editingProduct.stock || 0,
+                              10
+                            );
+                            setStock(baseStock + total);
+                          }
+                        }}
+                        placeholder="Ej. 5 bultos"
+                        style={{
+                          width: "100%",
+                          padding: "8px 10px",
+                          fontSize: "13px",
+                          borderRadius: "4px",
+                          border: "1px solid #86efac",
+                          outline: "none",
+                          boxSizing: "border-box",
+                          background: "#fff",
+                        }}
+                      />
+                      {bulkCount && unitsPerBulk && (
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            color: "#16a34a",
+                            fontWeight: "bold",
+                            display: "block",
+                            marginTop: "6px",
+                          }}
+                        >
+                          ✅ {bulkCount} bultos × {unitsPerBulk} uds ={" "}
+                          {parseInt(bulkCount) * parseInt(unitsPerBulk)} uds
+                          agregadas al stock
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* Modo UNIDADES (default, cuando bulto está apagado) */}
+                {!sellByBulk && (
+                  <>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <input
+                        name="addedUnits"
+                        type="number"
+                        value={addedUnits}
+                        onChange={(e) => handleAddUnitsChange(e.target.value)}
+                        placeholder="Ej. 24 (unidades que llegaron)"
+                        style={{
+                          flex: "1 1 120px",
+                          minWidth: "0",
+                          padding: "8px 10px",
+                          fontSize: "13px",
+                          borderRadius: "6px",
+                          border: "1px solid #16a34a",
+                          outline: "none",
+                          background: "#fff",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          color: "#16a34a",
+                          fontWeight: "bold",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {addedUnits
+                          ? `Total: ${stock} ud.`
+                          : `Actual: ${editingProduct.stock || 0}`}
+                      </span>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        color: "#64748b",
+                        display: "block",
+                        marginTop: "4px",
+                      }}
+                    >
+                      Escribe cuántas unidades llegaron y se sumarán automáticamente.
+                    </span>
+                  </>
+                )}
               </div>
             )}
           </div>
+        )}
 
-          <div className="form-group">
-            <label>Categoría</label>
-            <select
-              name="category_select"
-              value={
-                [
-                  "General",
-                  "Por Peso",
-                  ...products.map((p) => (p.category || "").trim()),
-                ].includes(category)
-                  ? category
-                  : "OTRA"
-              }
-              onChange={(e) => {
-                if (e.target.value === "OTRA") {
-                  setCategory("");
-                } else {
-                  setCategory(e.target.value);
-                  if (e.target.value === "Por Peso")
-                    setProductModifiers(["kg"]);
-                }
-              }}
+          {/* 📐 SECCIÓN: TALLAS (solo si la categoría es de tallas) */}
+          {currentStoreType !== "restaurant" &&
+            tallasCategories.includes(category) &&
+            !editingProduct && (
+            <div
+              className="form-group"
               style={{
+                background: "#eff6ff",
+                padding: "14px",
+                borderRadius: "8px",
+                border: "1px solid #bfdbfe",
+                marginBottom: "16px",
                 width: "100%",
                 boxSizing: "border-box",
-                padding: "10px",
-                borderRadius: "6px",
-                border: "1px solid #ced4da",
-                fontSize: "13px",
-                marginBottom:
-                  category === "Por Peso" ||
-                  ![
-                    "General",
-                    "Por Peso",
-                    ...products.map((p) => (p.category || "").trim()),
-                  ].includes(category)
-                    ? "8px"
-                    : "0",
               }}
             >
-              <option value="General">General</option>
-              {currentStoreType !== "restaurant" && (
-                <option value="Por Peso">Por Peso (Balanza)</option>
-              )}
-
-              {[
-                ...new Set(
-                  products
-                    .map((p) => (p.category || "").trim())
-                    .filter((c) => c && c !== "General" && c !== "Por Peso"),
-                ),
-              ].map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-
-              <option
-                value="OTRA"
-                style={{ fontWeight: "bold", color: "#1c7ed6" }}
-              >
-                + Crear nueva categoría...
-              </option>
-            </select>
-
-            {![
-              "General",
-              "Por Peso",
-              ...products.map((p) => (p.category || "").trim()),
-            ].includes(category) && (
-              <input
-                name="category_input"
-                type="text"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="Escribe el nombre de la nueva categoría..."
+              <label
                 style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  padding: "10px",
-                  borderRadius: "6px",
-                  border: "1px solid #1c7ed6",
-                  fontSize: "13px",
-                  background: "#e7f5ff",
-                  marginTop: "8px",
+                  fontWeight: "800",
+                  color: "#1d4ed8",
+                  marginBottom: "10px",
+                  display: "block",
+                  fontSize: "12px",
+                  textTransform: "uppercase",
                 }}
-                autoFocus
-              />
-            )}
-          </div>
+              >
+                📐 Tallas del Producto
+              </label>
+
+              <div style={{ marginBottom: "12px" }}>
+                <label
+                  style={{
+                    fontSize: "11px",
+                    color: "#1e40af",
+                    fontWeight: "700",
+                    display: "block",
+                    marginBottom: "4px",
+                  }}
+                >
+                  ¿Cuántas tallas?
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={tallasList.length}
+                  onChange={(e) => {
+                    const n = Math.max(1, parseInt(e.target.value) || 1);
+                    const current = [...tallasList];
+                    if (n > current.length) {
+                      for (let i = current.length; i < n; i++) {
+                        current.push({ label: "", quantity: 0 });
+                      }
+                    } else {
+                      current.splice(n);
+                    }
+                    setTallasList(current);
+                  }}
+                  style={{
+                    width: "100px",
+                    padding: "8px",
+                    fontSize: "14px",
+                    fontWeight: "bold",
+                    borderRadius: "4px",
+                    border: "1px solid #93c5fd",
+                    outline: "none",
+                    textAlign: "center",
+                  }}
+                />
+              </div>
+
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: "8px" }}
+              >
+                {tallasList.map((t, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr auto",
+                      gap: "8px",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <label
+                        style={{
+                          fontSize: "10px",
+                          color: "#1e40af",
+                          fontWeight: "700",
+                          display: "block",
+                          marginBottom: "2px",
+                        }}
+                      >
+                        Etiqueta {idx + 1}
+                      </label>
+                      <input
+                        type="text"
+                        value={t.label}
+                        onChange={(e) => {
+                          const updated = [...tallasList];
+                          updated[idx] = { ...updated[idx], label: e.target.value };
+                          setTallasList(updated);
+                        }}
+                        placeholder="Ej: S, M, L, XL, 38, 40"
+                        style={{
+                          width: "100%",
+                          padding: "8px",
+                          fontSize: "13px",
+                          borderRadius: "4px",
+                          border: "1px solid #93c5fd",
+                          outline: "none",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        style={{
+                          fontSize: "10px",
+                          color: "#1e40af",
+                          fontWeight: "700",
+                          display: "block",
+                          marginBottom: "2px",
+                        }}
+                      >
+                        Cantidad
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={t.quantity}
+                        onChange={(e) => {
+                          const updated = [...tallasList];
+                          updated[idx] = {
+                            ...updated[idx],
+                            quantity: parseInt(e.target.value) || 0,
+                          };
+                          setTallasList(updated);
+                        }}
+                        placeholder="0"
+                        style={{
+                          width: "100%",
+                          padding: "8px",
+                          fontSize: "13px",
+                          borderRadius: "4px",
+                          border: "1px solid #93c5fd",
+                          outline: "none",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (tallasList.length <= 1) return;
+                        setTallasList(tallasList.filter((_, i) => i !== idx));
+                      }}
+                      title="Eliminar esta talla"
+                      style={{
+                        marginTop: "16px",
+                        background: "#fee2e2",
+                        color: "#dc2626",
+                        border: "1px solid #fca5a5",
+                        borderRadius: "4px",
+                        padding: "8px 10px",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  marginTop: "12px",
+                  paddingTop: "10px",
+                  borderTop: "1px dashed #93c5fd",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span
+                  style={{ fontSize: "12px", color: "#1e40af", fontWeight: "700" }}
+                >
+                  📦 Stock total:
+                </span>
+                <strong
+                  style={{ fontSize: "18px", color: "#1d4ed8", fontWeight: "900" }}
+                >
+                  {tallasList.reduce((sum, t) => sum + (t.quantity || 0), 0)} uds
+                </strong>
+              </div>
+            </div>
+          )}
+
+
+          
 
           {category === "Por Peso" && currentStoreType !== "restaurant" && (
             <div
@@ -853,6 +1262,269 @@ function ProductsView({
               </div>
             </div>
           )}
+
+          {/* 👖 SECCIÓN: VARIANTES (Tallas / Colores) */}
+          {false && (
+          <div
+            style={{
+              background: "#eff6ff",
+              padding: "14px",
+              borderRadius: "8px",
+              border: "1px solid #bfdbfe",
+              marginBottom: "16px",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            <label
+              style={{
+                fontWeight: "800",
+                color: "#1d4ed8",
+                marginBottom: "10px",
+                display: "block",
+                fontSize: "12px",
+                textTransform: "uppercase",
+              }}
+            >
+              👖 Variantes (Opcional) — Tallas, Colores, etc.
+            </label>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "8px",
+              }}
+            >
+              <div>
+                <label
+                  style={{
+                    fontSize: "11px",
+                    color: "#1e40af",
+                    fontWeight: "700",
+                    display: "block",
+                    marginBottom: "4px",
+                  }}
+                >
+                  Grupo
+                </label>
+                <input
+                  type="text"
+                  value={variantGroup}
+                  onChange={(e) => setVariantGroup(e.target.value)}
+                  placeholder="Ej. Jean Levis"
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    fontSize: "13px",
+                    borderRadius: "4px",
+                    border: "1px solid #93c5fd",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+              <div>
+                <label
+                  style={{
+                    fontSize: "11px",
+                    color: "#1e40af",
+                    fontWeight: "700",
+                    display: "block",
+                    marginBottom: "4px",
+                  }}
+                >
+                  Variante
+                </label>
+                <input
+                  type="text"
+                  value={variantLabel}
+                  onChange={(e) => setVariantLabel(e.target.value)}
+                  placeholder="Ej. Talla M"
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    fontSize: "13px",
+                    borderRadius: "4px",
+                    border: "1px solid #93c5fd",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+            </div>
+
+            <span
+              style={{
+                fontSize: "11px",
+                color: "#1e40af",
+                display: "block",
+                marginTop: "8px",
+                lineHeight: "1.5",
+              }}
+            >
+              💡 Crea 4 productos separados (uno por talla) con el **mismo Grupo**.
+              En el POS se verán como 1 sola tarjeta. Ej: "Jean Levis" con 4 variantes
+              (S, M, L, XL).
+            </span>
+          </div>
+          )}
+
+
+          {/* 🍪 SECCIÓN: PRESENTACIONES (PAQUETE / BULTO) */}
+          <div
+            style={{
+              background: "#f0fdf4",
+              padding: "14px",
+              borderRadius: "8px",
+              border: "1px solid #bbf7d0",
+              marginBottom: "16px",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            <label
+              style={{
+                fontWeight: "800",
+                color: "#16a34a",
+                marginBottom: "10px",
+                display: "block",
+                fontSize: "12px",
+                textTransform: "uppercase",
+              }}
+            >
+              📦 Presentaciones (Opcional)
+            </label>
+
+            {/* --- Vender por PAQUETE --- */}
+            <div
+              style={{
+                marginBottom: "12px",
+                padding: "10px",
+                background: "#ffffff",
+                borderRadius: "6px",
+                border: "1px solid #bbf7d0",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <input
+                  type="checkbox"
+                  id="sellByPack"
+                  checked={sellByPack}
+                  onChange={(e) => setSellByPack(e.target.checked)}
+                  style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                />
+                <label
+                  htmlFor="sellByPack"
+                  style={{
+                    margin: 0,
+                    cursor: "pointer",
+                    fontWeight: "700",
+                    fontSize: "13px",
+                    color: "#166534",
+                  }}
+                >
+                  🛒 Vender también por PAQUETE
+                </label>
+              </div>
+
+              {sellByPack && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "8px",
+                    marginTop: "10px",
+                  }}
+                >
+                  <div>
+                    <label
+                      style={{
+                        fontSize: "11px",
+                        color: "#166534",
+                        fontWeight: "700",
+                        display: "block",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Unidades por paquete
+                    </label>
+                    <input
+                      type="number"
+                      min="2"
+                      value={unitsPerPack}
+                      onChange={(e) => setUnitsPerPack(e.target.value)}
+                      placeholder="Ej. 6"
+                      style={{
+                        width: "100%",
+                        padding: "8px",
+                        fontSize: "13px",
+                        borderRadius: "4px",
+                        border: "1px solid #86efac",
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      style={{
+                        fontSize: "11px",
+                        color: "#166534",
+                        fontWeight: "700",
+                        display: "block",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Precio del paquete ($)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={packPrice}
+                      onChange={(e) => setPackPrice(e.target.value)}
+                      placeholder={`Ej. ${price ? (parseFloat(price) * (parseInt(unitsPerPack) || 1)).toFixed(2) : "3.00"}`}
+                      style={{
+                        width: "100%",
+                        padding: "8px",
+                        fontSize: "13px",
+                        borderRadius: "4px",
+                        border: "1px solid #86efac",
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {sellByPack &&
+                unitsPerPack &&
+                packPrice &&
+                price &&
+                parseFloat(packPrice) <
+                  parseFloat(price) * parseInt(unitsPerPack) && (
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: "#16a34a",
+                      fontWeight: "bold",
+                      display: "block",
+                      marginTop: "6px",
+                    }}
+                  >
+                    ⭐ Ahorro por paquete: $
+                    {(
+                      parseFloat(price) * parseInt(unitsPerPack) -
+                      parseFloat(packPrice)
+                    ).toFixed(2)}
+                  </span>
+                )}
+            </div>
+            
+
+            
+          </div>
 
           {/* NUEVA SECCIÓN: GRUPOS DE OPCIONES OBLIGATORIAS (EJ. ELIGE 3 PROTEÍNAS) */}
           {currentStoreType === "restaurant" && (

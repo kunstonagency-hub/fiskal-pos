@@ -258,71 +258,7 @@ function AdminMasterView({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* Selector de Demo para el Super Admin */}
-      <div
-        style={{
-          background: "#e7f5ff",
-          padding: "16px",
-          borderRadius: "6px",
-          border: "1px solid #74c0fc",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "12px",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <Eye size={20} color="#1c7ed6" />
-          <div>
-            <h4 style={{ margin: 0, color: "#1971c2" }}>
-              Modo Demostración (Super Admin)
-            </h4>
-            <span style={{ fontSize: "12px", color: "#495057" }}>
-              Cambia la interfaz para mostrarle a un cliente cómo se ve el
-              sistema.
-            </span>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            onClick={() => setCurrentStoreType("standard")}
-            style={{
-              padding: "6px 12px",
-              fontSize: "12px",
-              borderRadius: "4px",
-              border:
-                currentStoreType === "standard" ? "none" : "1px solid #ced4da",
-              background: currentStoreType === "standard" ? "#1c7ed6" : "#fff",
-              color: currentStoreType === "standard" ? "#fff" : "#495057",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            Tienda Estándar
-          </button>
-          <button
-            onClick={() => setCurrentStoreType("restaurant")}
-            style={{
-              padding: "6px 12px",
-              fontSize: "12px",
-              borderRadius: "4px",
-              border:
-                currentStoreType === "restaurant"
-                  ? "none"
-                  : "1px solid #ced4da",
-              background:
-                currentStoreType === "restaurant" ? "#d9480f" : "#fff",
-              color: currentStoreType === "restaurant" ? "#fff" : "#495057",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            Comida Rápida
-          </button>
-        </div>
-      </div>
-
+      
       {/* TARJETAS FINANCIERAS RESUMEN */}
       <div
         style={{
