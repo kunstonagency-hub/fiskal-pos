@@ -86,7 +86,8 @@ import RecipesCostView from "./components/RecipesCostView";
 import LocalMenuView from './components/LocalMenuView';
 import WebOrdersView from "./components/WebOrdersView";
 import GlobalPosAlarm from "./components/GlobalPosAlarm";
-import ErrorBoundary from "./components/ErrorBoundary"; 
+import ErrorBoundary from "./components/ErrorBoundary";
+import { useOnlineStatus } from "./hooks/useOnlineStatus"; 
 import toast, { Toaster } from "react-hot-toast";
 // Importación dinámica infalible para evitar los problemas de empaquetado de Vite
 const Joyride = React.lazy(() => import('react-joyride').then(mod => {
@@ -1287,7 +1288,7 @@ function App() {
     }
   };
 
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const isOnline = useOnlineStatus();
   const [pendingSalesCount, setPendingSalesCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [conflictState, setConflictState] = useState(null);
@@ -1678,12 +1679,6 @@ function App() {
       }
     });
 
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-
     checkPendingSales();
     loadGlobalSaasSettings();
 
@@ -1698,8 +1693,7 @@ function App() {
 
     return () => {
       subscription.unsubscribe();
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
+
     };
   }, []);
 
@@ -5798,6 +5792,45 @@ function App() {
         payment_details: paymentDetails,
       };
 
+      // 📴 OFFLINE: Si no hay internet, guardamos la venta en la cola
+      if (!isOnline) {
+        const tempId = `local_${Date.now()}`;
+
+        await queueOfflineAction({
+          type: "INSERT_SALE",
+          saleData,
+          historyData:
+            actualPaidToRecord > 0
+              ? {
+                  amount_usd: actualPaidToRecord,
+                  payment_details: paymentDetails,
+                  store_id: currentStoreId,
+                }
+              : null,
+          tempId,
+        });
+
+        checkPendingSales();
+
+        // Reset global
+        setCart([]);
+        setSelectedClient("Cliente General");
+        setShowPaymentModal(false);
+        setPayCashUSD(""); setPayCashBs(""); setPayPagoMovil(""); setPayZelle(""); setPayDebit(""); setPayCashea(""); setPaymentRef("");
+        setIsIntlCard(false); setIntlCardFeePct("3");
+        setCalcPayments({ cashUSD: 0, cashBs: 0, pagoMovil: 0, zelle: 0, debit: 0, cashea: 0 });
+
+        toast.success(
+          newBalanceDue > 0
+            ? `Venta con crédito guardada offline (${invoiceNumber})`
+            : `Venta ${invoiceNumber} guardada offline`
+        );
+
+        setProcessing(false);
+        return;
+      }
+
+      // 🌐 ONLINE: Proceso normal
       const { data: newSale, error } = await supabase.from("sales").insert([saleData]).select().single();
       
       if (error) alert("Error al procesar el pago: " + error.message);
@@ -5812,7 +5845,7 @@ function App() {
         }
         if (itemsToDeduct.length > 0 && isOnline) await deductInventory(itemsToDeduct);
 
-        // Reset global
+        // ✅ RESET GLOBAL después de venta exitosa
         setCart([]);
         setSelectedClient("Cliente General");
         setShowPaymentModal(false);
