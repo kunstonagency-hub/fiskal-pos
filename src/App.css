@@ -1193,7 +1193,7 @@ body {
 /* ============================================================================
    RESPONSIVE — MÓVIL VERTICAL
    ============================================================================ */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .fiskal-login-container {
     padding: var(--space-4);
   }
@@ -1649,4 +1649,80 @@ body {
 /* ---- Dropdown de la píldora demo ---- */
 .header-badge.is-demo {
   position: relative;
+}
+
+/* ============================================================================
+   📱 BADGES DEL HEADER EN MÓVIL — CONVERTIR EN CÍRCULOS
+   En pantallas ≤768px, todos los badges superiores se convierten en
+   círculos con solo el ícono/emoji. El badge de BCV se mantiene igual.
+   ============================================================================ */
+@media (max-width: 768px) {
+
+  /* Fila horizontal con scroll si hace falta (sin wrap desordenado) */
+  .header-badges-group {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+    width: 100% !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding-bottom: 2px;
+  }
+
+  .header-badges-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Convertir TODOS los .header-badge en círculos perfectos */
+  .header-badge,
+  .header-badge.action,
+  .header-badge.clickable,
+  .header-badge.clickable.is-demo,
+  .header-badge.is-demo,
+  .header-badge.is-offline,
+  .header-badge.is-closed {
+    width: 42px !important;
+    min-width: 42px !important;
+    max-width: 42px !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 0 !important;
+    flex-shrink: 0 !important;
+    flex-grow: 0 !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Ocultar TODOS los textos del badge, excepto el ícono envuelto en span */
+  .header-badge > span:not(.badge-icon) {
+    display: none !important;
+  }
+
+  /* Agrandar los SVG (íconos de Lucide) dentro del círculo */
+  .header-badge svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  /* El emoji 🏪 del badge demo ya se ve a 18px por el font-size del padre.
+     Ajuste fino para que se centre bien */
+  .header-badge.is-demo {
+    font-size: 19px !important;
+    line-height: 1 !important;
+  }
+
+  /* 🟢 EL BADGE DEL BCV SE MANTIENE COMO ESTABA (no lo tocamos) */
+  .exchange-rate-badge {
+    flex-shrink: 0 !important;
+  }
 }
