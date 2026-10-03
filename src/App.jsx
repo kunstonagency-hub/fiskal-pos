@@ -4712,10 +4712,11 @@ function App() {
     const finalCart = cart.map((item) => ({ ...item, stock_deducted: true }));
 
     // 4. RECALCULAR EL TOTAL REAL DEL CARRITO AL MOMENTO DE GUARDAR
-    const newTotalUSD = finalCart.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0,
-    );
+    // 🚀 FIX M7: usamos los valores reales del useCart (aplican IVA correcto)
+    const newTotalUSD = calculatedTotalUSD;
+    const newSubtotalUSD = cartSubtotalUSD;
+    const newTaxUSD = calculatedTaxUSD;
+    const newBalanceDueUSD = totalUSD;
     const newTotalBs = newTotalUSD * bcvRate;
 
     // 5. PREPARAR DETALLES DE PAGO (Reiniciar cronómetros de cocina si hay platos nuevos)
@@ -4734,14 +4735,14 @@ function App() {
     }
 
     const saleData = {
-      total_usd: newTotalUSD, // Usar el nuevo total calculado
+      total_usd: newTotalUSD,
       total_bs: newTotalBs,
-      subtotal_usd: newTotalUSD, // (Ajustar si usas lógica de impuestos separada)
-      tax_usd: 0, // (Ajustar si usas lógica de impuestos separada)
+      subtotal_usd: newSubtotalUSD,
+      tax_usd: newTaxUSD,
       items: finalCart,
       client_name: selectedClient,
       status: "pending",
-      balance_due_usd: newTotalUSD, // Actualizar el saldo pendiente con el nuevo total
+      balance_due_usd: newBalanceDueUSD,
       shift_id: currentShift.id,
       store_id: currentStoreId,
       payment_details: updatedPaymentDetails,
@@ -4754,7 +4755,7 @@ function App() {
           type: "UPDATE_SALE",
           saleId: tempId,
           updatedStatus: "pending",
-          newBalanceDue: newTotalUSD,
+          newBalanceDue: newBalanceDueUSD,
           paymentDetails: updatedPaymentDetails,
         });
       } else {
@@ -4887,10 +4888,12 @@ function App() {
         .update({
           status: "credit",
           balance_due_usd: totalUSD,
+          subtotal_usd: cartSubtotalUSD,
+          tax_usd: calculatedTaxUSD,
           payment_details: paymentDetails,
           items: finalCart,
           invoice_number: settlingSale.invoice_number || invoiceNumber,
-          client_name: selectedClient, // <-- ¡CORRECCIÓN CRÍTICA AÑADIDA AQUÍ!
+          client_name: selectedClient,
         })
         .eq("id", settlingSale.id)
         .eq("store_id", currentStoreId);
