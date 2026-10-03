@@ -87,7 +87,8 @@ import LocalMenuView from './components/LocalMenuView';
 import WebOrdersView from "./components/WebOrdersView";
 import GlobalPosAlarm from "./components/GlobalPosAlarm";
 import ErrorBoundary from "./components/ErrorBoundary";
-import { useOnlineStatus } from "./hooks/useOnlineStatus"; 
+import { useOnlineStatus } from "./hooks/useOnlineStatus";
+import { useRate } from "./hooks/useRate"; 
 import toast, { Toaster } from "react-hot-toast";
 // Importación dinámica infalible para evitar los problemas de empaquetado de Vite
 const Joyride = React.lazy(() => import('react-joyride').then(mod => {
@@ -396,18 +397,7 @@ function App() {
   const [sales, setSales] = useState([]);
   const [clients, setClients] = useState([]);
   const [registers, setRegisters] = useState([]);
-  const [bcvRate, setBcvRate] = useState(0);
-  const [loadingRate, setLoadingRate] = useState(false);
-  const [lastSync, setLastSync] = useState("");
-  const [rateType, setRateType] = useState(
-    () => localStorage.getItem("fiskal_rate_type") || "BCV",
-  );
-  const [customRateInput, setCustomRateInput] = useState(
-    () => localStorage.getItem("fiskal_custom_rate") || "",
-  );
-  const [showRateDropdown, setShowRateDropdown] = useState(false);
-  const [tempRateType, setTempRateType] = useState("BCV");
-  const [tempCustomRate, setTempCustomRate] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [cart, setCart] = useState([]);
   const [processing, setProcessing] = useState(false);
@@ -417,6 +407,25 @@ function App() {
   const [currentUserRole, setCurrentUserRole] = useState("cajero");
   const [currentStoreId, setCurrentStoreId] = useState(null);
   const [currentStoreName, setCurrentStoreName] = useState("Fiskal Store");
+    // 🎯 Tasa de cambio (BCV / EUR / Manual) — extraída a un hook
+  const {
+    bcvRate,
+    setBcvRate,
+    loadingRate,
+    lastSync,
+    rateType,
+    setRateType,
+    customRateInput,
+    setCustomRateInput,
+    showRateDropdown,
+    setShowRateDropdown,
+    tempRateType,
+    setTempRateType,
+    tempCustomRate,
+    setTempCustomRate,
+    syncRate,
+    syncBcvRate,
+  } = useRate(currentStoreId);
 
   const [currentStoreCountry, setCurrentStoreCountry] = useState("venezuela"); // 'venezuela' | 'panama' | 'el_salvador'
   const isVzla = (currentStoreCountry || "venezuela")
@@ -4193,79 +4202,7 @@ function App() {
     }
   };
 
-  const syncRate = async (type, storeId, manualValue = null) => {
-    setLoadingRate(true);
-    try {
-      if (type === "CUSTOM" && manualValue !== null) {
-        const val = parseFloat(manualValue);
-        if (!isNaN(val) && val > 0) {
-          setBcvRate(val);
-          setLastSync("Tasa Manual");
-          localStorage.setItem("fiskal_cache_bcv_rate", val.toString());
-        }
-        setLoadingRate(false);
-        return;
-      }
-
-      if (navigator.onLine) {
-        const endpoint =
-          type === "EUR"
-            ? "https://ve.dolarapi.com/v1/euros/oficial"
-            : "https://ve.dolarapi.com/v1/dolares/oficial";
-
-        const response = await fetch(endpoint);
-        if (!response.ok)
-          throw new Error("Error al conectar con el servicio de tasas");
-
-        const data = await response.json();
-        const liveRate = parseFloat(data.promedio || data.price);
-
-        if (liveRate && !isNaN(liveRate)) {
-          setBcvRate(liveRate);
-          const timeStr = new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-          setLastSync(timeStr);
-          localStorage.setItem("fiskal_cache_bcv_rate", liveRate.toString());
-
-          if (storeId) {
-            await supabase
-              .from("settings")
-              .upsert(
-                {
-                  key: type === "EUR" ? "eur_rate" : "bcv_rate",
-                  value: liveRate,
-                  store_id: storeId,
-                },
-                { onConflict: "key" },
-              );
-          }
-          setLoadingRate(false);
-          return;
-        }
-      } else {
-        const cachedRate = localStorage.getItem("fiskal_cache_bcv_rate");
-        if (cachedRate) {
-          setBcvRate(parseFloat(cachedRate));
-          setLastSync("Caché Local");
-        }
-      }
-    } catch (error) {
-      console.warn("Error obteniendo tasa en vivo:", error.message);
-      const cachedRate = localStorage.getItem("fiskal_cache_bcv_rate");
-      if (cachedRate) {
-        setBcvRate(parseFloat(cachedRate));
-        setLastSync("Caché Local");
-      }
-    }
-    setLoadingRate(false);
-  };
-
-  const syncBcvRate = (storeId) =>
-    syncRate(rateType, storeId, rateType === "CUSTOM" ? customRateInput : null);
-
-  const handleImageSelect = async (e) => {
+   const handleImageSelect = async (e) => {
     const file = e.target.files[0];
     if (file) {
       try {
@@ -4775,23 +4712,6 @@ function App() {
   useEffect(() => {
     handleScannedCodeResultRef.current = handleScannedCodeResult;
   });
-
-  useEffect(() => {
-    const savedRateType = localStorage.getItem("fiskal_rate_type") || "BCV";
-    const savedCustomRate = localStorage.getItem("fiskal_custom_rate") || "";
-    setRateType(savedRateType);
-    setCustomRateInput(savedCustomRate);
-
-    if (savedRateType === "CUSTOM" && savedCustomRate) {
-      const val = parseFloat(savedCustomRate);
-      if (!isNaN(val)) {
-        setBcvRate(val);
-        setLastSync("Tasa Manual");
-      }
-    } else if (currentStoreId) {
-      syncRate(savedRateType, currentStoreId);
-    }
-  }, [currentStoreId]);
 
   useEffect(() => {
     if (showCameraScannerModal) {
