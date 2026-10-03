@@ -88,7 +88,8 @@ import WebOrdersView from "./components/WebOrdersView";
 import GlobalPosAlarm from "./components/GlobalPosAlarm";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { useOnlineStatus } from "./hooks/useOnlineStatus";
-import { useRate } from "./hooks/useRate"; 
+import { useRate } from "./hooks/useRate";
+import { useCart } from "./hooks/useCart"; 
 import toast, { Toaster } from "react-hot-toast";
 // Importación dinámica infalible para evitar los problemas de empaquetado de Vite
 const Joyride = React.lazy(() => import('react-joyride').then(mod => {
@@ -399,7 +400,7 @@ function App() {
   const [registers, setRegisters] = useState([]);
 
   const [loading, setLoading] = useState(false);
-  const [cart, setCart] = useState([]);
+  
   const [processing, setProcessing] = useState(false);
 
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
@@ -1333,6 +1334,27 @@ function App() {
   const html5QrCodeRef = useRef(null);
 
   const [currentShift, setCurrentShift] = useState(null);
+    // 🛒 Carrito + cálculos de IVA/totales extraídos a un hook
+  const {
+    cart,
+    setCart,
+    addToCart,
+    removeFromCart,
+    updateQuantity,
+    clearCart,
+    rawCartSum,
+    cartSubtotalUSD,
+    calculatedTaxUSD,
+    calculatedTotalUSD,
+  } = useCart({
+    products,
+    currentShift,
+    onRequireOpenShift: () => setActiveTab("cash"),
+    currentStoreTaxEnabled,
+    currentStoreTaxRate,
+    currentStoreTaxInclusive,
+    bcvRate,
+  });
   const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
   const [openingFloat, setOpeningFloat] = useState("");
   const [openingFloatVes, setOpeningFloatVes] = useState("");
@@ -4929,58 +4951,7 @@ function App() {
     }
   };
 
-  const addToCart = (product) => {
-    if (!currentShift) {
-      alert("Debes abrir la caja / turno antes de procesar ventas.");
-      setActiveTab("cash");
-      return;
-    }
-
-    // Sumamos la cantidad de este producto en todo el carrito para validar el stock correctamente
-        // 🍪 Contamos las unidades reales (los paquetes cuentan como N unidades)
-    const currentInCart = cart
-      .filter((item) => item.id === product.id)
-      .reduce(
-        (sum, item) => sum + item.quantity * (item.unitsMultiplier || 1),
-        0
-      );
-    if (
-      product.stock !== undefined &&
-      currentInCart + 1 > product.stock
-    ) {
-      alert(
-        `No hay suficiente stock disponible para ${product.name}. Stock actual: ${product.stock}`,
-      );
-      return;
-    }
-
-    setCart((prevCart) => {
-      // LA MAGIA: Solo agrupamos si el producto en el carrito AÚN NO ha sido enviado a la cocina
-      const existing = prevCart.find(
-        (item) => item.id === product.id && !item.stock_deducted,
-      );
-
-      if (existing) {
-        return prevCart.map((item) =>
-          item.id === product.id && !item.stock_deducted
-            ? { ...item, quantity: item.quantity + 1 }
-            : item,
-        );
-      }
-
-      // Si el anterior ya se despachó a cocina, creamos una línea totalmente nueva
-      // Le asignamos un cartItemId único para que el KDS la vea como una comanda fresca
-      return [
-        ...prevCart,
-        {
-          ...product,
-          quantity: 1,
-          cartItemId: `${product.id}_new_${Date.now()}`,
-        },
-      ];
-    });
-  };
-
+  
   const handleBarcodeSubmit = (e) => {
     e.preventDefault();
     if (!barcodeInput.trim()) return;
@@ -4999,46 +4970,7 @@ function App() {
     }
   };
 
-  const removeFromCart = (targetKey) => {
-    setCart(
-      cart.filter((item) => {
-        const uniqueKey = item.cartItemId || item.id;
-        return uniqueKey !== targetKey;
-      }),
-    );
-  };
 
-  const updateQuantity = (targetKey, delta) => {
-    setCart((prevCart) =>
-      prevCart
-        .map((item) => {
-          // Validamos si es un platillo con modificadores (cartItemId) o un producto normal (id)
-          const uniqueKey = item.cartItemId || item.id;
-
-          if (uniqueKey === targetKey) {
-            // BLOQUEO DE SEGURIDAD: Evitar sumar con el botón '+' a platos que ya están en cocina
-            if (item.stock_deducted && delta > 0) {
-              alert(
-                "Este platillo ya fue enviado a la cocina. Si el cliente quiere otro igual, por favor agrégalo desde el menú para generar una comanda nueva.",
-              );
-              return item;
-            }
-
-            // Buscamos el producto original para verificar el stock correctamente
-            const productInfo = products.find((p) => p.id === item.id);
-            const newQty = item.quantity + delta;
-
-            if (delta > 0 && productInfo && newQty > productInfo.stock) {
-              alert(`Stock máximo alcanzado (${productInfo.stock} unidades).`);
-              return item;
-            }
-            return newQty > 0 ? { ...item, quantity: newQty } : null;
-          }
-          return item;
-        })
-        .filter(Boolean),
-    );
-  };
 
   const updateCalculations = () => {
     setCalcPayments({
@@ -5051,36 +4983,7 @@ function App() {
     });
   };
 
-  const rawCartSum = cart.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0,
-  );
 
-  let cartSubtotalUSD = 0;
-  let calculatedTaxUSD = 0;
-  let calculatedTotalUSD = 0;
-
-  if (currentStoreTaxEnabled) {
-    if (currentStoreTaxInclusive) {
-      calculatedTotalUSD = rawCartSum;
-      cartSubtotalUSD = parseFloat(
-        (calculatedTotalUSD / (1 + currentStoreTaxRate / 100)).toFixed(2),
-      );
-      calculatedTaxUSD = parseFloat(
-        (calculatedTotalUSD - cartSubtotalUSD).toFixed(2),
-      );
-    } else {
-      cartSubtotalUSD = rawCartSum;
-      calculatedTaxUSD = parseFloat(
-        (cartSubtotalUSD * (currentStoreTaxRate / 100)).toFixed(2),
-      );
-      calculatedTotalUSD = cartSubtotalUSD + calculatedTaxUSD;
-    }
-  } else {
-    cartSubtotalUSD = rawCartSum;
-    calculatedTaxUSD = 0;
-    calculatedTotalUSD = rawCartSum;
-  }
 
   // Si hay una venta en curso pero está pendiente (comanda de cocina/en espera),
   // permitimos que sume los nuevos ítems en tiempo real con calculatedTotalUSD.
