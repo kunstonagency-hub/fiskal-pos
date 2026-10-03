@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Barcode,
   Camera,
@@ -66,6 +66,16 @@ export default function PosTerminalView({
 }) {
   // Estado para controlar si el carrito está abierto en móviles/tablets
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
+  // 📄 Paginación del catálogo (solo en tiendas standard, no restaurantes)
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = currentStoreType === "restaurant" ? 9999 : 50;
+  // 🏷️ Categoría seleccionada en el POS (solo tiendas standard)
+  const [selectedPosCategory, setSelectedPosCategory] = useState("Todas");
+
+  // Volver a la página 1 cuando cambia la búsqueda o la categoría
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [productSearchQuery, selectedRestaurantCategory, selectedPosCategory]);
 
   // --- ESTADOS PARA EL MODAL DE ADVERTENCIA ---
   const [showWarningModal, setShowWarningModal] = useState(false);
@@ -239,6 +249,34 @@ export default function PosTerminalView({
             to { opacity: 1; transform: translateX(0); }
           }
         }
+
+        /* --- BARRA DE CHIPS DE CATEGORÍAS DEL POS --- */
+        .pos-categories-bar {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 12px;
+          padding-bottom: 8px;
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          overflow-y: hidden;
+          -webkit-overflow-scrolling: touch;
+          min-height: 44px;
+          flex-shrink: 0;
+        }
+
+        /* Forzar visibilidad en móvil y tablet */
+        @media (max-width: 1024px) {
+          .pos-categories-bar {
+            display: flex !important;
+            min-height: 44px !important;
+            flex-shrink: 0 !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+          }
+        }
+
+
+        
       `}</style>
 
       {/* --- MODAL DE ADVERTENCIA (SOLO SE ACTIVA SI ES RESTAURANTE Y ES UN PEDIDO RETOMADO) --- */}
@@ -388,6 +426,57 @@ export default function PosTerminalView({
             }}
           />
         </div>
+                {/* 🏷️ Chips de categorías (solo tiendas standard) */}
+        {currentStoreType !== "restaurant" && (() => {
+          const categoriesSet = new Set();
+          (posCatalogItems || []).forEach((p) => {
+            if (p.isGroup) return;
+            const cat = (p.category || "").trim();
+            if (
+              cat &&
+              cat.toLowerCase() !== "por peso" &&
+              cat.toLowerCase() !== "restaurante"
+            ) {
+              categoriesSet.add(cat);
+            }
+          });
+
+          const categories = ["Todas", ...Array.from(categoriesSet).sort()];
+
+          if (categories.length <= 1) return null;
+
+          return (
+            <div className="pos-categories-bar">
+              {categories.map((cat) => {
+                const isActive = selectedPosCategory === cat;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedPosCategory(cat)}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: "20px",
+                      fontSize: "12px",
+                      fontWeight: "700",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                      cursor: "pointer",
+                      border: isActive
+                        ? "1px solid #111827"
+                        : "1px solid #ced4da",
+                      background: isActive ? "#111827" : "#fff",
+                      color: isActive ? "#fff" : "#495057",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    {cat}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {!currentShift && (
           <div
@@ -625,7 +714,29 @@ export default function PosTerminalView({
                   });
                 }
 
-                return displayProducts.length === 0 ? (
+              // 🏷️ Filtro por categoría seleccionada (solo tiendas standard)
+                if (
+                  currentStoreType !== "restaurant" &&
+                  selectedPosCategory &&
+                  selectedPosCategory !== "Todas"
+                ) {
+                  const targetCat = selectedPosCategory.trim().toLowerCase();
+                  displayProducts = displayProducts.filter((p) => {
+                    if (p.isGroup) return true; // no romper grupos de tallas
+                    const pCat = (p.category || "").trim().toLowerCase();
+                    return pCat === targetCat;
+                  });
+                }
+
+                // 📄 Paginación: cortamos el array antes de renderizar
+                const totalPages = Math.ceil(displayProducts.length / ITEMS_PER_PAGE) || 1;
+                const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+                const paginatedDisplayProducts = displayProducts.slice(
+                  startIndex,
+                  startIndex + ITEMS_PER_PAGE
+                );
+
+                return paginatedDisplayProducts.length === 0 ? (
                   <p
                     style={{
                       color: "#6c757d",
@@ -636,7 +747,7 @@ export default function PosTerminalView({
                     No se encontraron productos en esta vista.
                   </p>
                 ) : (
-                                    displayProducts.map((item) => {
+                   paginatedDisplayProducts.map((item) => {
                     // 👖 Si es un grupo de variantes (tallas)
                     if (item.isGroup) {
                       const rep = item.representative;
@@ -885,6 +996,113 @@ export default function PosTerminalView({
             </div>
           </div>
         )}
+
+        {/* 📄 Controles de paginación (solo tiendas standard) */}
+        {currentStoreType !== "restaurant" && (() => {
+          let totalItems = 0;
+          let items = posCatalogItems || [];
+
+          const fastFoodCats = [
+            "hamburguesas", "perros calientes", "perros", "pizzas",
+            "comida", "comida rápida", "bebidas", "postres",
+            "salchipapas", "pepitos",
+          ];
+          items = items.filter((p) => {
+            const cat = (p.category || "").trim().toLowerCase();
+            return !fastFoodCats.includes(cat) && cat !== "restaurante";
+          });
+
+          totalItems = items.length;
+          const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE) || 1;
+
+          if (totalPages <= 1) return null;
+
+          return (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: "8px",
+                marginTop: "20px",
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: "6px",
+                  border: "1px solid #ced4da",
+                  background: currentPage === 1 ? "#f1f3f5" : "#fff",
+                  color: currentPage === 1 ? "#adb5bd" : "#212529",
+                  fontWeight: "700",
+                  cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                  fontSize: "13px",
+                }}
+              >
+                ← Anterior
+              </button>
+
+              {(() => {
+                const pages = [];
+                const maxVisible = 5;
+                let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+                let end = Math.min(totalPages, start + maxVisible - 1);
+                if (end - start + 1 < maxVisible) {
+                  start = Math.max(1, end - maxVisible + 1);
+                }
+                for (let i = start; i <= end; i++) pages.push(i);
+                return pages.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setCurrentPage(p)}
+                    style={{
+                      minWidth: "36px",
+                      height: "36px",
+                      borderRadius: "6px",
+                      border:
+                        p === currentPage
+                          ? "1px solid #111827"
+                          : "1px solid #ced4da",
+                      background: p === currentPage ? "#111827" : "#fff",
+                      color: p === currentPage ? "#fff" : "#212529",
+                      fontWeight: "700",
+                      cursor: "pointer",
+                      fontSize: "13px",
+                    }}
+                  >
+                    {p}
+                  </button>
+                ));
+              })()}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: "6px",
+                  border: "1px solid #ced4da",
+                  background: currentPage === totalPages ? "#f1f3f5" : "#fff",
+                  color: currentPage === totalPages ? "#adb5bd" : "#212529",
+                  fontWeight: "700",
+                  cursor:
+                    currentPage === totalPages ? "not-allowed" : "pointer",
+                  fontSize: "13px",
+                }}
+              >
+                Siguiente →
+              </button>
+            </div>
+          );
+        })()}
       </div>
 
       {/* BARRA FLOTANTE MÓVIL (NUEVO DISEÑO COMPACTO Y CIRCULAR) */}
