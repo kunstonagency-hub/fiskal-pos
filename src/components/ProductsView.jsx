@@ -8,6 +8,11 @@ import {
   Copy,
   Camera,
   Search,
+  Ruler,
+  Star,
+  ShoppingCart,
+  Check,
+  Printer,
 } from "lucide-react";
 
 // Vista de gestión del catálogo.
@@ -564,7 +569,7 @@ function ProductsView({
                     textTransform: "uppercase",
                   }}
                 >
-                  📦 Reabastecer (Entrada de mercancía)
+                  <Package size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> Reabastecer (Entrada de mercancía)
                 </span>
 
                 {/* 🍪 Checkbox único: ¿Cargar por bulto? */}
@@ -605,7 +610,7 @@ function ProductsView({
                       color: "#166534",
                     }}
                   >
-                    📥 Cargar inventario por BULTO
+                    <Package size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> Cargar inventario por BULTO
                   </label>
                 </div>
 
@@ -649,7 +654,7 @@ function ProductsView({
                           marginTop: "4px",
                         }}
                       >
-                        💡 Ej: si 1 bulto trae 48 galletas, escribe 48. Se guarda para próximas reposiciones.
+                        Ej: si 1 bulto trae 48 galletas, escribe 48. Se guarda para próximas reposiciones.
                       </span>
                     </div>
 
@@ -706,7 +711,7 @@ function ProductsView({
                             marginTop: "6px",
                           }}
                         >
-                          ✅ {bulkCount} bultos × {unitsPerBulk} uds ={" "}
+                          {bulkCount} bultos × {unitsPerBulk} uds ={" "}
                           {parseInt(bulkCount) * parseInt(unitsPerBulk)} uds
                           agregadas al stock
                         </span>
@@ -800,7 +805,7 @@ function ProductsView({
                   textTransform: "uppercase",
                 }}
               >
-                📐 Tallas del Producto
+                <Ruler size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> Tallas del Producto
               </label>
 
               <div style={{ marginBottom: "12px" }}>
@@ -964,7 +969,7 @@ function ProductsView({
                 <span
                   style={{ fontSize: "12px", color: "#1e40af", fontWeight: "700" }}
                 >
-                  📦 Stock total:
+                  <Package size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> Stock total:
                 </span>
                 <strong
                   style={{ fontSize: "18px", color: "#1d4ed8", fontWeight: "900" }}
@@ -1161,7 +1166,7 @@ function ProductsView({
                   textTransform: "uppercase",
                 }}
               >
-                ⭐ 2. Adicionales / Extras con Costo
+                <Star size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> 2. Adicionales / Extras con Costo
               </label>
 
               <div
@@ -1301,7 +1306,7 @@ function ProductsView({
                 textTransform: "uppercase",
               }}
             >
-              👖 Variantes (Opcional) — Tallas, Colores, etc.
+              Variantes (Opcional) — Tallas, Colores, etc.
             </label>
 
             <div
@@ -1378,7 +1383,7 @@ function ProductsView({
                 lineHeight: "1.5",
               }}
             >
-              💡 Crea 4 productos separados (uno por talla) con el **mismo Grupo**.
+              Crea 4 productos separados (uno por talla) con el **mismo Grupo**.
               En el POS se verán como 1 sola tarjeta. Ej: "Jean Levis" con 4 variantes
               (S, M, L, XL).
             </span>
@@ -1408,7 +1413,7 @@ function ProductsView({
                 textTransform: "uppercase",
               }}
             >
-              📦 Presentaciones (Opcional)
+              <Package size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> Presentaciones (Opcional)
             </label>
 
             {/* --- Vender por PAQUETE --- */}
@@ -1439,7 +1444,7 @@ function ProductsView({
                     color: "#166534",
                   }}
                 >
-                  🛒 Vender también por PAQUETE
+                  <ShoppingCart size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> Vender también por PAQUETE
                 </label>
               </div>
 
@@ -1528,7 +1533,7 @@ function ProductsView({
                       marginTop: "6px",
                     }}
                   >
-                    ⭐ Ahorro por paquete: $
+                    <Star size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: "4px" }} /> Ahorro por paquete: $
                     {(
                       parseFloat(price) * parseInt(unitsPerPack) -
                       parseFloat(packPrice)
@@ -1565,7 +1570,7 @@ function ProductsView({
                   textTransform: "uppercase",
                 }}
               >
-                ☑️ 3. Opciones Múltiples (Ej. Elige 3 Proteínas)
+                <Check size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> 3. Opciones Múltiples (Ej. Elige 3 Proteínas)
               </label>
               
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
@@ -1664,7 +1669,7 @@ function ProductsView({
                     lineHeight: 1.2,
                   }}
                 >
-                  🛒 Publicar en Krono Market (App de Delivery)
+                  <ShoppingCart size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> Publicar en Krono Market (App de Delivery)
                 </label>
               </div>
               {showInKrono && (
@@ -1769,7 +1774,7 @@ function ProductsView({
             onClick={() => setShowPrintCatalog(true)}
             style={{ fontSize: "12px", padding: "6px 12px" }}
           >
-            🖨️ Imprimir Catálogo
+            <Printer size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> Imprimir Catálogo
           </button>
         </div>
 
@@ -1861,7 +1866,7 @@ function ProductsView({
                             border: "1px solid #10b981",
                           }}
                         >
-                          🛒 Krono
+            <Printer size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> Imprimir Catálogo
                         </span>
                       )}
                     </td>
