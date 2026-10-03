@@ -53,6 +53,17 @@ import {
   Check,
   FileCheck,
   ChefHat,
+  Scale,
+  Smartphone,
+  Bell,
+  Star,
+  MessageSquare,
+  Zap,
+  Utensils,
+  BookOpen,
+  Truck,
+  Cloud,
+  ShoppingBag,
 } from "lucide-react";
 import { supabase } from "./supabase";
 import {
@@ -750,10 +761,7 @@ function App() {
 
             // 🎯 Mensaje diferenciado según el rol
       if (currentUserRole === "system_vendor") {
-        toast.success(`Modo Demo: ${storeInfo.name}`, {
-          icon: "🏪",
-          duration: 4000,
-        });
+        toast.success(`Modo Demo: ${storeInfo.name}`);
       } else {
         toast.success(`Demo activa: ${storeInfo.name}`);
       }
@@ -1498,38 +1506,38 @@ function App() {
     const steps = [
       {
         target: 'body',
-        content: '👋 ¡Bienvenido a Fiskal! Vamos a dar un paseo por las herramientas principales de tu sistema.',
+        content: '¡Bienvenido a Fiskal! Vamos a dar un paseo por las herramientas principales de tu sistema.',
         placement: 'center',
         disableBeacon: true,
       },
       {
         target: '#tour-pos',
-        content: currentStoreType === "restaurant" ? '🛒 Comandas (POS): Toma los pedidos por mesa, envíalos a la cocina y procesa los cobros.' : '🛒 Terminal (POS): Busca productos, escanea códigos y procesa tus ventas.',
+        content: currentStoreType === "restaurant" ? 'Comandas (POS): Toma los pedidos por mesa, envíalos a la cocina y procesa los cobros.' : 'Terminal (POS): Busca productos, escanea códigos y procesa tus ventas.',
         placement: 'right',
       },
       {
         target: '#tour-cash',
-        content: '🔒 Caja y Turnos: Abre tu caja (Reporte X) al iniciar tu turno, y ciérrala (Reporte Z) para ver tu cuadre de ingresos al final del día.',
+        content: 'Caja y Turnos: Abre tu caja (Reporte X) al iniciar tu turno, y ciérrala (Reporte Z) para ver tu cuadre de ingresos al final del día.',
         placement: 'right',
       },
       {
         target: '#tour-products',
-        content: '📦 Menú e Inventario: Crea tus productos, ajusta precios, sube fotos y maneja las existencias.',
+        content: 'Menú e Inventario: Crea tus productos, ajusta precios, sube fotos y maneja las existencias.',
         placement: 'right',
       },
       {
         target: '#tour-history',
-        content: '📜 Historial: Busca ventas pasadas, reimprime recibos o procesa abonos a cuentas por cobrar (créditos).',
+        content: 'Historial: Busca ventas pasadas, reimprime recibos o procesa abonos a cuentas por cobrar (créditos).',
         placement: 'right',
       },
       {
         target: '#tour-clients',
-        content: '👥 Clientes: Conoce tu base de datos y envíales mensajes de cobranza o promociones por WhatsApp.',
+        content: 'Clientes: Conoce tu base de datos y envíales mensajes de cobranza o promociones por WhatsApp.',
         placement: 'right',
       },
       {
         target: '#tour-web-orders',
-        content: '💻 Pedidos Web: Aquí recibirás notificaciones de los pedidos que hagan tus clientes desde tu catálogo online.',
+        content: 'Pedidos Web: Aquí recibirás notificaciones de los pedidos que hagan tus clientes desde tu catálogo online.',
         placement: 'right',
       }
     ];
@@ -1537,7 +1545,7 @@ function App() {
     if (currentStoreKronoEnabled) {
       steps.push({
         target: '#tour-delivery',
-        content: '🛵 Delivery Krono: Administra tus repartidores, traza rutas y calcula las tarifas de envío.',
+        content: 'Delivery Krono: Administra tus repartidores, traza rutas y calcula las tarifas de envío.',
         placement: 'right',
       });
     }
@@ -1545,7 +1553,7 @@ function App() {
     if (currentStoreType === "restaurant") {
       steps.push({
         target: '#tour-kds',
-        content: '🍳 KDS Cocina: Pantalla digital para los cocineros. Verán los pedidos entrar en tiempo real y marcarán cuando estén listos.',
+        content: 'KDS Cocina: Pantalla digital para los cocineros. Verán los pedidos entrar en tiempo real y marcarán cuando estén listos.',
         placement: 'right',
       });
     }
@@ -1553,7 +1561,7 @@ function App() {
     if (currentStoreType === "restaurant" && currentUserRole === "owner") {
       steps.push({
         target: '#tour-recipes',
-        content: '👨‍🍳 Costos y Recetas: Arma las recetas de tus platos (ej. 1 pan, 100g de carne) para descontar inventario con precisión y ver tus ganancias netas.',
+        content: 'Costos y Recetas: Arma las recetas de tus platos (ej. 1 pan, 100g de carne) para descontar inventario con precisión y ver tus ganancias netas.',
         placement: 'right',
       });
     }
@@ -1561,7 +1569,7 @@ function App() {
     if (currentUserRole === "owner" || currentUserRole === "super_admin" || currentUserRole === "system_vendor") {
       steps.push({
         target: '#tour-settings',
-        content: '⚙️ Configuración: Ajusta tus datos fiscales, personaliza tu ticket, y crea usuarios y permisos para tus empleados.',
+        content: 'Configuración: Ajusta tus datos fiscales, personaliza tu ticket, y crea usuarios y permisos para tus empleados.',
         placement: 'right',
       });
     }
@@ -1569,12 +1577,12 @@ function App() {
     steps.push(
       {
         target: '.shift-status-pill',
-        content: '☁️ Nube y Offline: Aquí verás si estás conectado. Si te quedas sin internet, ¡Fiskal seguirá funcionando! Todo se guardará y sincronizará cuando vuelva la red.',
+        content: 'Nube y Offline: Aquí verás si estás conectado. Si te quedas sin internet, ¡Fiskal seguirá funcionando! Todo se guardará y sincronizará cuando vuelva la red.',
         placement: 'bottom',
       },
       {
         target: '.exchange-rate-badge',
-        content: '💵 Tasa de Cambio: Actualiza la tasa BCV automáticamente o coloca una manual. ¡Eso es todo, ya estás listo para usar el sistema!',
+        content: 'Tasa de Cambio: Actualiza la tasa BCV automáticamente o coloca una manual. ¡Eso es todo, ya estás listo para usar el sistema!',
         placement: 'bottom',
       }
     );
@@ -6215,7 +6223,7 @@ function App() {
             animation: "slideIn 0.3s ease-out",
           }}
         >
-          <span style={{ fontSize: "20px" }}>🔔</span>
+          <Bell size={20} strokeWidth={2.5} />
           {readyNotification}
           <button
             onClick={() => setReadyNotification(null)}
@@ -6397,17 +6405,7 @@ function App() {
                 setActiveTab("kds");
               }}
             >
-              <span
-                style={{
-                  fontSize: "18px",
-                  display: "flex",
-                  alignItems: "center",
-                  width: "20px",
-                  justifyContent: "center",
-                }}
-              >
-                🍳
-              </span>
+              <ChefHat size={20} />
               <span>KDS Cocina</span>
             </button>
           )}
@@ -6601,7 +6599,7 @@ function App() {
                           letterSpacing: "0.5px",
                         }}
                       >
-                        🎯 Cambiar Tienda Demo
+                        Cambiar Tienda Demo
                       
                       {/* Volver a tienda normal (solo para vendedores) */}
                       {currentUserRole === "system_vendor" && (
@@ -7475,7 +7473,8 @@ function App() {
                         marginBottom: "8px",
                       }}
                     >
-                      ⭐ Adicionales / Extras (Opcionales con costo)
+                      <Star size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} />
+                      Adicionales / Extras (Opcionales con costo)
                     </span>
                     <div
                       style={{
@@ -7564,7 +7563,10 @@ function App() {
                   return (
                     <div key={gIdx} style={{ marginBottom: "16px" }}>
                       <span style={{ fontSize: "11px", color: "#111827", fontWeight: "800", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                        <span>☑️ {group.name}</span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                          <Check size={12} strokeWidth={3} />
+                          {group.name}
+                        </span>
                         <span style={{ color: isFull ? "#16a34a" : "#e05d5d" }}>
                           Elige hasta {group.limit} ({selectedArr.length}/{group.limit})
                         </span>
@@ -7615,7 +7617,8 @@ function App() {
                       onChange={(e) => setIsSpecialNote(e.target.checked)}
                       style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#d97706" }}
                     />
-                    📝 Añadir Nota Especial para Cocina
+                    <MessageSquare size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} />
+                    Añadir Nota Especial para Cocina
                   </label>
                   {isSpecialNote && (
                     <textarea
@@ -7656,7 +7659,8 @@ function App() {
                       onChange={(e) => setIsParaLlevar(e.target.checked)}
                       style={{ width: "16px", height: "16px", cursor: "pointer" }}
                     />
-                    📦 Empacar Para Llevar
+                    <Package size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} />
+                    Empacar Para Llevar
                   </label>
                 </div>
 
@@ -7767,7 +7771,8 @@ function App() {
           >
             <div className="modal-header">
               <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                👖 {tallaSelectorGroup.name}
+                <Ruler size={20} color="#212529" />
+                {tallaSelectorGroup.name}
               </h3>
               <button
                 className="btn-close-modal"
@@ -7892,7 +7897,8 @@ function App() {
           >
             <div className="modal-header">
               <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                📦 {packSelectorProduct.name}
+                <Package size={18} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} />
+                {packSelectorProduct.name}
               </h3>
               <button
                 className="btn-close-modal"
@@ -7941,7 +7947,7 @@ function App() {
                     <strong
                       style={{ fontSize: "14px", color: "#111827", display: "block" }}
                     >
-                      🍪 1 Unidad
+                      1 Unidad
                     </strong>
                     <span style={{ fontSize: "11px", color: "#6b7280" }}>
                       Suelto
@@ -7980,7 +7986,7 @@ function App() {
                         display: "block",
                       }}
                     >
-                      📦 Paquete ({packSelectorProduct.units_per_pack} uds)
+                      Paquete ({packSelectorProduct.units_per_pack} uds)
                     </strong>
                     <span style={{ fontSize: "11px", color: "#16a34a" }}>
                       {(() => {
@@ -7992,7 +7998,7 @@ function App() {
                         );
                         const saving = totalUnit - packPrice;
                         return saving > 0
-                          ? `⭐ Ahorra $${saving.toFixed(2)}`
+                          ? `Ahorra $${saving.toFixed(2)}`
                           : "Presentación completa";
                       })()}
                     </span>
@@ -8063,7 +8069,8 @@ function App() {
           >
             <div className="modal-header">
               <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                ⚖️ Balanza: {productForWeight.name}
+                <Scale size={20} color="#212529" />
+                Balanza: {productForWeight.name}
               </h3>
               <button
                 className="btn-close-modal"
@@ -8279,7 +8286,10 @@ function App() {
                         }}
                       >
                         <h4 style={{ margin: "0 0 8px 0", color: "#166534", fontWeight: "800", display: "flex", justifyContent: "space-between" }}>
-                          <span>🧾 Resumen de la Cuenta</span>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                            <FileText size={14} />
+                            Resumen de la Cuenta
+                          </span>
                           <span style={{ fontSize: "11px", background: "#dcfce7", padding: "2px 6px", borderRadius: "4px" }}>
                             {settlingSale.invoice_number || settlingSale.id || '---'}
                           </span>
@@ -8501,11 +8511,12 @@ function App() {
                           }}
                         >
                           {[
-                            { id: "USD", label: "💵 Efectivo USD" },
-                            { id: "BS", label: "💵 Efectivo Bs" },
-                            { id: "PAGO_MOVIL", label: "📱 Pago Móvil" },
+                            { id: "USD", label: "Efectivo USD", Icon: DollarSign },
+                            { id: "BS", label: "Efectivo Bs", Icon: DollarSign },
+                            { id: "PAGO_MOVIL", label: "Pago Móvil", Icon: Smartphone },
                           ].map((btn) => {
                             const active = changeCurrencyType === btn.id;
+                            const IconComp = btn.Icon;
                             return (
                               <button
                                 key={btn.id}
@@ -8523,8 +8534,13 @@ function App() {
                                   background: active ? "#111827" : "#ffffff",
                                   color: active ? "#ffffff" : "#374151",
                                   transition: "all 0.15s",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: "4px",
                                 }}
                               >
+                                <IconComp size={12} strokeWidth={2.5} />
                                 {btn.label}
                               </button>
                             );
@@ -8607,7 +8623,7 @@ function App() {
                                       : "#4b5563",
                                 }}
                               >
-                                ⭐ Tasa Preferencial
+                                Tasa Preferencial
                               </button>
                             </div>
 
@@ -8723,15 +8739,16 @@ function App() {
                 </label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                   {[
-                    { id: "cashUSD", label: "💵 Efectivo USD" },
-                    { id: "pagoMovil", label: "📱 Pago Móvil / Transf.", vzlaOnly: true },
-                    { id: "debit", label: "💳 Punto de Venta" },
-                    { id: "zelle", label: "🟣 Zelle" },
-                    { id: "cashBs", label: "💵 Efectivo Bs", vzlaOnly: true },
-                    { id: "cashea", label: "🛍️ Cashea" }
+                    { id: "cashUSD", label: "Efectivo USD", Icon: DollarSign },
+                    { id: "pagoMovil", label: "Pago Móvil / Transf.", Icon: Smartphone, vzlaOnly: true },
+                    { id: "debit", label: "Punto de Venta", Icon: CreditCard },
+                    { id: "zelle", label: "Zelle", Icon: DollarSign },
+                    { id: "cashBs", label: "Efectivo Bs", Icon: DollarSign, vzlaOnly: true },
+                    { id: "cashea", label: "Cashea", Icon: ShoppingBag }
                   ].map(method => {
                     if (method.vzlaOnly && currentStoreCountry !== "venezuela") return null;
                     const isActive = activePayMethods[method.id];
+                    const IconComp = method.Icon;
                     return (
                       <button
                         key={method.id}
@@ -8747,9 +8764,13 @@ function App() {
                           background: isActive ? "#111827" : "#fff",
                           color: isActive ? "#fff" : "#4b5563",
                           boxShadow: isActive ? "0 4px 10px rgba(0,0,0,0.15)" : "none",
-                          transition: "all 0.15s"
+                          transition: "all 0.15s",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
                         }}
                       >
+                        <IconComp size={14} strokeWidth={2.5} />
                         {method.label}
                       </button>
                     )
@@ -8801,7 +8822,7 @@ function App() {
                           onChange={(e) => setIsIntlCard(e.target.checked)} 
                           style={{ width: "16px", height: "16px", accentColor: "#0f172a", cursor: "pointer" }} 
                         />
-                        🌐 Tarjeta Internacional (Recargo)
+                        Tarjeta Internacional (Recargo)
                       </label>
                       {isIntlCard && (
                         <div style={{ display: "flex", alignItems: "center", gap: "4px", marginLeft: "auto" }}>
@@ -8823,7 +8844,10 @@ function App() {
                 {/* LOGICA INTELIGENTE DE CASHEA */}
                 {activePayMethods.cashea && (
                   <div className="form-group" style={{ gridColumn: "1 / -1", background: "#f0fdf4", padding: "16px", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
-                    <label style={{ color: "#166534", fontWeight: "900", fontSize: "14px", marginBottom: "8px" }}>🛍️ Financiamiento Cashea ($ USD)</label>
+                    <label style={{ color: "#166534", fontWeight: "900", fontSize: "14px", marginBottom: "8px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <ShoppingBag size={16} strokeWidth={2.5} />
+                      Financiamiento Cashea ($ USD)
+                    </label>
                     <div style={{ display: "flex", gap: "10px" }}>
                       <input 
                             type="text" 
@@ -8846,7 +8870,8 @@ function App() {
                         }}
                         style={{ background: "#16a34a", color: "#fff", border: "none", padding: "0 20px", borderRadius: "6px", fontWeight: "bold", cursor: "pointer", fontSize: "13px", boxShadow: "0 4px 6px rgba(22, 163, 74, 0.2)" }}
                       >
-                        ⚡ Autocompletar Restante
+                        <Zap size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "4px" }} />
+                        Autocompletar Restante
                       </button>
                     </div>
                     <p style={{ fontSize: "12px", color: "#15803d", marginTop: "8px", marginBottom: 0 }}>
@@ -9032,7 +9057,7 @@ function App() {
             gap: "8px"
           }}
         >
-          🔦 {flashEnabled ? "Apagar Linterna" : "Encender Linterna"}
+          {flashEnabled ? "Apagar Linterna" : "Encender Linterna"}
         </button>
 
         <button
@@ -9784,7 +9809,7 @@ function App() {
                   cursor: "pointer",
                 }}
               >
-                🖨️ Imprimir / Guardar PDF Detallado
+                Imprimir / Guardar PDF Detallado
               </button>
               <button
                 className="btn-secondary"

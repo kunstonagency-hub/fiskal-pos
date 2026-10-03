@@ -14,7 +14,8 @@ import {
   CreditCard,
   ShoppingCart,
   X,
-  AlertTriangle 
+  AlertTriangle,
+  Ruler
 } from "lucide-react";
 
 // Terminal de punto de venta.
@@ -781,9 +782,13 @@ export default function PosTerminalView({
                               fontSize: "10px",
                               fontWeight: "900",
                               zIndex: 2,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px",
                             }}
                           >
-                            {item.variants.length} tallas
+                            <Ruler size={11} strokeWidth={2.5} />
+                            {item.variants.length}
                           </div>
 
                           <div

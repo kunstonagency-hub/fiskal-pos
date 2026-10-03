@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, Minus, Plus, Trash2, ChefHat, CheckCircle, X, MapPin, Phone, Navigation, User, Search, Map as MapIcon } from 'lucide-react';
+import { ShoppingBag, Minus, Plus, Trash2, ChefHat, CheckCircle, X, MapPin, Phone, Navigation, User, Search, Map as MapIcon, Store as StoreIcon, Package, Scale, Ruler, Check, Star, MessageSquare } from 'lucide-react';
 import { supabase } from '../supabase';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -71,6 +71,14 @@ export default function LocalMenuView({ storeId }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
+  // Por Peso
+  const [productForWeight, setProductForWeight] = useState(null);
+  const [weightValue, setWeightValue] = useState("1");
+  const [weightUnit, setWeightUnit] = useState("kg");
+
+  // Variantes (tallas)
+  const [tallaSelectorGroup, setTallaSelectorGroup] = useState(null);  
+
   // Estados del Formulario del Cliente
   const [clientDoc, setClientDoc] = useState('');
   const [clientName, setClientName] = useState('');
@@ -96,8 +104,8 @@ export default function LocalMenuView({ storeId }) {
           if (st.store_type === 'restaurant') {
             setProducts(prods.filter(p => p.category !== 'General' && p.category !== 'Por Peso'));
           } else {
-            // Si es COMERCIO GENERAL, mostramos TODO (excepto 'Por Peso' para evitar líos online)
-            setProducts(prods.filter(p => p.category !== 'Por Peso').map(p => ({
+            // Si es COMERCIO GENERAL, mostramos TODO (incluyendo "Por Peso")
+            setProducts(prods.map(p => ({
               ...p,
               category: p.category ? p.category.trim() : 'General'
             })));
@@ -186,6 +194,53 @@ export default function LocalMenuView({ storeId }) {
     }
     setShowMapModal(false);
   };
+
+  const openWeightModal = (prod) => {
+    setProductForWeight(prod);
+    setWeightValue("1");
+    setWeightUnit(
+      prod.modifiers && prod.modifiers[0] ? prod.modifiers[0] : "kg"
+    );
+  };
+
+  const confirmAddWeight = () => {
+    if (!productForWeight) return;
+    const val = parseFloat(weightValue) || 0;
+    if (val <= 0) return;
+
+    let finalItemPrice = productForWeight.price;
+    let weightLabel = `${val} Kg`;
+
+    if (weightUnit === "g") {
+      finalItemPrice = productForWeight.price * (val / 1000);
+      weightLabel = `${val} g`;
+    } else {
+      finalItemPrice = productForWeight.price * val;
+    }
+
+    const weightedItem = {
+      ...productForWeight,
+      price: parseFloat(finalItemPrice.toFixed(2)),
+      quantity: 1,
+      customization: `Peso: ${weightLabel} (Base: $${Number(productForWeight.price).toFixed(2)}/${weightUnit})`,
+      cartId: Date.now(),
+      stock_deducted: false,
+    };
+
+    setCart((prev) => [...prev, weightedItem]);
+    setProductForWeight(null);
+    setWeightValue("1");
+  };
+
+  const openTallaSelector = (groupName, variants) => {
+    setTallaSelectorGroup({ name: groupName, variants });
+  };
+
+  const confirmTallaSelection = (product) => {
+    setTallaSelectorGroup(null);
+    openProductModal(product);
+  };
+
 
   const openProductModal = (prod) => {
     setSelectedProduct(prod);
@@ -441,6 +496,38 @@ export default function LocalMenuView({ storeId }) {
     ? products 
     : products.filter(p => (p.category || 'General') === selectedCategory);
 
+  // 👖 Agrupar productos con variantes (tallas) para el menú
+  const groupedItems = (() => {
+    const groups = {};
+    const normals = [];
+    filteredProducts.forEach((p) => {
+      if (p.variant_group) {
+        if (!groups[p.variant_group]) {
+          groups[p.variant_group] = {
+            id: `group_${p.variant_group}`,
+            isGroup: true,
+            groupName: p.variant_group,
+            representative: p,
+            variants: [p],
+          };
+        } else {
+          groups[p.variant_group].variants.push(p);
+        }
+      } else {
+        normals.push(p);
+      }
+    });
+    Object.values(groups).forEach((g) => {
+      g.variants.sort((a, b) =>
+        String(a.variant_label || "").localeCompare(
+          String(b.variant_label || "")
+        )
+      );
+    });
+    return [...normals, ...Object.values(groups)];
+  })();
+
+
   return (
     <div style={{ background: '#f8fafc', minHeight: '100vh', paddingBottom: '100px', fontFamily: 'sans-serif' }}>
       
@@ -449,13 +536,17 @@ export default function LocalMenuView({ storeId }) {
           <img src={store.image_url} alt={store.name} style={{ width: '56px', height: '56px', borderRadius: '14px', objectFit: 'cover', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} />
         ) : (
           <div style={{ width: '56px', height: '56px', background: isDelivery ? '#8b5cf6' : '#111827', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-            <ChefHat size={28} />
+            {store.store_type === 'restaurant' ? <ChefHat size={28} /> : <StoreIcon size={28} />}
           </div>
         )}
         <div>
           <h1 style={{ fontSize: '20px', fontWeight: '900', color: '#0f172a', margin: '0 0 4px 0', letterSpacing: '-0.5px' }}>{store.name}</h1>
           <p style={{ fontSize: '13px', color: isDelivery ? '#8b5cf6' : '#64748b', margin: 0, fontWeight: '800' }}>
-            {isDelivery ? 'Delivery & Pick-Up' : 'Auto-Servicio en Mesa'}
+            {isDelivery
+              ? 'Delivery & Pick-Up'
+              : store.store_type === 'restaurant'
+                ? 'Auto-Servicio en Mesa'
+                : 'Catálogo Online'}
           </p>
         </div>
       </div>
@@ -488,24 +579,69 @@ export default function LocalMenuView({ storeId }) {
           <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No hay productos en esta categoría.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {filteredProducts.map(prod => (
-              <div 
-                key={prod.id} 
-                onClick={() => openProductModal(prod)} 
-                style={{ background: '#ffffff', borderRadius: '20px', padding: '16px', display: 'flex', gap: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)', cursor: 'pointer', transition: 'transform 0.2s' }}
-              >
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '900', margin: '0 0 6px 0', color: '#111827' }}>{prod.name}</h3>
-                  {prod.description && <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 12px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '1.4' }}>{prod.description}</p>}
-                  <strong style={{ color: isDelivery ? '#8b5cf6' : '#16a34a', fontSize: '16px', fontWeight: '900' }}>${Number(prod.price).toFixed(2)}</strong>
-                </div>
-                {prod.image_url && (
-                  <div style={{ width: '100px', height: '100px', borderRadius: '16px', overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-                    <img src={prod.image_url} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            {groupedItems.map(item => {
+              // 👖 Si es grupo de variantes (tallas)
+              if (item.isGroup) {
+                const rep = item.representative;
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => openTallaSelector(item.groupName, item.variants)}
+                    style={{ background: '#ffffff', borderRadius: '20px', padding: '16px', display: 'flex', gap: '16px', border: '2px solid ' + (isDelivery ? '#c4b5fd' : '#86efac'), boxShadow: '0 4px 15px rgba(0,0,0,0.03)', cursor: 'pointer', position: 'relative' }}
+                  >
+                    <div style={{ position: 'absolute', top: '12px', right: '12px', background: isDelivery ? '#8b5cf6' : '#16a34a', color: '#fff', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '900' }}>
+                      {item.variants.length} tallas
+                    </div>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: '900', margin: '0 0 6px 0', color: '#111827' }}>{item.groupName}</h3>
+                      {rep.description && <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 12px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '1.4' }}>{rep.description}</p>}
+                      <strong style={{ color: isDelivery ? '#8b5cf6' : '#16a34a', fontSize: '16px', fontWeight: '900' }}>Desde ${Number(rep.price).toFixed(2)}</strong>
+                      <span style={{ fontSize: '12px', color: isDelivery ? '#6d28d9' : '#15803d', fontWeight: '800', marginTop: '8px' }}>Elegir talla →</span>
+                    </div>
+                    {rep.image_url && (
+                      <div style={{ width: '100px', height: '100px', borderRadius: '16px', overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                        <img src={rep.image_url} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
+                );
+              }
+
+              // Producto normal
+              const prod = item;
+              const isWeight = prod.category === 'Por Peso';
+              return (
+                <div
+                  key={prod.id}
+                  onClick={() => {
+                    if (isWeight) {
+                      openWeightModal(prod);
+                    } else {
+                      openProductModal(prod);
+                    }
+                  }}
+                  style={{ background: '#ffffff', borderRadius: '20px', padding: '16px', display: 'flex', gap: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)', cursor: 'pointer', position: 'relative' }}
+                >
+                  {isWeight && (
+                    <div style={{ position: 'absolute', top: '12px', right: '12px', background: '#0ea5e9', color: '#fff', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Scale size={12} strokeWidth={2.5} /> Por Peso
+                    </div>
+                  )}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <h3 style={{ fontSize: '16px', fontWeight: '900', margin: '0 0 6px 0', color: '#111827' }}>{prod.name}</h3>
+                    {prod.description && <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 12px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '1.4' }}>{prod.description}</p>}
+                    <strong style={{ color: isDelivery ? '#8b5cf6' : '#16a34a', fontSize: '16px', fontWeight: '900' }}>
+                      ${Number(prod.price).toFixed(2)}{isWeight && <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '700' }}> / {prod.modifiers && prod.modifiers[0] ? prod.modifiers[0] : 'kg'}</span>}
+                    </strong>
+                  </div>
+                  {prod.image_url && (
+                    <div style={{ width: '100px', height: '100px', borderRadius: '16px', overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                      <img src={prod.image_url} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -558,7 +694,7 @@ export default function LocalMenuView({ storeId }) {
 
               {extras.length > 0 && (
                 <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: '800', color: '#0f172a', display: 'block', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>⭐ Adicionales (Opcional)</span>
+                  <span style={{ fontSize: '11px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}><Star size={14} /> Adicionales (Opcional)</span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     {extras.map(ex => {
                       const hasQty = (ex.qty || 0) > 0;
@@ -601,7 +737,7 @@ export default function LocalMenuView({ storeId }) {
                     <div key={gIdx} style={{ background: '#f8fafc', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
                         <span style={{ fontSize: "11px", color: "#0f172a", fontWeight: "800", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                          ☑️ {group.name}
+                          <Check size={14} strokeWidth={3} /> {group.name}
                         </span>
                         <span style={{ fontSize: "11px", fontWeight: "bold", color: isFull ? "#16a34a" : "#e05d5d" }}>
                           Elige hasta {group.limit} ({selectedArr.length}/{group.limit})
@@ -642,28 +778,31 @@ export default function LocalMenuView({ storeId }) {
                 });
               })()}
 
-              {/* ⬇️ AQUÍ ESTÁ LA CAJITA DE LA NOTA ESPECIAL ⬇️ */}
-              <div style={{ background: "#fffbeb", padding: "16px", borderRadius: "16px", border: "1px solid #fde68a", marginBottom: "16px" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "14px", fontWeight: "800", color: "#92400e", margin: 0 }}>
-                  <input
-                    type="checkbox"
-                    checked={isSpecialNote}
-                    onChange={(e) => setIsSpecialNote(e.target.checked)}
-                    style={{ width: "20px", height: "20px", cursor: "pointer", accentColor: "#d97706" }}
-                  />
-                  📝 Añadir Nota Especial para Cocina
-                </label>
-                {isSpecialNote && (
-                  <textarea
-                    value={specialNoteText}
-                    onChange={(e) => setSpecialNoteText(e.target.value)}
-                    placeholder="Ej. La carne bien cocida, sin salsas..."
-                    style={{ width: "100%", marginTop: "12px", padding: "12px", borderRadius: "8px", border: "1px solid #fcd34d", fontSize: "14px", outline: "none", resize: "none", boxSizing: "border-box" }}
-                    rows="2"
-                    autoFocus
-                  />
-                )}
-              </div>
+              {/* ⬇️ CAJITA DE LA NOTA ESPECIAL (solo restaurantes) ⬇️ */}
+              {store.store_type === 'restaurant' && (
+                <div style={{ background: "#fffbeb", padding: "16px", borderRadius: "16px", border: "1px solid #fde68a", marginBottom: "16px" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "14px", fontWeight: "800", color: "#92400e", margin: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={isSpecialNote}
+                      onChange={(e) => setIsSpecialNote(e.target.checked)}
+                      style={{ width: "20px", height: "20px", cursor: "pointer", accentColor: "#d97706" }}
+                    />
+                    <MessageSquare size={16} />
+                    Añadir Nota Especial para Cocina
+                  </label>
+                  {isSpecialNote && (
+                    <textarea
+                      value={specialNoteText}
+                      onChange={(e) => setSpecialNoteText(e.target.value)}
+                      placeholder="Ej. La carne bien cocida, sin salsas..."
+                      style={{ width: "100%", marginTop: "12px", padding: "12px", borderRadius: "8px", border: "1px solid #fcd34d", fontSize: "14px", outline: "none", resize: "none", boxSizing: "border-box" }}
+                      rows="2"
+                      autoFocus
+                    />
+                  )}
+                </div>
+              )}
               
             </div>
 
@@ -747,7 +886,7 @@ export default function LocalMenuView({ storeId }) {
                       <textarea value={deliveryRef} onChange={e => setDeliveryRef(e.target.value)} placeholder="Punto de referencia / Link de GPS (Opcional)" rows="2" style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: '14px', fontWeight: 'bold', resize: 'none' }} />
                     </div>
                     <button type="button" onClick={handleOpenMap} style={{ marginTop: '8px', background: '#ede9fe', color: '#8b5cf6', border: 'none', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                      📍 Ubicar en el Mapa GPS
+                      Ubicar en el Mapa GPS
                     </button>
                   </div>
                 </div>
@@ -784,12 +923,112 @@ export default function LocalMenuView({ storeId }) {
               </div>
               
               <button onClick={handleSendOrder} disabled={isProcessing} style={{ width: '100%', padding: '18px', background: isDelivery ? '#8b5cf6' : '#111827', color: '#fff', border: 'none', borderRadius: '16px', fontSize: '16px', fontWeight: '900', cursor: 'pointer', boxShadow: `0 8px 20px ${isDelivery ? 'rgba(139, 92, 246, 0.25)' : 'rgba(17, 24, 39, 0.25)'}` }}>
-                {isProcessing ? 'Procesando...' : (isDelivery ? 'Confirmar Pedido de Delivery' : 'Enviar Orden a Cocina')}
+                {isProcessing
+                  ? 'Procesando...'
+                  : isDelivery
+                    ? 'Confirmar Pedido de Delivery'
+                    : store.store_type === 'restaurant'
+                      ? 'Enviar Orden a Cocina'
+                      : 'Confirmar Pedido'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+            {/* MODAL SELECTOR DE TALLAS */}
+      {tallaSelectorGroup && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(8px)', zIndex: 10000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', width: '100%', maxWidth: '500px', borderRadius: '24px 24px 0 0', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '80vh', overflowY: 'auto', animation: 'slideUp 0.3s ease-out' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}><Ruler size={20} /> {tallaSelectorGroup.name}</h3>
+              <button onClick={() => setTallaSelectorGroup(null)} style={{ background: '#f1f5f9', border: 'none', width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <X size={20} />
+              </button>
+            </div>
+            <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Elige la talla o variante:</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: '10px' }}>
+              {tallaSelectorGroup.variants.map(v => {
+                const noStock = (v.stock || 0) <= 0;
+                return (
+                  <button
+                    key={v.id}
+                    disabled={noStock}
+                    onClick={() => confirmTallaSelection(v)}
+                    style={{
+                      padding: '14px 10px',
+                      borderRadius: '12px',
+                      border: noStock ? '2px solid #e5e7eb' : `2px solid ${isDelivery ? '#8b5cf6' : '#16a34a'}`,
+                      background: noStock ? '#f8fafc' : (isDelivery ? '#f5f3ff' : '#f0fdf4'),
+                      cursor: noStock ? 'not-allowed' : 'pointer',
+                      opacity: noStock ? 0.5 : 1,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                    }}
+                  >
+                    <strong style={{ fontSize: '17px', color: noStock ? '#9ca3af' : (isDelivery ? '#6d28d9' : '#15803d'), fontWeight: '900' }}>{v.variant_label || '?'}</strong>
+                    <span style={{ fontSize: '11px', color: noStock ? '#9ca3af' : '#16a34a', fontWeight: '700' }}>{noStock ? 'Sin stock' : `${v.stock} uds`}</span>
+                    <span style={{ fontSize: '12px', color: '#111827', fontWeight: 'bold' }}>${Number(v.price).toFixed(2)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL POR PESO */}
+      {productForWeight && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(8px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#fff', width: '100%', maxWidth: '400px', borderRadius: '24px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Scale size={20} color="#111827" /> {productForWeight.name}
+              </h3>
+              <button onClick={() => setProductForWeight(null)} style={{ background: '#f1f5f9', border: 'none', width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <X size={20} />
+              </button>
+            </div>
+            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+              Precio base: <strong>${Number(productForWeight.price).toFixed(2)} USD</strong> por cada 1 {productForWeight.modifiers && productForWeight.modifiers[0] ? productForWeight.modifiers[0] : 'kg'}.
+            </p>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '6px' }}>Cantidad a llevar</label>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch' }}>
+                <input
+                  type="number"
+                  step="0.001"
+                  min="0.001"
+                  value={weightValue}
+                  onChange={(e) => setWeightValue(e.target.value)}
+                  style={{ flex: 1, minWidth: 0, padding: '12px 10px', fontSize: '18px', fontWeight: 'bold', borderRadius: '10px', border: '2px solid #e2e8f0', outline: 'none', textAlign: 'center', boxSizing: 'border-box' }}
+                  autoFocus
+                />
+                <select
+                  value={weightUnit}
+                  onChange={(e) => setWeightUnit(e.target.value)}
+                  style={{ flex: '0 0 110px', padding: '12px 8px', fontSize: '14px', borderRadius: '10px', border: '2px solid #e2e8f0', background: '#fff', fontWeight: 'bold', cursor: 'pointer', textAlign: 'center', boxSizing: 'border-box' }}
+                >
+                  <option value="kg">Kg</option>
+                  <option value="g">Gramos</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ background: isDelivery ? '#f5f3ff' : '#f0fdf4', padding: '14px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: isDelivery ? '#6d28d9' : '#15803d' }}>Total:</span>
+              <strong style={{ fontSize: '20px', fontWeight: '900', color: isDelivery ? '#8b5cf6' : '#16a34a' }}>
+                ${((parseFloat(weightValue) || 0) * (weightUnit === 'g' ? productForWeight.price / 1000 : productForWeight.price)).toFixed(2)}
+              </strong>
+            </div>
+            <button
+              onClick={confirmAddWeight}
+              style={{ width: '100%', padding: '16px', background: '#111827', color: '#fff', border: 'none', borderRadius: '14px', fontWeight: '900', fontSize: '16px', cursor: 'pointer' }}
+            >
+              Agregar al Pedido
+            </button>
+          </div>
+        </div>
+      )}
+
 
       {/* MODAL DEL MAPA GPS PARA CLIENTES */}
       {showMapModal && mapPos && (
