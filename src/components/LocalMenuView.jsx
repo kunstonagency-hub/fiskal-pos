@@ -79,6 +79,11 @@ export default function LocalMenuView({ storeId }) {
   // Variantes (tallas)
   const [tallaSelectorGroup, setTallaSelectorGroup] = useState(null);  
 
+  // 🍪 Selector de presentación (Unidad o Paquete)
+  const [showPackSelector, setShowPackSelector] = useState(false);
+  const [packSelectorProduct, setPackSelectorProduct] = useState(null);
+  const [packSelectorQty, setPackSelectorQty] = useState(1);
+
   // Estados del Formulario del Cliente
   const [clientDoc, setClientDoc] = useState('');
   const [clientName, setClientName] = useState('');
@@ -223,13 +228,73 @@ export default function LocalMenuView({ storeId }) {
       price: parseFloat(finalItemPrice.toFixed(2)),
       quantity: 1,
       customization: `Peso: ${weightLabel} (Base: $${Number(productForWeight.price).toFixed(2)}/${weightUnit})`,
-      cartId: Date.now(),
+      cartId: Date.now() + Math.random(),
       stock_deducted: false,
     };
 
     setCart((prev) => [...prev, weightedItem]);
     setProductForWeight(null);
     setWeightValue("1");
+  };
+
+  // 🍪 Abre el mini-modal de presentaciones
+  const openPackSelector = (prod) => {
+    setPackSelectorProduct(prod);
+    setPackSelectorQty(1);
+    setShowPackSelector(true);
+  };
+
+  // 🍪 Confirma la elección (unidad o paquete)
+  const confirmPackSelection = (mode) => {
+    if (!packSelectorProduct) return;
+    const prod = packSelectorProduct;
+    const qty = Math.max(1, parseInt(packSelectorQty) || 1);
+
+    if (mode === "unit") {
+      // Agregar como producto normal
+      openProductModal(prod);
+    } else if (mode === "pack") {
+      // Agregar como paquete (1 pack = N unidades al precio del pack)
+      const unitsPerPack = parseInt(prod.units_per_pack) || 1;
+      const packPrice =
+        parseFloat(prod.pack_price) ||
+        parseFloat(prod.price) * unitsPerPack;
+
+      const packCartItem = {
+        ...prod,
+        price: packPrice,
+        quantity: qty,
+        unitsMultiplier: unitsPerPack,
+        customization: `Paquete de ${unitsPerPack} unidades`,
+        cartId: Date.now() + Math.random(),
+        stock_deducted: false,
+      };
+
+      // Validar stock disponible
+      const currentInCart = cart
+        .filter((item) => item.id === prod.id)
+        .reduce(
+          (sum, item) => sum + item.quantity * (item.unitsMultiplier || 1),
+          0
+        );
+      const requestedUnits = qty * unitsPerPack;
+
+      if (
+        prod.stock !== undefined &&
+        currentInCart + requestedUnits > prod.stock
+      ) {
+        alert(
+          `Stock insuficiente. Disponibles: ${prod.stock - currentInCart} unidades (necesitas ${requestedUnits}).`
+        );
+        return;
+      }
+
+      setCart((prev) => [...prev, packCartItem]);
+    }
+
+    setShowPackSelector(false);
+    setPackSelectorProduct(null);
+    setPackSelectorQty(1);
   };
 
   const openTallaSelector = (groupName, variants) => {
@@ -348,7 +413,7 @@ export default function LocalMenuView({ storeId }) {
       if (exists > -1) {
         return prev.map((item, idx) => idx === exists ? { ...item, quantity: item.quantity + productToAdd.quantity } : item);
       }
-      return [...prev, { ...productToAdd, cartId: Date.now() }];
+      return [...prev, { ...productToAdd, cartId: Date.now() + Math.random() }];
     });
 
     setSelectedProduct(null);
@@ -616,6 +681,11 @@ export default function LocalMenuView({ storeId }) {
                   onClick={() => {
                     if (isWeight) {
                       openWeightModal(prod);
+                    } else if (
+                      prod.units_per_pack &&
+                      parseInt(prod.units_per_pack) > 1
+                    ) {
+                      openPackSelector(prod);
                     } else {
                       openProductModal(prod);
                     }
@@ -833,9 +903,27 @@ export default function LocalMenuView({ storeId }) {
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '24px', maxWidth: '600px', margin: '0 auto', width: '100%' }}>
             
+            {cart.map(item => (
+              <div key={item.cartId} style={{ display: 'flex', alignItems: 'center', background: '#fff', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0', marginBottom: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+                <div style={{ flex: 1, paddingRight: '12px' }}>
+                  <strong style={{ display: 'block', fontSize: '16px', color: '#0f172a', fontWeight: '900' }}>{item.name}</strong>
+                  {item.customization && <span style={{ fontSize: '13px', color: '#d97706', display: 'block', marginTop: '6px', fontWeight: '600', lineHeight: '1.4' }}>{item.customization}</span>}
+                  <span style={{ fontSize: '16px', fontWeight: '900', color: isDelivery ? '#8b5cf6' : '#16a34a', display: 'block', marginTop: '8px' }}>${(Number(item.price) * item.quantity).toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '12px' }}>
+                  <button onClick={() => updateQuantity(item.cartId, -99)} style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}><Trash2 size={18}/></button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', padding: '6px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                    <button onClick={() => updateQuantity(item.cartId, -1)} style={{ border: 'none', background: '#fff', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}><Minus size={16} style={{margin:'0 auto'}}/></button>
+                    <span style={{ fontWeight: '900', width: '24px', textAlign: 'center', fontSize: '15px' }}>{item.quantity}</span>
+                    <button onClick={() => updateQuantity(item.cartId, 1)} style={{ border: 'none', background: '#fff', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}><Plus size={16} style={{margin:'0 auto'}}/></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
             {/* FORMULARIO MEJORADO CON BÚSQUEDA POR CÉDULA */}
             <div style={{ marginBottom: '24px', background: '#fff', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-              <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#475569', textTransform: 'uppercase', fontWeight: '800' }}>1. Datos de Contacto</h4>
+              <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#475569', textTransform: 'uppercase', fontWeight: '800' }}>2. Datos de Contacto</h4>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', position: 'relative' }}>
@@ -873,7 +961,7 @@ export default function LocalMenuView({ storeId }) {
             {/* FORMULARIO DE DELIVERY CON GPS */}
             {isDelivery && (
               <div style={{ marginBottom: '24px', background: '#fff', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#475569', textTransform: 'uppercase', fontWeight: '800' }}>2. Datos de Envío</h4>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#475569', textTransform: 'uppercase', fontWeight: '800' }}>3. Datos de Envío</h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                     <MapPin size={18} color="#94a3b8" style={{ marginRight: '10px', marginTop: '2px' }}/>
@@ -893,23 +981,7 @@ export default function LocalMenuView({ storeId }) {
               </div>
             )}
 
-            {cart.map(item => (
-              <div key={item.cartId} style={{ display: 'flex', alignItems: 'center', background: '#fff', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0', marginBottom: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-                <div style={{ flex: 1, paddingRight: '12px' }}>
-                  <strong style={{ display: 'block', fontSize: '16px', color: '#0f172a', fontWeight: '900' }}>{item.name}</strong>
-                  {item.customization && <span style={{ fontSize: '13px', color: '#d97706', display: 'block', marginTop: '6px', fontWeight: '600', lineHeight: '1.4' }}>{item.customization}</span>}
-                  <span style={{ fontSize: '16px', fontWeight: '900', color: isDelivery ? '#8b5cf6' : '#16a34a', display: 'block', marginTop: '8px' }}>${(Number(item.price) * item.quantity).toFixed(2)}</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '12px' }}>
-                  <button onClick={() => updateQuantity(item.cartId, -99)} style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}><Trash2 size={18}/></button>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', padding: '6px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <button onClick={() => updateQuantity(item.cartId, -1)} style={{ border: 'none', background: '#fff', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}><Minus size={16} style={{margin:'0 auto'}}/></button>
-                    <span style={{ fontWeight: '900', width: '24px', textAlign: 'center', fontSize: '15px' }}>{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.cartId, 1)} style={{ border: 'none', background: '#fff', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}><Plus size={16} style={{margin:'0 auto'}}/></button>
-                  </div>
-                </div>
-              </div>
-            ))}
+
           </div>
 
           <div style={{ background: '#fff', borderTop: '1px solid #e2e8f0', padding: '24px', boxShadow: '0 -10px 25px rgba(0,0,0,0.05)' }}>
@@ -935,6 +1007,83 @@ export default function LocalMenuView({ storeId }) {
           </div>
         </div>
       )}
+
+      {/* MODAL SELECTOR DE PRESENTACIÓN (UNIDAD O PAQUETE) */}
+      {showPackSelector && packSelectorProduct && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(8px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#fff', width: '100%', maxWidth: '400px', borderRadius: '24px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Package size={20} color="#111827" /> {packSelectorProduct.name}
+              </h3>
+              <button onClick={() => setShowPackSelector(false)} style={{ background: '#f1f5f9', border: 'none', width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <X size={20} />
+              </button>
+            </div>
+            <p style={{ margin: 0, color: '#64748b', fontSize: '14px', textAlign: 'center' }}>¿Cómo deseas comprarlo?</p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* Opción Unidad */}
+              <button
+                type="button"
+                onClick={() => confirmPackSelection('unit')}
+                style={{
+                  padding: '16px', borderRadius: '12px', border: '2px solid #e2e8f0',
+                  background: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}
+              >
+                <div style={{ textAlign: 'left' }}>
+                  <strong style={{ fontSize: '15px', color: '#0f172a', display: 'block' }}>1 Unidad</strong>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>Suelto</span>
+                </div>
+                <strong style={{ fontSize: '18px', color: isDelivery ? '#8b5cf6' : '#16a34a', fontWeight: '900' }}>${Number(packSelectorProduct.price).toFixed(2)}</strong>
+              </button>
+
+              {/* Opción Paquete */}
+              <button
+                type="button"
+                onClick={() => confirmPackSelection('pack')}
+                style={{
+                  padding: '16px', borderRadius: '12px', border: `2px solid ${isDelivery ? '#c4b5fd' : '#bbf7d0'}`,
+                  background: isDelivery ? '#f5f3ff' : '#f0fdf4', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}
+              >
+                <div style={{ textAlign: 'left' }}>
+                  <strong style={{ fontSize: '15px', color: isDelivery ? '#6d28d9' : '#166534', display: 'block' }}>
+                    Paquete ({packSelectorProduct.units_per_pack} uds)
+                  </strong>
+                  <span style={{ fontSize: '12px', color: '#16a34a' }}>
+                    {(() => {
+                      const totalUnit = Number(packSelectorProduct.price) * Number(packSelectorProduct.units_per_pack);
+                      const packPrice = Number(packSelectorProduct.pack_price || totalUnit);
+                      const saving = totalUnit - packPrice;
+                      return saving > 0 ? `Ahorra $${saving.toFixed(2)}` : 'Presentación completa';
+                    })()}
+                  </span>
+                </div>
+                <strong style={{ fontSize: '18px', color: isDelivery ? '#8b5cf6' : '#16a34a', fontWeight: '900' }}>
+                  ${Number(packSelectorProduct.pack_price || (Number(packSelectorProduct.price) * Number(packSelectorProduct.units_per_pack))).toFixed(2)}
+                </strong>
+              </button>
+            </div>
+
+            {/* Selector de Cantidad */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#475569' }}>Cantidad:</span>
+              <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #e2e8f0', borderRadius: '10px', padding: '4px', background: '#f8fafc' }}>
+                <button onClick={() => setPackSelectorQty(Math.max(1, packSelectorQty - 1))} style={{ border: 'none', background: 'none', padding: '6px 10px', cursor: 'pointer' }}><Minus size={16} color="#0f172a" /></button>
+                <span style={{ fontWeight: '900', minWidth: '24px', textAlign: 'center', fontSize: '15px', color: '#0f172a' }}>{packSelectorQty}</span>
+                <button onClick={() => setPackSelectorQty(packSelectorQty + 1)} style={{ border: 'none', background: 'none', padding: '6px 10px', cursor: 'pointer' }}><Plus size={16} color="#0f172a" /></button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '4px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+              <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>Stock disponible: </span>
+              <strong style={{ color: '#111827' }}>{packSelectorProduct.stock || 0} unidades</strong>
+            </div>
+          </div>
+        </div>
+      )}      
 
             {/* MODAL SELECTOR DE TALLAS */}
       {tallaSelectorGroup && (
