@@ -6548,19 +6548,21 @@ function App() {
             {/* PÍLDORA DEMO (solo super_admin) */}
             {(currentUserRole === "super_admin" || currentUserRole === "system_vendor") && demoStores.length > 0 && (
               <div style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowDemoStoreDropdown(!showDemoStoreDropdown)}
-                  className="header-badge clickable is-demo"
-                  title="Cambiar tienda demo (solo Super Admin)"
-                >
-                  🏪
-                  <span>
-                    {demoStores.find((s) => s.id === currentStoreId)?.name ||
-                      "Tienda Demo"}
-                  </span>
-                  <span style={{ fontSize: "9px" }}>▼</span>
-                </button>
+            <button
+              type="button"
+              onClick={() => setShowDemoStoreDropdown(!showDemoStoreDropdown)}
+              className="header-badge clickable is-demo"
+              title="Cambiar tienda demo (solo Super Admin)"
+            >
+              <span className="badge-icon">
+                <Store size={14} />
+              </span>
+              <span>
+                {demoStores.find((s) => s.id === currentStoreId)?.name ||
+                  "Tienda Demo"}
+              </span>
+              <span style={{ fontSize: "9px" }}>▼</span>
+            </button>
 
                 {showDemoStoreDropdown && (
                   <>
@@ -6573,6 +6575,7 @@ function App() {
                       }}
                     />
                     <div
+                      className="demo-dropdown"
                       style={{
                         position: "absolute",
                         top: "calc(100% + 5px)",

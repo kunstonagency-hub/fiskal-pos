@@ -1761,3 +1761,23 @@ body {
   .exchange-rate-badge .rate-label {
     display: none !important;
   }
+
+  /* ============================================================================
+   PÍLDORA DEMO EN MÓVIL — dropdown como bottom-sheet
+   ============================================================================ */
+@media (max-width: 1024px) {
+  .demo-dropdown {
+    position: fixed !important;
+    top: 8px !important;
+    bottom: auto !important;
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    max-width: 400px !important;
+    margin: 0 auto !important;
+    z-index: 99999 !important;
+    max-height: 70vh !important;
+    overflow-y: auto !important;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.3) !important;
+  }
+}
