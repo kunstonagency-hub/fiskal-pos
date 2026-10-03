@@ -1659,39 +1659,49 @@ body {
 @media (max-width: 768px) {
 
   /* Fila horizontal con scroll si hace falta (sin wrap desordenado) */
+  /* Fila única con scroll horizontal suave */
   .header-badges-group {
     display: flex !important;
-    flex-wrap: wrap !important;
+    flex-wrap: nowrap !important;
     align-items: center !important;
-    justify-content: flex-start !important;
     gap: 8px !important;
     width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     padding-bottom: 2px;
-    overflow: visible !important;
   }
 
-  /* El badge de BCV ocupa su propia fila completa abajo */
+  .header-badges-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* El BCV se queda en la misma fila, al final, sin encogerse */
   .exchange-rate-badge {
-    flex-basis: 100% !important;
-    width: 100% !important;
-    margin-top: 4px !important;
-    order: 999 !important;
+    flex-shrink: 0 !important;
+    flex-basis: auto !important;
+    width: auto !important;
+    margin-top: 0 !important;
+    margin-left: auto !important;
+    order: 0 !important;
   }
 
-  /* 🎯 DROPDOWN DEL BCV EN MÓVIL — flotante tipo modal bottom-sheet */
+  /* 🎯 DROPDOWN DEL BCV EN MÓVIL — aparece ARRIBA */
   .rate-dropdown {
     position: fixed !important;
-    top: auto !important;
-    bottom: 80px !important;
-    left: 12px !important;
-    right: 12px !important;
+    top: 8px !important;
+    bottom: auto !important;
+    left: 8px !important;
+    right: 8px !important;
     width: auto !important;
     max-width: 380px !important;
     margin: 0 auto !important;
     z-index: 99999 !important;
-    max-height: 60vh !important;
+    max-height: 70vh !important;
     overflow-y: auto !important;
-    box-shadow: 0 12px 32px rgba(0,0,0,0.25) !important;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.3) !important;
   }
 
   .header-badges-group::-webkit-scrollbar {
@@ -1746,3 +1756,8 @@ body {
     flex-shrink: 0 !important;
   }
 }
+
+  /* En móvil, ocultar "Dólar BCV:" y dejar solo el valor */
+  .exchange-rate-badge .rate-label {
+    display: none !important;
+  }

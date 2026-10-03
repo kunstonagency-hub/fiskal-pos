@@ -6742,12 +6742,15 @@ function App() {
                 title="Clic para cambiar tipo de tasa"
               >
                 <span>
-                  {rateType === "BCV"
-                    ? "Dólar BCV"
-                    : rateType === "EUR"
-                      ? "Euro BCV"
-                      : "Tasa Manual"}
-                  :<strong> Bs. {bcvRate ? bcvRate.toFixed(2) : "---"}</strong>
+                  <span className="rate-label">
+                    {rateType === "BCV"
+                      ? "Dólar BCV"
+                      : rateType === "EUR"
+                        ? "Euro BCV"
+                        : "Tasa Manual"}
+                    :
+                  </span>
+                  <strong> Bs. {bcvRate ? bcvRate.toFixed(2) : "---"}</strong>
                 </span>
                 <span style={{ fontSize: "10px" }}>▼</span>
               </div>
