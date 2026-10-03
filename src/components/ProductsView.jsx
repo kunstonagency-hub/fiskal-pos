@@ -78,6 +78,8 @@ function ProductsView({
   const [searchTerm, setSearchTerm] = useState("");
 
   const [loadByBulkNow, setLoadByBulkNow] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = currentStoreType === "restaurant" ? 9999 : 50;
   const [bulkCount, setBulkCount] = useState("");
 
   // ESTADOS INTERNOS PARA OPCIONES MÚLTIPLES (CHOICES)
@@ -201,6 +203,19 @@ function ProductsView({
     const matchBarcode = prod.barcode?.toLowerCase().includes(term);
     return matchName || matchBarcode;
   });
+
+  // Resetear a la página 1 cada vez que cambia la búsqueda
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  // Calcular el slice de productos a mostrar
+  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE) || 1;
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedProducts = filteredProducts.slice(
+    startIndex,
+    startIndex + ITEMS_PER_PAGE
+  );
 
   return (
     <div
@@ -1826,7 +1841,7 @@ function ProductsView({
                   </td>
                 </tr>
               ) : (
-                filteredProducts.map((prod) => (
+                paginatedProducts.map((prod) => (
                   <tr key={prod.id}>
                     <td>
                       <strong>{prod.name}</strong>
@@ -1921,6 +1936,91 @@ function ProductsView({
             </tbody>
           </table>
         </div>
+                {/* Controles de paginación */}
+        {totalPages > 1 && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: "8px",
+              marginTop: "20px",
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              style={{
+                padding: "8px 14px",
+                borderRadius: "6px",
+                border: "1px solid #ced4da",
+                background: currentPage === 1 ? "#f1f3f5" : "#fff",
+                color: currentPage === 1 ? "#adb5bd" : "#212529",
+                fontWeight: "700",
+                cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                fontSize: "13px",
+              }}
+            >
+              ← Anterior
+            </button>
+
+            {(() => {
+              const pages = [];
+              const maxVisible = 5;
+              let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+              let end = Math.min(totalPages, start + maxVisible - 1);
+              if (end - start + 1 < maxVisible) {
+                start = Math.max(1, end - maxVisible + 1);
+              }
+              for (let i = start; i <= end; i++) pages.push(i);
+              return pages.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setCurrentPage(p)}
+                  style={{
+                    minWidth: "36px",
+                    height: "36px",
+                    borderRadius: "6px",
+                    border:
+                      p === currentPage
+                        ? "1px solid #111827"
+                        : "1px solid #ced4da",
+                    background: p === currentPage ? "#111827" : "#fff",
+                    color: p === currentPage ? "#fff" : "#212529",
+                    fontWeight: "700",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                  }}
+                >
+                  {p}
+                </button>
+              ));
+            })()}
+
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentPage((p) => Math.min(totalPages, p + 1))
+              }
+              disabled={currentPage === totalPages}
+              style={{
+                padding: "8px 14px",
+                borderRadius: "6px",
+                border: "1px solid #ced4da",
+                background: currentPage === totalPages ? "#f1f3f5" : "#fff",
+                color: currentPage === totalPages ? "#adb5bd" : "#212529",
+                fontWeight: "700",
+                cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                fontSize: "13px",
+              }}
+            >
+              Siguiente →
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
