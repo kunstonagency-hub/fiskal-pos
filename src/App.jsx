@@ -357,6 +357,39 @@ const compressImage = (file, maxWidth = 800, quality = 0.7) => {
   });
 };
 
+// 🍪 Devuelve la lista de presentaciones de un producto.
+// Si tiene el campo nuevo "presentations", lo usa. Si no, cae al campo viejo.
+const getProductPresentations = (prod) => {
+  if (!prod) return [];
+  const list = [];
+
+  if (prod.presentations) {
+    try {
+      const arr =
+        typeof prod.presentations === "string"
+          ? JSON.parse(prod.presentations)
+          : prod.presentations;
+      if (Array.isArray(arr)) {
+        arr.forEach((p) => {
+          const units = parseInt(p.units) || 0;
+          const price = parseFloat(p.price) || 0;
+          if (units > 1 && price > 0) list.push({ units, price });
+        });
+        if (list.length > 0) return list;
+      }
+    } catch (e) {}
+  }
+
+  // Fallback: producto viejo con un solo paquete
+  const oldUnits = parseInt(prod.units_per_pack) || 0;
+  const oldPrice = parseFloat(prod.pack_price) || 0;
+  if (oldUnits > 1 && oldPrice > 0) {
+    list.push({ units: oldUnits, price: oldPrice });
+  }
+
+  return list;
+};
+
 const handleCurrencyInput = (val, setter) => {
   // 1. Quitar cualquier carácter que no sea un número (puntos, letras, espacios)
   let cleanValue = val.replace(/\D/g, '');
@@ -1062,32 +1095,27 @@ function App() {
     setShowPackSelector(true);
   };
 
-  // 🍪 Confirma la elección (unidad o paquete)
-  const confirmPackSelection = (mode) => {
-    if (!packSelectorProduct) return;
+  // 🍪 Confirma la elección (unidad o cualquier presentación)
+  const confirmPackSelection = (selection) => {
+    if (!packSelectorProduct || !selection) return;
     const prod = packSelectorProduct;
     const qty = Math.max(1, parseInt(packSelectorQty) || 1);
 
-    if (mode === "unit") {
+    if (selection.units === 1) {
       // Agregar como producto normal
-      for (let i = 0; i < qty; i++) {
-        addToCart(prod);
-      }
-    } else if (mode === "pack") {
+      openProductModal(prod);
+    } else {
       // Agregar como paquete (1 pack = N unidades al precio del pack)
-      const unitsPerPack = parseInt(prod.units_per_pack) || 1;
-      const packPrice =
-        parseFloat(prod.pack_price) ||
-        parseFloat(prod.price) * unitsPerPack;
+      const unitsPerPack = parseInt(selection.units) || 1;
+      const packPrice = parseFloat(selection.price) || parseFloat(prod.price) * unitsPerPack;
 
-      // Crear item con unitsMultiplier para descontar el stock correcto
       const packCartItem = {
         ...prod,
         cartItemId: `${prod.id}_pack_${Date.now()}`,
         price: packPrice,
         quantity: qty,
         unitsMultiplier: unitsPerPack,
-        customization: `📦 Paquete de ${unitsPerPack} unidades`,
+        customization: `Paquete de ${unitsPerPack} unidades`,
       };
 
       // Validar stock disponible
@@ -1109,7 +1137,7 @@ function App() {
         return;
       }
 
-      setCart((prevCart) => [...prevCart, packCartItem]);
+      setCart((prev) => [...prev, packCartItem]);
     }
 
     setShowPackSelector(false);
@@ -1448,6 +1476,7 @@ function App() {
   const [packPrice, setPackPrice] = useState("");
   const [sellByBulk, setSellByBulk] = useState(false);
   const [unitsPerBulk, setUnitsPerBulk] = useState("");
+  const [productPresentations, setProductPresentations] = useState([]);
     // 👖 Variantes (tallas, colores)
   const [variantGroup, setVariantGroup] = useState("");
   const [variantLabel, setVariantLabel] = useState("");
@@ -3929,6 +3958,18 @@ function App() {
         units_per_pack: sellByPack ? (parseInt(unitsPerPack) || null) : null,
         pack_price: sellByPack ? (parseFloat(packPrice) || null) : null,
         units_per_bulk: sellByBulk ? (parseInt(unitsPerBulk) || null) : null,
+        presentations: (() => {
+          const list = [];
+          if (sellByPack && parseInt(unitsPerPack) > 1 && parseFloat(packPrice) > 0) {
+            list.push({ units: parseInt(unitsPerPack), price: parseFloat(packPrice) });
+          }
+          (productPresentations || []).forEach((p) => {
+            const u = parseInt(p.units);
+            const pr = parseFloat(p.price);
+            if (u > 1 && pr > 0) list.push({ units: u, price: pr });
+          });
+          return list;
+        })(),
         variant_group: variantGroup.trim() || null,
         variant_label: variantLabel.trim() || null,
       };
@@ -3995,6 +4036,18 @@ function App() {
         units_per_pack: sellByPack ? (parseInt(unitsPerPack) || null) : null,
         pack_price: sellByPack ? (parseFloat(packPrice) || null) : null,
         units_per_bulk: sellByBulk ? (parseInt(unitsPerBulk) || null) : null,
+        presentations: (() => {
+          const list = [];
+          if (sellByPack && parseInt(unitsPerPack) > 1 && parseFloat(packPrice) > 0) {
+            list.push({ units: parseInt(unitsPerPack), price: parseFloat(packPrice) });
+          }
+          (productPresentations || []).forEach((p) => {
+            const u = parseInt(p.units);
+            const pr = parseFloat(p.price);
+            if (u > 1 && pr > 0) list.push({ units: u, price: pr });
+          });
+          return list;
+        })(),
         variant_group: variantGroup.trim() || null,
         variant_label: variantLabel.trim() || null,
       };
@@ -4084,9 +4137,26 @@ function App() {
     setImagePreview(prod.image_url || null);
     setImageFile(null);
 
-    setSellByPack(!!prod.units_per_pack);
+    setSellByPack(!!prod.units_per_pack || (prod.presentations && (typeof prod.presentations === "string" ? JSON.parse(prod.presentations) : prod.presentations).length > 0));
     setUnitsPerPack(prod.units_per_pack ? prod.units_per_pack.toString() : "");
     setPackPrice(prod.pack_price ? prod.pack_price.toString() : "");
+
+    // 🍪 Cargar presentaciones adicionales
+    try {
+      let loadedPres = [];
+      if (prod.presentations) {
+        loadedPres = typeof prod.presentations === "string" ? JSON.parse(prod.presentations) : prod.presentations;
+      }
+      // Si el producto viejo solo tiene el primer paquete, no duplicarlo
+      if (!Array.isArray(loadedPres)) loadedPres = [];
+      // Quitar la primera si es idéntica a units_per_pack/pack_price (evita duplicado)
+      if (prod.units_per_pack && prod.pack_price) {
+        loadedPres = loadedPres.filter(p => !(parseInt(p.units) === parseInt(prod.units_per_pack) && parseFloat(p.price) === parseFloat(prod.pack_price)));
+      }
+      setProductPresentations(loadedPres);
+    } catch (e) {
+      setProductPresentations([]);
+    }
     setSellByBulk(!!prod.units_per_bulk);
     setUnitsPerBulk(prod.units_per_bulk ? prod.units_per_bulk.toString() : "");
     setVariantGroup(prod.variant_group || "");
@@ -4149,9 +4219,26 @@ function App() {
     setImagePreview(prod.image_url || null);
     setImageFile(null);
 
-    setSellByPack(!!prod.units_per_pack);
+    setSellByPack(!!prod.units_per_pack || (prod.presentations && (typeof prod.presentations === "string" ? JSON.parse(prod.presentations) : prod.presentations).length > 0));
     setUnitsPerPack(prod.units_per_pack ? prod.units_per_pack.toString() : "");
     setPackPrice(prod.pack_price ? prod.pack_price.toString() : "");
+
+    // 🍪 Cargar presentaciones adicionales
+    try {
+      let loadedPres = [];
+      if (prod.presentations) {
+        loadedPres = typeof prod.presentations === "string" ? JSON.parse(prod.presentations) : prod.presentations;
+      }
+      // Si el producto viejo solo tiene el primer paquete, no duplicarlo
+      if (!Array.isArray(loadedPres)) loadedPres = [];
+      // Quitar la primera si es idéntica a units_per_pack/pack_price (evita duplicado)
+      if (prod.units_per_pack && prod.pack_price) {
+        loadedPres = loadedPres.filter(p => !(parseInt(p.units) === parseInt(prod.units_per_pack) && parseFloat(p.price) === parseFloat(prod.pack_price)));
+      }
+      setProductPresentations(loadedPres);
+    } catch (e) {
+      setProductPresentations([]);
+    }
     setSellByBulk(!!prod.units_per_bulk);
     setUnitsPerBulk(prod.units_per_bulk ? prod.units_per_bulk.toString() : "");
     setVariantGroup(prod.variant_group || "");
@@ -4224,6 +4311,7 @@ function App() {
     setSellByPack(false);
     setUnitsPerPack("");
     setPackPrice("");
+    setProductPresentations([]);
     setSellByBulk(false);
     setUnitsPerBulk("");
     setVariantGroup("");
@@ -7202,6 +7290,8 @@ function App() {
               tallasList={tallasList}
               setTallasList={setTallasList}
               addTallasCategory={addTallasCategory}
+              productPresentations={productPresentations}
+              setProductPresentations={setProductPresentations}
             />
           )}
 
@@ -7888,16 +7978,16 @@ function App() {
       )}
 
 
-      {/* 1.15 MODAL: SELECTOR DE PRESENTACIÓN (UNIDAD o PAQUETE) */}
+      {/* 1.15 MODAL: SELECTOR DE PRESENTACIÓN (UNIDAD o PAQUETES) */}
       {showPackSelector && packSelectorProduct && (
         <div className="modal-overlay" style={{ zIndex: 10006 }}>
           <div
             className="modal-content"
-            style={{ width: "380px", textAlign: "center" }}
+            style={{ width: "400px", textAlign: "center" }}
           >
             <div className="modal-header">
               <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Package size={18} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} />
+                <Package size={18} />
                 {packSelectorProduct.name}
               </h3>
               <button
@@ -7928,7 +8018,12 @@ function App() {
                 {/* Opción Unidad */}
                 <button
                   type="button"
-                  onClick={() => confirmPackSelection("unit")}
+                  onClick={() =>
+                    confirmPackSelection({
+                      units: 1,
+                      price: packSelectorProduct.price,
+                    })
+                  }
                   style={{
                     padding: "14px 16px",
                     borderRadius: "10px",
@@ -7944,76 +8039,55 @@ function App() {
                   onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#e5e7eb")}
                 >
                   <div>
-                    <strong
-                      style={{ fontSize: "14px", color: "#111827", display: "block" }}
-                    >
+                    <strong style={{ fontSize: "14px", color: "#111827", display: "block" }}>
                       1 Unidad
                     </strong>
                     <span style={{ fontSize: "11px", color: "#6b7280" }}>
                       Suelto
                     </span>
                   </div>
-                  <strong
-                    style={{ fontSize: "18px", color: "#16a34a", fontWeight: "900" }}
-                  >
+                  <strong style={{ fontSize: "18px", color: "#16a34a", fontWeight: "900" }}>
                     ${Number(packSelectorProduct.price).toFixed(2)}
                   </strong>
                 </button>
 
-                {/* Opción Paquete */}
-                <button
-                  type="button"
-                  onClick={() => confirmPackSelection("pack")}
-                  style={{
-                    padding: "14px 16px",
-                    borderRadius: "10px",
-                    border: "2px solid #bbf7d0",
-                    background: "#f0fdf4",
-                    cursor: "pointer",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    textAlign: "left",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#16a34a")}
-                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#bbf7d0")}
-                >
-                  <div>
-                    <strong
+                {/* Opciones de Paquete (una por presentación) */}
+                {getProductPresentations(packSelectorProduct).map((pres, idx) => {
+                  const totalUnit = Number(packSelectorProduct.price) * Number(pres.units);
+                  const saving = totalUnit - Number(pres.price);
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => confirmPackSelection(pres)}
                       style={{
-                        fontSize: "14px",
-                        color: "#166534",
-                        display: "block",
+                        padding: "14px 16px",
+                        borderRadius: "10px",
+                        border: "2px solid #bbf7d0",
+                        background: "#f0fdf4",
+                        cursor: "pointer",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        textAlign: "left",
                       }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#16a34a")}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#bbf7d0")}
                     >
-                      Paquete ({packSelectorProduct.units_per_pack} uds)
-                    </strong>
-                    <span style={{ fontSize: "11px", color: "#16a34a" }}>
-                      {(() => {
-                        const totalUnit =
-                          Number(packSelectorProduct.price) *
-                          Number(packSelectorProduct.units_per_pack);
-                        const packPrice = Number(
-                          packSelectorProduct.pack_price || totalUnit
-                        );
-                        const saving = totalUnit - packPrice;
-                        return saving > 0
-                          ? `Ahorra $${saving.toFixed(2)}`
-                          : "Presentación completa";
-                      })()}
-                    </span>
-                  </div>
-                  <strong
-                    style={{ fontSize: "18px", color: "#16a34a", fontWeight: "900" }}
-                  >
-                    $
-                    {Number(
-                      packSelectorProduct.pack_price ||
-                        Number(packSelectorProduct.price) *
-                          Number(packSelectorProduct.units_per_pack)
-                    ).toFixed(2)}
-                  </strong>
-                </button>
+                      <div>
+                        <strong style={{ fontSize: "14px", color: "#166534", display: "block" }}>
+                          Paquete ({pres.units} uds)
+                        </strong>
+                        <span style={{ fontSize: "11px", color: "#16a34a" }}>
+                          {saving > 0 ? `Ahorra $${saving.toFixed(2)}` : "Presentación completa"}
+                        </span>
+                      </div>
+                      <strong style={{ fontSize: "18px", color: "#16a34a", fontWeight: "900" }}>
+                        ${Number(pres.price).toFixed(2)}
+                      </strong>
+                    </button>
+                  );
+                })}
               </div>
 
               <div
@@ -8025,13 +8099,7 @@ function App() {
                   border: "1px solid #e2e8f0",
                 }}
               >
-                <span
-                  style={{
-                    fontSize: "12px",
-                    color: "#475569",
-                    fontWeight: "600",
-                  }}
-                >
+                <span style={{ fontSize: "12px", color: "#475569", fontWeight: "600" }}>
                   Stock disponible:
                 </span>{" "}
                 <strong style={{ color: "#111827" }}>
@@ -8040,10 +8108,7 @@ function App() {
               </div>
             </div>
 
-            <div
-              className="modal-footer"
-              style={{ display: "flex", justifyContent: "flex-end" }}
-            >
+            <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end" }}>
               <button
                 type="button"
                 className="btn-secondary"

@@ -47,6 +47,38 @@ export default function LocalMenuView({ storeId }) {
   const [bcvRate, setBcvRate] = useState(0);
   const [loading, setLoading] = useState(true);
   
+ // 🍪 Devuelve la lista de presentaciones de un producto.
+  const getProductPresentations = (prod) => {
+    if (!prod) return [];
+    const list = [];
+
+    if (prod.presentations) {
+      try {
+        const arr =
+          typeof prod.presentations === "string"
+            ? JSON.parse(prod.presentations)
+            : prod.presentations;
+        if (Array.isArray(arr)) {
+          arr.forEach((p) => {
+            const units = parseInt(p.units) || 0;
+            const price = parseFloat(p.price) || 0;
+            if (units > 1 && price > 0) list.push({ units, price });
+          });
+          if (list.length > 0) return list;
+        }
+      } catch (e) {}
+    }
+
+    // Fallback: producto viejo
+    const oldUnits = parseInt(prod.units_per_pack) || 0;
+    const oldPrice = parseFloat(prod.pack_price) || 0;
+    if (oldUnits > 1 && oldPrice > 0) {
+      list.push({ units: oldUnits, price: oldPrice });
+    }
+
+    return list;
+  };
+
   // Detectar si el cliente entró por el enlace de WhatsApp (Delivery)
   const isDelivery = new URLSearchParams(window.location.search).get('mode') === 'delivery';
   
@@ -244,21 +276,19 @@ export default function LocalMenuView({ storeId }) {
     setShowPackSelector(true);
   };
 
-  // 🍪 Confirma la elección (unidad o paquete)
-  const confirmPackSelection = (mode) => {
-    if (!packSelectorProduct) return;
+  // 🍪 Confirma la elección (unidad o cualquier presentación)
+  const confirmPackSelection = (selection) => {
+    if (!packSelectorProduct || !selection) return;
     const prod = packSelectorProduct;
     const qty = Math.max(1, parseInt(packSelectorQty) || 1);
 
-    if (mode === "unit") {
-      // Agregar como producto normal
+    if (selection.units === 1) {
+      // Agregar como producto normal (abre el modal normal)
       openProductModal(prod);
-    } else if (mode === "pack") {
-      // Agregar como paquete (1 pack = N unidades al precio del pack)
-      const unitsPerPack = parseInt(prod.units_per_pack) || 1;
-      const packPrice =
-        parseFloat(prod.pack_price) ||
-        parseFloat(prod.price) * unitsPerPack;
+    } else {
+      // Agregar como paquete
+      const unitsPerPack = parseInt(selection.units) || 1;
+      const packPrice = parseFloat(selection.price) || parseFloat(prod.price) * unitsPerPack;
 
       const packCartItem = {
         ...prod,
@@ -270,7 +300,6 @@ export default function LocalMenuView({ storeId }) {
         stock_deducted: false,
       };
 
-      // Validar stock disponible
       const currentInCart = cart
         .filter((item) => item.id === prod.id)
         .reduce(
@@ -903,6 +932,8 @@ export default function LocalMenuView({ storeId }) {
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '24px', maxWidth: '600px', margin: '0 auto', width: '100%' }}>
             
+            <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#475569', textTransform: 'uppercase', fontWeight: '800' }}>1. Tu Pedido</h4>
+            
             {cart.map(item => (
               <div key={item.cartId} style={{ display: 'flex', alignItems: 'center', background: '#fff', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0', marginBottom: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
                 <div style={{ flex: 1, paddingRight: '12px' }}>
@@ -1026,7 +1057,9 @@ export default function LocalMenuView({ storeId }) {
               {/* Opción Unidad */}
               <button
                 type="button"
-                onClick={() => confirmPackSelection('unit')}
+                onClick={() =>
+                  confirmPackSelection({ units: 1, price: packSelectorProduct.price })
+                }
                 style={{
                   padding: '16px', borderRadius: '12px', border: '2px solid #e2e8f0',
                   background: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -1039,32 +1072,34 @@ export default function LocalMenuView({ storeId }) {
                 <strong style={{ fontSize: '18px', color: isDelivery ? '#8b5cf6' : '#16a34a', fontWeight: '900' }}>${Number(packSelectorProduct.price).toFixed(2)}</strong>
               </button>
 
-              {/* Opción Paquete */}
-              <button
-                type="button"
-                onClick={() => confirmPackSelection('pack')}
-                style={{
-                  padding: '16px', borderRadius: '12px', border: `2px solid ${isDelivery ? '#c4b5fd' : '#bbf7d0'}`,
-                  background: isDelivery ? '#f5f3ff' : '#f0fdf4', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}
-              >
-                <div style={{ textAlign: 'left' }}>
-                  <strong style={{ fontSize: '15px', color: isDelivery ? '#6d28d9' : '#166534', display: 'block' }}>
-                    Paquete ({packSelectorProduct.units_per_pack} uds)
-                  </strong>
-                  <span style={{ fontSize: '12px', color: '#16a34a' }}>
-                    {(() => {
-                      const totalUnit = Number(packSelectorProduct.price) * Number(packSelectorProduct.units_per_pack);
-                      const packPrice = Number(packSelectorProduct.pack_price || totalUnit);
-                      const saving = totalUnit - packPrice;
-                      return saving > 0 ? `Ahorra $${saving.toFixed(2)}` : 'Presentación completa';
-                    })()}
-                  </span>
-                </div>
-                <strong style={{ fontSize: '18px', color: isDelivery ? '#8b5cf6' : '#16a34a', fontWeight: '900' }}>
-                  ${Number(packSelectorProduct.pack_price || (Number(packSelectorProduct.price) * Number(packSelectorProduct.units_per_pack))).toFixed(2)}
-                </strong>
-              </button>
+              {/* Opciones de Paquete (una por cada presentación) */}
+              {getProductPresentations(packSelectorProduct).map((pres, idx) => {
+                const totalUnit = Number(packSelectorProduct.price) * Number(pres.units);
+                const saving = totalUnit - Number(pres.price);
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => confirmPackSelection(pres)}
+                    style={{
+                      padding: '16px', borderRadius: '12px', border: `2px solid ${isDelivery ? '#c4b5fd' : '#bbf7d0'}`,
+                      background: isDelivery ? '#f5f3ff' : '#f0fdf4', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    }}
+                  >
+                    <div style={{ textAlign: 'left' }}>
+                      <strong style={{ fontSize: '15px', color: isDelivery ? '#6d28d9' : '#166534', display: 'block' }}>
+                        Paquete ({pres.units} uds)
+                      </strong>
+                      <span style={{ fontSize: '12px', color: '#16a34a' }}>
+                        {saving > 0 ? `Ahorra $${saving.toFixed(2)}` : 'Presentación completa'}
+                      </span>
+                    </div>
+                    <strong style={{ fontSize: '18px', color: isDelivery ? '#8b5cf6' : '#16a34a', fontWeight: '900' }}>
+                      ${Number(pres.price).toFixed(2)}
+                    </strong>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Selector de Cantidad */}

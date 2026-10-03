@@ -78,6 +78,8 @@ function ProductsView({
   tallasList = [],
   setTallasList,
   addTallasCategory,
+  productPresentations = [],
+  setProductPresentations,
 }) {
   const [addedUnits, setAddedUnits] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -1391,7 +1393,7 @@ function ProductsView({
           )}
 
 
-          {/* 🍪 SECCIÓN: PRESENTACIONES (PAQUETE / BULTO) */}
+          {/* 🍪 SECCIÓN: PRESENTACIONES MÚLTIPLES */}
           <div
             style={{
               background: "#f0fdf4",
@@ -1413,137 +1415,171 @@ function ProductsView({
                 textTransform: "uppercase",
               }}
             >
-              <Package size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> Presentaciones (Opcional)
+              Presentaciones de Venta (Opcional)
             </label>
 
-            {/* --- Vender por PAQUETE --- */}
-            <div
-              style={{
-                marginBottom: "12px",
-                padding: "10px",
-                background: "#ffffff",
-                borderRadius: "6px",
-                border: "1px solid #bbf7d0",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <input
-                  type="checkbox"
-                  id="sellByPack"
-                  checked={sellByPack}
-                  onChange={(e) => setSellByPack(e.target.checked)}
-                  style={{ width: "16px", height: "16px", cursor: "pointer" }}
-                />
-                <label
-                  htmlFor="sellByPack"
-                  style={{
-                    margin: 0,
-                    cursor: "pointer",
-                    fontWeight: "700",
-                    fontSize: "13px",
-                    color: "#166534",
-                  }}
-                >
-                  <ShoppingCart size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} /> Vender también por PAQUETE
-                </label>
-              </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+              <input
+                type="checkbox"
+                id="sellByPack"
+                checked={sellByPack}
+                onChange={(e) => setSellByPack(e.target.checked)}
+                style={{ width: "16px", height: "16px", cursor: "pointer" }}
+              />
+              <label
+                htmlFor="sellByPack"
+                style={{
+                  margin: 0,
+                  cursor: "pointer",
+                  fontWeight: "700",
+                  fontSize: "13px",
+                  color: "#166534",
+                }}
+              >
+                Este producto también se vende por paquete/bulto
+              </label>
+            </div>
 
-              {sellByPack && (
+            {sellByPack && (
+              <>
+                {/* Primera presentación */}
                 <div
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "8px",
-                    marginTop: "10px",
+                    background: "#ffffff",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border: "1px solid #bbf7d0",
+                    marginBottom: "10px",
                   }}
                 >
-                  <div>
-                    <label
-                      style={{
-                        fontSize: "11px",
-                        color: "#166534",
-                        fontWeight: "700",
-                        display: "block",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Unidades por paquete
-                    </label>
-                    <input
-                      type="number"
-                      min="2"
-                      value={unitsPerPack}
-                      onChange={(e) => setUnitsPerPack(e.target.value)}
-                      placeholder="Ej. 6"
-                      style={{
-                        width: "100%",
-                        padding: "8px",
-                        fontSize: "13px",
-                        borderRadius: "4px",
-                        border: "1px solid #86efac",
-                        outline: "none",
-                        boxSizing: "border-box",
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label
-                      style={{
-                        fontSize: "11px",
-                        color: "#166534",
-                        fontWeight: "700",
-                        display: "block",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Precio del paquete ($)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={packPrice}
-                      onChange={(e) => setPackPrice(e.target.value)}
-                      placeholder={`Ej. ${price ? (parseFloat(price) * (parseInt(unitsPerPack) || 1)).toFixed(2) : "3.00"}`}
-                      style={{
-                        width: "100%",
-                        padding: "8px",
-                        fontSize: "13px",
-                        borderRadius: "4px",
-                        border: "1px solid #86efac",
-                        outline: "none",
-                        boxSizing: "border-box",
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {sellByPack &&
-                unitsPerPack &&
-                packPrice &&
-                price &&
-                parseFloat(packPrice) <
-                  parseFloat(price) * parseInt(unitsPerPack) && (
                   <span
                     style={{
                       fontSize: "11px",
-                      color: "#16a34a",
-                      fontWeight: "bold",
+                      color: "#166534",
+                      fontWeight: "800",
                       display: "block",
-                      marginTop: "6px",
+                      marginBottom: "6px",
+                      textTransform: "uppercase",
                     }}
                   >
-                    <Star size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: "4px" }} /> Ahorro por paquete: $
-                    {(
-                      parseFloat(price) * parseInt(unitsPerPack) -
-                      parseFloat(packPrice)
-                    ).toFixed(2)}
+                    Presentación #1
                   </span>
-                )}
-            </div>
-            
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    <div>
+                      <label style={{ fontSize: "11px", color: "#166534", fontWeight: "700", display: "block", marginBottom: "4px" }}>
+                        Unidades por paquete
+                      </label>
+                      <input
+                        type="number"
+                        min="2"
+                        value={unitsPerPack}
+                        onChange={(e) => setUnitsPerPack(e.target.value)}
+                        placeholder="Ej. 30"
+                        style={{ width: "100%", padding: "8px", fontSize: "13px", borderRadius: "4px", border: "1px solid #86efac", outline: "none", boxSizing: "border-box" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "11px", color: "#166534", fontWeight: "700", display: "block", marginBottom: "4px" }}>
+                        Precio del paquete ($)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={packPrice}
+                        onChange={(e) => setPackPrice(e.target.value)}
+                        placeholder="Ej. 15.00"
+                        style={{ width: "100%", padding: "8px", fontSize: "13px", borderRadius: "4px", border: "1px solid #86efac", outline: "none", boxSizing: "border-box" }}
+                      />
+                    </div>
+                  </div>
+                </div>
 
-            
+                {/* Presentaciones adicionales */}
+                {(productPresentations || []).map((pres, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      background: "#ffffff",
+                      padding: "10px",
+                      borderRadius: "6px",
+                      border: "1px solid #bbf7d0",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                      <span style={{ fontSize: "11px", color: "#166534", fontWeight: "800", textTransform: "uppercase" }}>
+                        Presentación #{idx + 2}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = productPresentations.filter((_, i) => i !== idx);
+                          setProductPresentations(updated);
+                        }}
+                        style={{ background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "4px", padding: "2px 8px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}
+                      >
+                        × Quitar
+                      </button>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                      <div>
+                        <label style={{ fontSize: "11px", color: "#166534", fontWeight: "700", display: "block", marginBottom: "4px" }}>
+                          Unidades por paquete
+                        </label>
+                        <input
+                          type="number"
+                          min="2"
+                          value={pres.units}
+                          onChange={(e) => {
+                            const updated = [...productPresentations];
+                            updated[idx] = { ...updated[idx], units: e.target.value };
+                            setProductPresentations(updated);
+                          }}
+                          placeholder="Ej. 15"
+                          style={{ width: "100%", padding: "8px", fontSize: "13px", borderRadius: "4px", border: "1px solid #86efac", outline: "none", boxSizing: "border-box" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "11px", color: "#166534", fontWeight: "700", display: "block", marginBottom: "4px" }}>
+                          Precio del paquete ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={pres.price}
+                          onChange={(e) => {
+                            const updated = [...productPresentations];
+                            updated[idx] = { ...updated[idx], price: e.target.value };
+                            setProductPresentations(updated);
+                          }}
+                          placeholder="Ej. 8.00"
+                          style={{ width: "100%", padding: "8px", fontSize: "13px", borderRadius: "4px", border: "1px solid #86efac", outline: "none", boxSizing: "border-box" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProductPresentations([...(productPresentations || []), { units: "", price: "" }]);
+                  }}
+                  style={{
+                    background: "#16a34a",
+                    color: "#fff",
+                    border: "none",
+                    padding: "8px 14px",
+                    borderRadius: "4px",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  + Agregar otra presentación
+                </button>
+              </>
+            )}
           </div>
 
           {/* NUEVA SECCIÓN: GRUPOS DE OPCIONES OBLIGATORIAS (EJ. ELIGE 3 PROTEÍNAS) */}
