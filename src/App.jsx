@@ -90,7 +90,8 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { useOnlineStatus } from "./hooks/useOnlineStatus";
 import { useRate } from "./hooks/useRate";
 import { useCart } from "./hooks/useCart";
-import { useAuth } from "./hooks/useAuth"; 
+import { useAuth } from "./hooks/useAuth";
+import { useOfflineSync } from "./hooks/useOfflineSync"; 
 import toast, { Toaster } from "react-hot-toast";
 // Importación dinámica infalible para evitar los problemas de empaquetado de Vite
 const Joyride = React.lazy(() => import('react-joyride').then(mod => {
@@ -1303,9 +1304,6 @@ function App() {
   };
 
   const isOnline = useOnlineStatus();
-  const [pendingSalesCount, setPendingSalesCount] = useState(0);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [conflictState, setConflictState] = useState(null);
 
   const [selectedClient, setSelectedClient] = useState("Cliente General");
 
@@ -1695,15 +1693,7 @@ function App() {
     }
   }, []);
 
-  useEffect(() => {
-    let timeout;
-    if (isOnline) {
-      timeout = setTimeout(() => {
-        syncOfflineData();
-      }, 2500);
-    }
-    return () => clearTimeout(timeout);
-  }, [isOnline]);
+
 
   // =================== FIN DEL BLOQUE 1 ===================
   const loadGlobalSaasSettings = async () => {
@@ -3357,352 +3347,9 @@ function App() {
     }
   };
 
-  const checkPendingSales = async () => {
-    const actions = await getOfflineActions();
-    const legacySales = await getOfflineSales();
-    setPendingSalesCount(actions.length + legacySales.length);
-  };
 
-  const syncOfflineData = async () => {
-    if (isSyncing || !currentStoreId) return;
-    setIsSyncing(true);
 
-    try {
-      const oldOfflineSales = await getOfflineSales();
-      if (oldOfflineSales && oldOfflineSales.length > 0) {
-        for (const record of oldOfflineSales) {
-          try {
-            const { data: newSale, error } = await supabase
-              .from("sales")
-              .insert([record.saleData])
-              .select()
-              .single();
-            if (error) throw error;
-            if (newSale && record.historyData) {
-              const { error: histErr } = await supabase
-                .from("payment_history")
-                .insert([
-                  {
-                    sale_id: newSale.id,
-                    amount_usd: record.historyData.amount_usd,
-                    payment_details: record.historyData.payment_details,
-                    store_id: currentStoreId,
-                  },
-                ]);
-              if (histErr) throw histErr;
-            }
-
-            if (
-              record.saleData.status !== "pending" &&
-              record.saleData.items &&
-              record.saleData.items.length > 0
-            ) {
-              for (const item of record.saleData.items) {
-                const { data: prodDb } = await supabase
-                  .from("products")
-                  .select("stock")
-                  .eq("id", item.id)
-                  .eq("store_id", currentStoreId)
-                  .single();
-                if (prodDb) {
-                  const newStock = Math.max(
-                    0,
-                    (prodDb.stock || 0) - item.quantity,
-                  );
-                  await supabase
-                    .from("products")
-                    .update({ stock: newStock })
-                    .eq("id", item.id)
-                    .eq("store_id", currentStoreId);
-                }
-              }
-            }
-
-            await clearOfflineSale(record.id);
-          } catch (e) {
-            console.error("Error legacy sale:", e);
-          }
-        }
-      }
-
-      const actions = await getOfflineActions();
-      if (actions.length === 0 && oldOfflineSales.length === 0) return;
-
-      let generalErrorOccurred = false;
-      const failedActions = [];
-      const idMap = {};
-
-      actions.sort((a, b) => a.timestamp - b.timestamp);
-
-      for (const action of actions) {
-        let syncFailed = false;
-        let errorMessage = "";
-
-        try {
-          if (action.type === "INSERT_PRODUCT") {
-            const { data: newProd, error } = await supabase
-              .from("products")
-              .insert([{ ...action.productData, store_id: currentStoreId }])
-              .select()
-              .single();
-            if (error) throw error;
-            if (newProd && action.tempId) {
-              idMap[action.tempId] = newProd.id;
-            }
-          } else if (action.type === "INSERT_SALE") {
-            if (action.saleData.items) {
-              action.saleData.items = action.saleData.items.map((item) => ({
-                ...item,
-                id: idMap[item.id] || item.id,
-              }));
-            }
-
-            const { data: newSale, error } = await supabase
-              .from("sales")
-              .insert([{ ...action.saleData, store_id: currentStoreId }])
-              .select()
-              .single();
-            if (error) throw error;
-
-            if (newSale && action.tempId) {
-              idMap[action.tempId] = newSale.id;
-            }
-
-            if (newSale && action.historyData) {
-              const { error: histErr } = await supabase
-                .from("payment_history")
-                .insert([
-                  {
-                    sale_id: newSale.id,
-                    amount_usd: action.historyData.amount_usd,
-                    payment_details: action.historyData.payment_details,
-                    store_id: currentStoreId,
-                  },
-                ]);
-              if (histErr) throw histErr;
-            }
-
-            if (
-              action.saleData.status !== "pending" &&
-              action.saleData.items &&
-              action.saleData.items.length > 0
-            ) {
-              for (const item of action.saleData.items) {
-                const { data: prodDb } = await supabase
-                  .from("products")
-                  .select("stock")
-                  .eq("id", item.id)
-                  .eq("store_id", currentStoreId)
-                  .single();
-                if (prodDb) {
-                  const newStock = Math.max(
-                    0,
-                    (prodDb.stock || 0) - item.quantity,
-                  );
-                  await supabase
-                    .from("products")
-                    .update({ stock: newStock })
-                    .eq("id", item.id)
-                    .eq("store_id", currentStoreId);
-                }
-              }
-            }
-          } else if (action.type === "UPDATE_SALE") {
-            const actualSaleId = idMap[action.saleId] || action.saleId;
-            if (
-              actualSaleId &&
-              String(actualSaleId) !== "null" &&
-              !String(actualSaleId).startsWith("local_")
-            ) {
-              const { error } = await supabase
-                .from("sales")
-                .update({
-                  status: action.updatedStatus,
-                  balance_due_usd: action.newBalanceDue,
-                  payment_details: action.paymentDetails,
-                })
-                .eq("id", actualSaleId)
-                .eq("store_id", currentStoreId);
-              if (error) throw error;
-
-              const { error: histErr2 } = await supabase
-                .from("payment_history")
-                .insert([
-                  {
-                    sale_id: actualSaleId,
-                    amount_usd: action.historyData.amount_usd,
-                    payment_details: action.historyData.payment_details,
-                    store_id: currentStoreId,
-                  },
-                ]);
-              if (histErr2) throw histErr2;
-            }
-          } else if (action.type === "DELETE_SALE") {
-            const actualSaleId = idMap[action.saleId] || action.saleId;
-            if (
-              actualSaleId &&
-              String(actualSaleId) !== "null" &&
-              !String(actualSaleId).startsWith("local_")
-            ) {
-              const { error } = await supabase
-                .from("sales")
-                .delete()
-                .eq("id", actualSaleId)
-                .eq("store_id", currentStoreId);
-              if (error) throw error;
-            }
-          } else if (action.type === "UPDATE_PRODUCT") {
-            const actualProdId = idMap[action.productId] || action.productId;
-            if (
-              actualProdId &&
-              String(actualProdId) !== "null" &&
-              !String(actualProdId).startsWith("local_")
-            ) {
-              const { error } = await supabase
-                .from("products")
-                .update(action.productData)
-                .eq("id", actualProdId)
-                .eq("store_id", currentStoreId);
-              if (error) throw error;
-            }
-          } else if (action.type === "DELETE_PRODUCT") {
-            const actualProdId = idMap[action.productId] || action.productId;
-            if (
-              actualProdId &&
-              String(actualProdId) !== "null" &&
-              !String(actualProdId).startsWith("local_")
-            ) {
-              const { error } = await supabase
-                .from("products")
-                .delete()
-                .eq("id", actualProdId)
-                .eq("store_id", currentStoreId);
-              if (error) throw error;
-            }
-          } else if (action.type === "INSERT_CLIENT") {
-            let conflictResolved = false;
-            if (action.clientData && action.clientData.document) {
-              const { data: existing } = await supabase
-                .from("clients")
-                .select("*")
-                .eq("document", action.clientData.document)
-                .eq("store_id", currentStoreId)
-                .single();
-              if (existing) {
-                const choice = await new Promise((resolve) => {
-                  setConflictState({
-                    title: "Conflicto de Cliente Detectado",
-                    message: `La Cédula/RIF ${action.clientData.document} ya está registrada en la nube. ¿Qué datos deseas conservar?`,
-                    local: action.clientData,
-                    cloud: existing,
-                    resolvePromise: resolve,
-                  });
-                });
-
-                setConflictState(null);
-
-                if (choice === "local") {
-                  const { error: updErr } = await supabase
-                    .from("clients")
-                    .update({
-                      name: action.clientData.name,
-                      phone: action.clientData.phone,
-                      email: action.clientData.email,
-                    })
-                    .eq("id", existing.id)
-                    .eq("store_id", currentStoreId);
-                  if (updErr) throw updErr;
-                }
-                conflictResolved = true;
-                if (action.tempId) idMap[action.tempId] = existing.id;
-              }
-            }
-            if (!conflictResolved) {
-              const { data: newClient, error: insErr } = await supabase
-                .from("clients")
-                .insert([{ ...action.clientData, store_id: currentStoreId }])
-                .select()
-                .single();
-              if (insErr) throw insErr;
-              if (newClient && action.tempId) {
-                idMap[action.tempId] = newClient.id;
-              }
-            }
-          } else if (action.type === "DELETE_CLIENT") {
-            const actualClientId = idMap[action.clientId] || action.clientId;
-            if (
-              actualClientId &&
-              String(actualClientId) !== "null" &&
-              !String(actualClientId).startsWith("local_")
-            ) {
-              const { error } = await supabase
-                .from("clients")
-                .delete()
-                .eq("id", actualClientId)
-                .eq("store_id", currentStoreId);
-              if (error) throw error;
-            }
-          }
-        } catch (err) {
-          syncFailed = true;
-          errorMessage = err.message;
-          console.error("Error sincronizando accion individual:", action, err);
-
-          if (
-            errorMessage.includes("invalid input syntax") ||
-            errorMessage.includes('uuid: "null"') ||
-            errorMessage.includes("uuid: null") ||
-            errorMessage.includes("not a valid UUID")
-          ) {
-            syncFailed = false;
-            console.warn(
-              "⚠️ Acción corrupta detectada y descartada automáticamente para liberar la cola.",
-            );
-          }
-        }
-
-        if (!syncFailed) {
-          await clearOfflineAction(action.local_id);
-        } else {
-          generalErrorOccurred = true;
-          // 🚀 FIX A4: acumulamos errores en lugar de mostrar un alert por cada uno.
-          failedActions.push({
-            type: action.type,
-            reason: errorMessage,
-          });
-        }
-      }
-
-      await fetchClients(currentStoreId);
-      await fetchSales(currentStoreId);
-      await fetchProducts(currentStoreId);
-      checkPendingSales();
-
-      // 🚀 FIX A4: un único alert al final con todos los errores
-      if (!generalErrorOccurred) {
-        toast.success("Sincronización completada");
-      } else {
-        const listaErrores = failedActions
-          .slice(0, 10)
-          .map((f, i) => `${i + 1}. [${f.type}] ${f.reason}`)
-          .join("\n");
-        const extra =
-          failedActions.length > 10
-            ? `\n\n... y ${failedActions.length - 10} error(es) más.`
-            : "";
-        alert(
-          `⚠️ Sincronización con ${failedActions.length} problema(s):\n\n${listaErrores}${extra}\n\nLos registros NO se perdieron. Se reintentarán en el próximo intento.`
-        );
-      }
-    } catch (error) {
-      console.error(
-        "Error crítico procesando la cola de sincronización:",
-        error,
-      );
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  
 
   const fetchProducts = async (storeId) => {
     if (!storeId) return;
@@ -3878,6 +3525,40 @@ function App() {
     }
   };
   // =================== FIN DEL BLOQUE 2 ===================
+
+    // 🌐 Cola offline + sincronización extraídas a un hook
+  const {
+    pendingSalesCount,
+    isSyncing,
+    conflictState,
+    setConflictState,
+    checkPendingSales,
+    syncOfflineData,
+  } = useOfflineSync({
+    isOnline,
+    currentStoreId,
+    fetchClients,
+    fetchSales,
+    fetchProducts,
+    onSyncComplete: ({ success, failedActions }) => {
+      if (success) {
+        toast.success("Sincronización completada");
+      } else {
+        const listaErrores = failedActions
+          .slice(0, 10)
+          .map((f, i) => `${i + 1}. [${f.type}] ${f.reason}`)
+          .join("\n");
+        const extra =
+          failedActions.length > 10
+            ? `\n\n... y ${failedActions.length - 10} error(es) más.`
+            : "";
+        alert(
+          `⚠️ Sincronización con ${failedActions.length} problema(s):\n\n${listaErrores}${extra}\n\nLos registros NO se perdieron. Se reintentarán en el próximo intento.`
+        );
+      }
+    },
+  });
+
   const checkActiveShift = async () => {
     try {
       const {
