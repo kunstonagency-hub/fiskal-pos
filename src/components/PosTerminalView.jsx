@@ -15,7 +15,8 @@ import {
   ShoppingCart,
   X,
   AlertTriangle,
-  Ruler
+  Ruler,
+  User
 } from "lucide-react";
 
 // Terminal de punto de venta.
@@ -1265,9 +1266,12 @@ export default function PosTerminalView({
                       borderBottom: "1px solid #f1f3f5",
                       cursor: "pointer",
                       background: "#f8f9fa",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
                     }}
                   >
-                    👤 <strong>Cliente General (Anónimo)</strong>
+                    <User size={14} color="#6c757d" /> <strong>Cliente General (Anónimo)</strong>
                   </div>
                   {filteredClientsForPOS.length > 0 ? (
                     filteredClientsForPOS.map((cli) => (
