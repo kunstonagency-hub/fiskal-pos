@@ -1,5 +1,5 @@
 import React from "react";
-import { PlusCircle, MessageCircle, Eye, Trash2 } from "lucide-react";
+import { PlusCircle, MessageCircle, Eye, Trash2, Star, AlertTriangle, Flame } from "lucide-react";
 
 // Vista del directorio de clientes.
 function ClientsView({
@@ -119,9 +119,12 @@ function ClientsView({
                 fontSize: "12px",
                 cursor: "pointer",
                 fontWeight: "bold",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
               }}
             >
-              ⭐ Mejor Cliente
+              <Star size={14} /> Mejor Cliente
             </button>
             <button
               onClick={() => setClientFilterTab("debtors")}
@@ -134,9 +137,12 @@ function ClientsView({
                 fontSize: "12px",
                 cursor: "pointer",
                 fontWeight: "bold",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
               }}
             >
-              ⚠️ Morosos (
+              <AlertTriangle size={14} /> Morosos (
               {clientsWithMetrics.filter((c) => c.totalPending > 0).length})
             </button>
             <button
@@ -150,9 +156,12 @@ function ClientsView({
                 fontSize: "12px",
                 cursor: "pointer",
                 fontWeight: "bold",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
               }}
             >
-              🔥 Más Frecuentes
+              <Flame size={14} /> Más Frecuentes
             </button>
           </div>
         </div>
