@@ -89,7 +89,8 @@ import GlobalPosAlarm from "./components/GlobalPosAlarm";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { useOnlineStatus } from "./hooks/useOnlineStatus";
 import { useRate } from "./hooks/useRate";
-import { useCart } from "./hooks/useCart"; 
+import { useCart } from "./hooks/useCart";
+import { useAuth } from "./hooks/useAuth"; 
 import toast, { Toaster } from "react-hot-toast";
 // Importación dinámica infalible para evitar los problemas de empaquetado de Vite
 const Joyride = React.lazy(() => import('react-joyride').then(mod => {
@@ -388,12 +389,47 @@ function App() {
 
   /* El recorrido fue movido abajo para evitar el error */
   
-  const [session, setSession] = useState(null);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState("");
-  const [isRegistering, setIsRegistering] = useState(false);
+  // 🔐 Autenticación y sesión extraídas a un hook
+  const {
+    session,
+    authEmail,
+    setAuthEmail,
+    authPassword,
+    setAuthPassword,
+    authLoading,
+    authError,
+    isRegistering,
+    setIsRegistering,
+    showForgotPassword,
+    setShowForgotPassword,
+    resetEmail,
+    setResetEmail,
+    resetLoading,
+    resetMessage,
+    setResetMessage,
+    isRecoveringPassword,
+    newPassword,
+    setNewPassword,
+    updatingPassword,
+    handleUpdatePassword,
+    handleForgotPasswordSubmit,
+    handleLoginSubmit,
+    handleLogout,
+  } = useAuth({
+    onLoginSuccess: (s) => fetchUserProfileAndStore(s.user),
+    onLogout: () => {
+      setCurrentStoreId(null);
+      setCurrentStoreName("Fiskal Store");
+      setCurrentStoreType("standard");
+      setCurrentUserRole("cajero");
+      setProducts([]);
+      setSales([]);
+      setClients([]);
+      setRegisters([]);
+      setCurrentShift(null);
+      setRunTour(false);
+    },
+  });
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
   const [clients, setClients] = useState([]);
@@ -435,15 +471,6 @@ function App() {
     .includes("venezuela"); // Detección unificada y blindada de Venezuela para todo el sistema
   const [storeCountry, setStoreCountry] = useState("venezuela"); // Para formularios de configuración/admin
   const [vendorStoreCountry, setVendorStoreCountry] = useState("venezuela");
-
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [resetEmail, setResetEmail] = useState("");
-  const [resetLoading, setResetLoading] = useState(false);
-  const [resetMessage, setResetMessage] = useState("");
-
-  const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [updatingPassword, setUpdatingPassword] = useState(false);
 
   const [scannerMode, setScannerMode] = useState("pos"); // 'pos' o 'inventory'
   const [flashEnabled, setFlashEnabled] = useState(false);
@@ -529,30 +556,7 @@ function App() {
     }
   }
 
-  const handleUpdatePassword = async (e) => {
-    e.preventDefault();
-    if (!newPassword || newPassword.length < 6) {
-      alert("La contraseña debe tener al menos 6 caracteres.");
-      return;
-    }
-    setUpdatingPassword(true);
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-      if (error) throw error;
-      alert(
-        "¡Contraseña actualizada con éxito! Ya puedes iniciar sesión con tu nueva clave.",
-      );
-      setIsRecoveringPassword(false);
-      setNewPassword("");
-      await supabase.auth.signOut(); // Cierra sesión para forzar login limpio
-    } catch (err) {
-      alert("Error actualizando contraseña: " + err.message);
-    } finally {
-      setUpdatingPassword(false);
-    }
-  };
+
 
   // NUEVOS ESTADOS: Máscaras y Tipos de Comercio
   const [currentStoreType, setCurrentStoreType] = useState("standard"); // 'standard' | 'restaurant'
@@ -1678,38 +1682,6 @@ function App() {
   }, [currentStoreId, isOnline]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchUserProfileAndStore(session.user);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      // 1. Detectar si el usuario viene del enlace del correo de recuperación
-      if (event === "PASSWORD_RECOVERY") {
-        setIsRecoveringPassword(true);
-      }
-
-      setSession(session);
-
-      // 2. Solo cargar la tienda si no está en proceso de cambiar contraseña
-      if (session && event !== "PASSWORD_RECOVERY") {
-        fetchUserProfileAndStore(session.user);
-      } else if (!session) {
-        setCurrentStoreId(null);
-        setCurrentStoreName("Fiskal Store");
-        setCurrentStoreType("standard");
-        setCurrentUserRole("cajero");
-        setProducts([]);
-        setSales([]);
-        setClients([]);
-        setRegisters([]);
-        setCurrentShift(null);
-        setRunTour(false); // SOLUCIÓN: Apagamos la guía forzosamente al cerrar sesión
-      }
-    });
-
     checkPendingSales();
     loadGlobalSaasSettings();
 
@@ -1721,11 +1693,6 @@ function App() {
         console.error("Error al cargar plantillas", e);
       }
     }
-
-    return () => {
-      subscription.unsubscribe();
-
-    };
   }, []);
 
   useEffect(() => {
@@ -2545,100 +2512,11 @@ function App() {
     window.open(url, "_blank");
   };
 
-  const handleForgotPasswordSubmit = async (e) => {
-    e.preventDefault();
-    if (!resetEmail.trim()) return;
-    setResetLoading(true);
-    setResetMessage("");
 
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(
-        resetEmail.trim(),
-        {
-          redirectTo: window.location.origin,
-        },
-      );
-      if (error) throw error;
-      setResetMessage(
-        "¡Correo enviado con éxito! Revisa tu bandeja de entrada y spam para restablecer tu contraseña.",
-      );
-    } catch (err) {
-      setResetMessage("Error: " + err.message);
-    } finally {
-      setResetLoading(false);
-    }
-  };
 
-  const handleLoginSubmit = async (e) => {
-    e.preventDefault();
-    setAuthLoading(true);
-    setAuthError("");
 
-    try {
-      if (isRegistering) {
-        const { data, error } = await supabase.auth.signUp({
-          email: authEmail,
-          password: authPassword,
-          options: {
-            emailRedirectTo: window.location.origin,
-          },
-        });
-        if (error) throw error;
 
-        if (data.user) {
-          const trialEnd = new Date(
-            Date.now() + 10 * 24 * 60 * 60 * 1000,
-          ).toISOString();
-          const { data: newStore, error: storeErr } = await supabase
-            .from("stores")
-            .insert([
-              {
-                name: "Mi Comercio Nuevo",
-                is_active: true,
-                is_trial: true,
-                trial_end_date: trialEnd,
-                monthly_price_agreed: baseMonthlyPrice,
-                custom_discount: globalPromoDiscount,
-                store_type: "standard",
-              },
-            ])
-            .select()
-            .single();
-
-          if (!storeErr && newStore) {
-            await supabase.from("profiles").upsert([
-              {
-                id: data.user.id,
-                store_id: newStore.id,
-                role: "owner",
-                full_name: "Propietario Principal",
-              },
-            ]);
-          }
-        }
-
-        alert(
-          "¡Registro exitoso! Ya puedes iniciar sesión y configurar tu comercio con 10 días de cortesía.",
-        );
-        setIsRegistering(false);
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: authEmail,
-          password: authPassword,
-        });
-        if (error) throw error;
-      }
-    } catch (error) {
-      setAuthError(error.message);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    sessionStorage.clear();
-    await supabase.auth.signOut();
-  };
+ 
 
   const handleCreateEmployee = async (e) => {
     e.preventDefault();
