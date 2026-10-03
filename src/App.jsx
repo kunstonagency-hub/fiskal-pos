@@ -6771,6 +6771,7 @@ function App() {
 
               {showRateDropdown && (
                 <div
+                  className="rate-dropdown"
                   style={{
                     position: "absolute",
                     top: "calc(100% + 5px)",
